@@ -1,1 +1,2 @@
-export { default } from './plugin';
+import { PluginShuiyin1Client } from './plugin';
+export default PluginShuiyin1Client;

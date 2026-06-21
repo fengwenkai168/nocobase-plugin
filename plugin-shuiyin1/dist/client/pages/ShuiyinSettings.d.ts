@@ -1,2 +1,2 @@
 import React from 'react';
-export default function ShuiyinSettings(): React.JSX.Element;
+export declare const ShuiyinSettings: React.FC;

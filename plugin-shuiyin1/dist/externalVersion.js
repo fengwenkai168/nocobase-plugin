@@ -8,11 +8,10 @@
  */
 
 module.exports = {
-  "react-i18next": "11.18.6",
-  "@nocobase/client": "2.2.0-beta.2",
-  "@nocobase/client-v2": "2.2.0-beta.2",
-  "@nocobase/server": "2.2.0-beta.2",
+  "@nocobase/client": "2.1.9",
+  "@nocobase/server": "2.1.9",
   "react": "18.3.1",
   "antd": "5.24.2",
-  "@nocobase/database": "2.2.0-beta.2"
+  "react-i18next": "11.18.6",
+  "@nocobase/database": "2.1.9"
 };

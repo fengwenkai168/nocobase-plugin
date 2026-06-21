@@ -1,20 +1,17 @@
 {
   "Watermark Settings": "水印设置",
   "Watermark text": "水印文字",
-  "Leave blank to use current user nickname": "留空则使用当前登录用户昵称",
+  "Leave blank to use current user nickname": "留空则使用当前用户昵称",
   "Opacity": "透明度",
+  "Please enter opacity": "请输入透明度",
   "Font size": "字号",
-  "Show current time": "显示当前年月日时间",
+  "Please enter font size": "请输入字号",
   "Density": "排列密度",
   "Please enter density": "请输入排列密度",
-  "Density hint": "1 最稀疏，5 最密集",
-  "Please enter watermark text": "请输入水印文字",
-  "Please enter opacity": "请输入透明度",
-  "Please enter font size": "请输入字号",
+  "Show current time": "显示当前年月日时间",
   "Save": "保存",
   "Reset": "重置",
   "Saved successfully": "保存成功",
   "Save failed": "保存失败",
-  "Failed to load settings": "加载设置失败",
-  "No settings record found": "未找到设置记录"
+  "Failed to load settings": "加载设置失败"
 }

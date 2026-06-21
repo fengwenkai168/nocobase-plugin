@@ -1,6 +1,6 @@
 {
   "name": "@my-project/plugin-shuiyin1",
-  "version": "0.2.0",
+  "version": "0.2.4",
   "displayName": "@my-project/plugin-shuiyin1",
   "displayName.zh-CN": "水印插件",
   "description": "NocoBase global watermark plugin with anti-removal and real-time refresh",
@@ -9,10 +9,22 @@
   "homepage": "https://github.com/fengwenkai168/nocobase-plugin",
   "homepage.zh-CN": "https://github.com/fengwenkai168/nocobase-plugin",
   "dependencies": {},
+  "keywords": [
+    "水印",
+    "watermark"
+  ],
+  "nocobase": {
+    "displayOrder": 1,
+    "defaultEnabled": false,
+    "supportedVersions": [
+      "2.x"
+    ],
+    "editionLevel": 0
+  },
   "peerDependencies": {
-    "@nocobase/client": ">=2.1.5-0 <3.0.0",
-    "@nocobase/client-v2": ">=2.1.5-0 <3.0.0",
-    "@nocobase/server": ">=2.1.5-0 <3.0.0",
-    "@nocobase/database": ">=2.1.5-0 <3.0.0"
+    "@nocobase/client": ">=2.0.0-0 <3.0.0",
+    "@nocobase/client-v2": ">=2.0.0-0 <3.0.0",
+    "@nocobase/server": ">=2.0.0-0 <3.0.0",
+    "@nocobase/database": ">=2.0.0-0 <3.0.0"
   }
 }

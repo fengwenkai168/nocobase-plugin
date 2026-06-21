@@ -1,7 +1,13 @@
-import { Plugin, Application } from '@nocobase/client-v2';
-export declare class PluginShuiyin1ClientV2 extends Plugin<any, Application> {
-    private settings;
-    private username;
+import { Plugin } from '@nocobase/client';
+export declare class PluginShuiyin1ClientV2 extends Plugin {
+    settings: {
+        text: string;
+        opacity: number;
+        fontSize: number;
+        showTime: boolean;
+        density: number;
+    };
+    username: string;
     private checkTimer;
     private timeTimer;
     private refreshTimer;
@@ -9,8 +15,7 @@ export declare class PluginShuiyin1ClientV2 extends Plugin<any, Application> {
     private clearTimeTimer;
     private startTimeTimer;
     private fetchSettings;
-    private applyLatestSettings;
     private refreshWatermark;
+    private applyLatestSettings;
     load(): Promise<void>;
 }
-export default PluginShuiyin1ClientV2;

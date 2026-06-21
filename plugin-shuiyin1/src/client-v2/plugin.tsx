@@ -1,20 +1,9 @@
-import { Plugin, Application } from '@nocobase/client-v2';
+import { Plugin } from '@nocobase/client';
+import { ShuiyinSettings } from '../client/pages/ShuiyinSettings';
 
 const WATERMARK_ID = 'shuiyin1-watermark-overlay';
-const CHECK_INTERVAL = 2000;
-const TIME_INTERVAL = 60000;
-const REFRESH_INTERVAL = 30000;
-const SETTINGS_CHANGED_EVENT = 'shuiyin1:settings:changed';
 
-interface WatermarkSettings {
-  text?: string;
-  opacity?: number;
-  fontSize?: number;
-  showTime?: boolean;
-  density?: number;
-}
-
-const defaultSettings: Required<WatermarkSettings> = {
+const defaultSettings = {
   text: '',
   opacity: 0.15,
   fontSize: 10,
@@ -22,16 +11,19 @@ const defaultSettings: Required<WatermarkSettings> = {
   density: 5,
 };
 
-function formatTime(date: Date): string {
-  const y = date.getFullYear();
-  const mo = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  const h = String(date.getHours()).padStart(2, '0');
-  const m = String(date.getMinutes()).padStart(2, '0');
-  return `${y}-${mo}-${d} ${h}:${m}`;
+const authPages = [
+  '/signin',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+];
+
+function isAuthPage() {
+  const path = window.location.pathname;
+  return authPages.some((p) => path === p || path.startsWith(p + '/'));
 }
 
-const DENSITY_SIZES: Record<number, { width: number; height: number }> = {
+const densityMap: Record<number, { width: number; height: number }> = {
   1: { width: 400, height: 280 },
   2: { width: 320, height: 220 },
   3: { width: 240, height: 160 },
@@ -39,39 +31,10 @@ const DENSITY_SIZES: Record<number, { width: number; height: number }> = {
   5: { width: 140, height: 90 },
 };
 
-function getDensitySize(density: number): { width: number; height: number } {
-  return DENSITY_SIZES[density] ?? DENSITY_SIZES[3];
-}
-
-function generateWatermarkBackground(
-  text: string,
-  opacity: number,
-  fontSize: number,
-  density: number,
-): string {
-  const { width, height } = getDensitySize(density);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx2d = canvas.getContext('2d');
-  if (!ctx2d) {
-    return '';
-  }
-  ctx2d.clearRect(0, 0, width, height);
-  ctx2d.globalAlpha = opacity;
-  ctx2d.font = `${fontSize}px sans-serif`;
-  ctx2d.fillStyle = '#000000';
-  ctx2d.textAlign = 'center';
-  ctx2d.textBaseline = 'middle';
-  ctx2d.save();
-  ctx2d.translate(width / 2, height / 2);
-  ctx2d.rotate(-Math.PI / 6);
-  ctx2d.fillText(text, 0, 0);
-  ctx2d.restore();
-  return canvas.toDataURL('image/png');
-}
-
-function applyWatermark(settings: Required<WatermarkSettings>, username: string) {
+function renderWatermark(
+  settings: typeof defaultSettings,
+  username: string,
+) {
   let el = document.getElementById(WATERMARK_ID);
   if (!el) {
     el = document.createElement('div');
@@ -89,39 +52,59 @@ function applyWatermark(settings: Required<WatermarkSettings>, username: string)
     });
     document.body.appendChild(el);
   }
-  const baseText = settings.text || username;
-  const displayText = settings.showTime ? `${baseText} ${formatTime(new Date())}` : baseText;
-  const dataUrl = generateWatermarkBackground(displayText, settings.opacity, settings.fontSize, settings.density);
-  (el as HTMLElement).style.backgroundImage = `url(${dataUrl})`;
+
+  const text = settings.text || username;
+  const displayText = settings.showTime
+    ? `${text} ${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} ${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
+    : text;
+  const { width, height } = densityMap[settings.density] || densityMap[3];
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.globalAlpha = settings.opacity;
+  ctx.font = `${settings.fontSize}px sans-serif`;
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.save();
+  ctx.translate(width / 2, height / 2);
+  ctx.rotate(-Math.PI / 6);
+  ctx.fillText(displayText, 0, 0);
+  ctx.restore();
+
+  el.style.backgroundImage = `url(${canvas.toDataURL('image/png')})`;
 }
 
-export class PluginShuiyin1ClientV2 extends Plugin<any, Application> {
-  private settings: Required<WatermarkSettings> = { ...defaultSettings };
-  private username = 'unknown';
-  private checkTimer: any;
-  private timeTimer: any;
-  private refreshTimer: any;
+export class PluginShuiyin1ClientV2 extends Plugin {
+  settings = { ...defaultSettings };
+  username = 'unknown';
+  private checkTimer: number | undefined;
+  private timeTimer: number | undefined;
+  private refreshTimer: number | undefined;
   private observer: MutationObserver | null = null;
 
   private clearTimeTimer() {
     if (this.timeTimer) {
       window.clearInterval(this.timeTimer);
-      this.timeTimer = null;
+      this.timeTimer = undefined;
     }
   }
 
   private startTimeTimer() {
     this.clearTimeTimer();
     this.timeTimer = window.setInterval(() => {
-      applyWatermark(this.settings, this.username);
-    }, TIME_INTERVAL);
+      renderWatermark(this.settings, this.username);
+    }, 60000);
   }
 
-  private async fetchSettings(): Promise<Required<WatermarkSettings>> {
+  private async fetchSettings() {
     try {
-      // eslint-disable-next-line no-console
       console.log('[shuiyin1] fetching settings...');
-      const res = await this.context.api.request({
+      const res = await this.app.apiClient.request({
         url: 'shuiyin1_settings:list',
         method: 'POST',
         headers: {
@@ -130,126 +113,110 @@ export class PluginShuiyin1ClientV2 extends Plugin<any, Application> {
         },
         data: { __refresh: Date.now() },
       });
-      // eslint-disable-next-line no-console
       console.log('[shuiyin1] raw settings response:', res);
-      const record = res?.data?.data?.[0] ?? res?.data?.[0];
+      const record = res?.data?.data?.[0] || res?.data?.[0];
       if (record) {
-        const settings = {
+        const parsed = {
           text: record.text ?? defaultSettings.text,
           opacity: record.opacity ?? defaultSettings.opacity,
           fontSize: record.fontSize ?? defaultSettings.fontSize,
           showTime: record.showTime ?? defaultSettings.showTime,
           density: record.density ?? defaultSettings.density,
         };
-        // eslint-disable-next-line no-console
-        console.log('[shuiyin1] parsed settings:', settings);
-        return settings;
+        console.log('[shuiyin1] parsed settings:', parsed);
+        return parsed;
       }
-      // eslint-disable-next-line no-console
       console.warn('[shuiyin1] no settings record found, using defaults');
     } catch (err) {
-      this.context.logger?.warn?.('[shuiyin1] failed to fetch settings', err);
+      console.warn('[shuiyin1] failed to fetch settings', err);
     }
     return { ...defaultSettings };
   }
 
-  private applyLatestSettings(settings: Required<WatermarkSettings>, reason: string) {
-    this.settings = { ...defaultSettings, ...settings };
-    applyWatermark(this.settings, this.username);
-    this.clearTimeTimer();
-    if (this.settings.showTime) {
-      this.startTimeTimer();
+  private async refreshWatermark(reason?: string, newSettings?: typeof defaultSettings) {
+    const s = this;
+    let settings: typeof defaultSettings;
+    if (newSettings) {
+      settings = { ...defaultSettings, ...newSettings };
+    } else {
+      settings = await this.fetchSettings();
     }
-    // eslint-disable-next-line no-console
+    s.settings = settings;
+    if (reason) console.log('[shuiyin1] watermark refreshed, reason:', reason, settings);
+    renderWatermark(settings, this.username);
+    this.clearTimeTimer();
+    if (settings.showTime) this.startTimeTimer();
+  }
+
+  private applyLatestSettings(settings: typeof defaultSettings, reason: string) {
+    this.settings = { ...defaultSettings, ...settings };
+    renderWatermark(this.settings, this.username);
+    this.clearTimeTimer();
+    if (this.settings.showTime) this.startTimeTimer();
     console.log('[shuiyin1] watermark refreshed, reason:', reason, this.settings);
   }
 
-  private async refreshWatermark(reason?: string) {
-    this.settings = await this.fetchSettings();
-    if (reason) {
-      // eslint-disable-next-line no-console
-      console.log('[shuiyin1] watermark refreshed, reason:', reason, this.settings);
-    }
-    applyWatermark(this.settings, this.username);
-    this.clearTimeTimer();
-    if (this.settings.showTime) {
-      this.startTimeTimer();
-    }
-  }
-
   async load() {
-    // Register plugin settings page
-    this.pluginSettingsManager.addMenuItem({
-      key: 'shuiyin1',
+    if (isAuthPage()) return;
+
+    const self = this;
+
+    this.pluginSettingsManager.add('shuiyin1', {
       title: this.t('Watermark Settings'),
       icon: 'CopyrightOutlined',
-    });
-    this.pluginSettingsManager.addPageTabItem({
-      menuKey: 'shuiyin1',
-      key: 'index',
-      title: this.t('Watermark Settings'),
-      componentLoader: () => import('./pages/ShuiyinSettings'),
+      Component: ShuiyinSettings,
     });
 
-    // Fetch current user
     try {
-      const userRes = await this.context.api.request({ url: 'auth:check', method: 'GET' });
-      const user = userRes?.data?.data;
+      const res = await this.app.apiClient.request({ url: 'auth:check', method: 'GET' });
+      const user = res?.data?.data;
       this.username = user?.nickname || user?.username || user?.email || 'unknown';
     } catch (err) {
-      this.context.logger?.warn?.('[shuiyin1] failed to fetch current user', err);
+      console.warn('[shuiyin1] failed to fetch current user', err);
     }
 
-    // Initial load
-    // eslint-disable-next-line no-console
     console.log('[shuiyin1] plugin load started');
-    this.settings = await this.fetchSettings();
-    // eslint-disable-next-line no-console
+    self.settings = await this.fetchSettings();
     console.log('[shuiyin1] initial settings loaded:', this.settings);
 
-    const start = () => {
+    const initWatermark = () => {
       if (!document.body) {
-        // eslint-disable-next-line no-console
         console.log('[shuiyin1] document.body not ready, waiting DOMContentLoaded');
-        window.addEventListener('DOMContentLoaded', start, { once: true });
+        window.addEventListener('DOMContentLoaded', initWatermark, { once: true });
         return;
       }
-      // eslint-disable-next-line no-console
-      console.log('[shuiyin1] applying initial watermark with settings:', this.settings, 'username:', this.username);
-      applyWatermark(this.settings, this.username);
-      this.checkTimer = window.setInterval(() => {
+      console.log('[shuiyin1] applying initial watermark with settings:', self.settings, 'username:', self.username);
+      renderWatermark(self.settings, self.username);
+
+      self.checkTimer = window.setInterval(() => {
         if (!document.getElementById(WATERMARK_ID)) {
-          applyWatermark(this.settings, this.username);
+          renderWatermark(self.settings, self.username);
         }
-      }, CHECK_INTERVAL);
-      if (this.settings.showTime) {
-        this.startTimeTimer();
-      }
-      this.observer = new MutationObserver(() => {
+      }, 2000);
+
+      if (self.settings.showTime) self.startTimeTimer();
+
+      self.observer = new MutationObserver(() => {
         if (!document.getElementById(WATERMARK_ID)) {
-          applyWatermark(this.settings, this.username);
+          renderWatermark(self.settings, self.username);
         }
       });
-      this.observer.observe(document.body, { childList: true, subtree: true });
+      self.observer.observe(document.body, { childList: true, subtree: true });
     };
 
-    start();
+    initWatermark();
 
-    // Listen for settings changes from settings page
-    window.addEventListener(SETTINGS_CHANGED_EVENT, (event: Event) => {
-      const detail = (event as CustomEvent<Required<WatermarkSettings>>).detail;
+    window.addEventListener('shuiyin1:settings:changed', ((e: CustomEvent) => {
+      const detail = e.detail;
       if (detail) {
-        this.applyLatestSettings(detail, 'settings changed');
+        self.applyLatestSettings(detail, 'settings changed');
       } else {
-        this.refreshWatermark('settings changed');
+        self.refreshWatermark('settings changed');
       }
-    });
+    }) as EventListener);
 
-    // Periodically refresh settings as a fallback
     this.refreshTimer = window.setInterval(() => {
-      this.refreshWatermark('periodic refresh');
-    }, REFRESH_INTERVAL);
+      self.refreshWatermark('periodic refresh');
+    }, 30000);
   }
 }
-
-export default PluginShuiyin1ClientV2;

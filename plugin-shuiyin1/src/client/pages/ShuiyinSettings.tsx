@@ -1,23 +1,19 @@
 import React, { useState } from 'react';
-import { Card, Form, Input, InputNumber, Button, Space, message, Switch } from 'antd';
+import {
+  Card,
+  Form,
+  Input,
+  InputNumber,
+  Switch,
+  Button,
+  Space,
+  message,
+} from 'antd';
 import { useAPIClient, useRequest } from '@nocobase/client';
 import { useTranslation } from 'react-i18next';
-// @ts-ignore
-import pkg from '../../../package.json';
 
-const SETTINGS_CHANGED_EVENT = 'shuiyin1:settings:changed';
-
-interface WatermarkSettings {
-  id?: number;
-  text?: string;
-  opacity?: number;
-  fontSize?: number;
-  showTime?: boolean;
-  density?: number;
-}
-
-const defaultValues: Required<WatermarkSettings> = {
-  id: undefined as any,
+const defaultSettings = {
+  id: undefined as number | undefined,
   text: '',
   opacity: 0.15,
   fontSize: 10,
@@ -25,32 +21,21 @@ const defaultValues: Required<WatermarkSettings> = {
   density: 5,
 };
 
-function notifySettingsChanged(settings: Required<WatermarkSettings>) {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent(SETTINGS_CHANGED_EVENT, { detail: settings }));
-  }
-}
-
-export default function ShuiyinSettings() {
-  const { t } = useTranslation(pkg.name);
-  const api = useAPIClient();
-  const [form] = Form.useForm<WatermarkSettings>();
-  const [submitting, setSubmitting] = useState(false);
+export const ShuiyinSettings: React.FC = () => {
+  const { t } = useTranslation('@my-project/plugin-shuiyin1');
+  const apiClient = useAPIClient();
+  const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
 
   const { loading } = useRequest(
+    { url: 'shuiyin1_settings:list' },
     {
-      url: 'shuiyin1_settings:list',
-    },
-    {
-      onSuccess: (res: any) => {
-        const record = res?.data?.data?.[0] ?? res?.data?.[0];
+      onSuccess: (data) => {
+        const record = data?.data?.[0] || data?.[0];
         if (record) {
-          form.setFieldsValue({
-            ...defaultValues,
-            ...record,
-          });
+          form.setFieldsValue({ ...defaultSettings, ...record });
         } else {
-          form.setFieldsValue({ ...defaultValues });
+          form.setFieldsValue({ ...defaultSettings });
         }
       },
       onError: () => {
@@ -60,35 +45,44 @@ export default function ShuiyinSettings() {
   );
 
   const handleSave = async () => {
-    const values = await form.validateFields();
-    const id = form.getFieldValue('id');
-    setSubmitting(true);
     try {
+      const values = await form.validateFields();
+      const id = form.getFieldValue('id');
+      setSaving(true);
+
       if (id) {
-        await api.request({
+        await apiClient.request({
           url: 'shuiyin1_settings:update',
           method: 'POST',
           params: { filterByTk: id },
           data: values,
         });
       } else {
-        const res = await api.request({
+        const res = await apiClient.request({
           url: 'shuiyin1_settings:create',
           method: 'POST',
           data: values,
         });
-        const createdId = res?.data?.data?.id || res?.data?.id || res?.data?.[0]?.id;
-        if (createdId) {
-          form.setFieldValue('id', createdId);
-        }
+        const newId =
+          res?.data?.data?.id ||
+          res?.data?.id ||
+          res?.data?.data?.[0]?.id;
+        if (newId) form.setFieldValue('id', newId);
       }
-      notifySettingsChanged({ ...defaultValues, ...values });
+
+      const settings = { ...defaultSettings, ...values };
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('shuiyin1:settings:changed', { detail: settings }),
+        );
+      }
+
       message.success(t('Saved successfully'));
     } catch (err) {
       console.error('[shuiyin1] save failed', err);
       message.error(t('Save failed'));
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   };
 
@@ -98,10 +92,7 @@ export default function ShuiyinSettings() {
         <Form.Item name="id" hidden>
           <Input />
         </Form.Item>
-        <Form.Item
-          label={t('Watermark text')}
-          name="text"
-        >
+        <Form.Item label={t('Watermark text')} name="text">
           <Input placeholder={t('Leave blank to use current user nickname')} />
         </Form.Item>
         <Form.Item
@@ -125,16 +116,12 @@ export default function ShuiyinSettings() {
         >
           <InputNumber min={1} max={5} step={1} style={{ width: '100%' }} />
         </Form.Item>
-        <Form.Item
-          label={t('Show current time')}
-          name="showTime"
-          valuePropName="checked"
-        >
+        <Form.Item label={t('Show current time')} name="showTime" valuePropName="checked">
           <Switch />
         </Form.Item>
         <Form.Item>
           <Space>
-            <Button type="primary" onClick={handleSave} loading={submitting}>
+            <Button type="primary" onClick={handleSave} loading={saving}>
               {t('Save')}
             </Button>
             <Button onClick={() => form.resetFields()}>{t('Reset')}</Button>
@@ -143,4 +130,4 @@ export default function ShuiyinSettings() {
       </Form>
     </Card>
   );
-}
+};

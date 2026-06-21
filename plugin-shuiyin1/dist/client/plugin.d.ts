@@ -1,7 +1,13 @@
 import { Plugin } from '@nocobase/client';
 export declare class PluginShuiyin1Client extends Plugin {
-    private settings;
-    private username;
+    settings: {
+        text: string;
+        opacity: number;
+        fontSize: number;
+        showTime: boolean;
+        density: number;
+    };
+    username: string;
     private checkTimer;
     private timeTimer;
     private refreshTimer;
@@ -13,4 +19,3 @@ export declare class PluginShuiyin1Client extends Plugin {
     private applyLatestSettings;
     load(): Promise<void>;
 }
-export default PluginShuiyin1Client;

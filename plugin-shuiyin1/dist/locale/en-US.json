@@ -3,18 +3,15 @@
   "Watermark text": "Watermark text",
   "Leave blank to use current user nickname": "Leave blank to use current user nickname",
   "Opacity": "Opacity",
+  "Please enter opacity": "Please enter opacity",
   "Font size": "Font size",
-  "Show current time": "Show current time",
+  "Please enter font size": "Please enter font size",
   "Density": "Density",
   "Please enter density": "Please enter density",
-  "Density hint": "1 sparsest, 5 densest",
-  "Please enter watermark text": "Please enter watermark text",
-  "Please enter opacity": "Please enter opacity",
-  "Please enter font size": "Please enter font size",
+  "Show current time": "Show current time",
   "Save": "Save",
   "Reset": "Reset",
   "Saved successfully": "Saved successfully",
   "Save failed": "Save failed",
-  "Failed to load settings": "Failed to load settings",
-  "No settings record found": "No settings record found"
+  "Failed to load settings": "Failed to load settings"
 }
