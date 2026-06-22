@@ -10,7 +10,7 @@
 module.exports = {
   "@nocobase/client": "2.1.9",
   "@nocobase/server": "2.1.9",
-  "react": "18.3.1",
+  "react": "18.2.0",
   "antd": "5.24.2",
   "react-i18next": "11.18.6",
   "@nocobase/database": "2.1.9"

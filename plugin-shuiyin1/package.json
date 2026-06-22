@@ -1,6 +1,6 @@
 {
   "name": "@my-project/plugin-shuiyin1",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "displayName": "@my-project/plugin-shuiyin1",
   "displayName.zh-CN": "水印插件",
   "description": "NocoBase global watermark plugin with anti-removal and real-time refresh",

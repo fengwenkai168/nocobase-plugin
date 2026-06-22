@@ -157,15 +157,45 @@ export class PluginShuiyin1Client extends Plugin {
   }
 
   async load() {
-    if (isAuthPage()) return;
-
     const self = this;
 
+    // 始终注册设置菜单（修复：登录页面刷新后登录，菜单和水印不显示的问题）
     this.pluginSettingsManager.add('shuiyin1', {
       title: this.t('Watermark Settings'),
       icon: 'CopyrightOutlined',
       Component: ShuiyinSettings,
     });
+
+    if (isAuthPage()) {
+      // 认证页面：等待用户登录后再初始化水印
+      let initialized = false;
+      const tryInit = () => {
+        if (initialized) return;
+        if (!isAuthPage()) {
+          initialized = true;
+          self.startup();
+        }
+      };
+      window.addEventListener('popstate', tryInit);
+      const origPushState = history.pushState;
+      history.pushState = function (...args) {
+        origPushState.apply(this, args);
+        tryInit();
+      };
+      const frameCheck = () => {
+        tryInit();
+        if (!initialized) requestAnimationFrame(frameCheck);
+      };
+      requestAnimationFrame(frameCheck);
+      return;
+    }
+
+    // 非认证页面：直接初始化
+    self.startup();
+  }
+
+  private async startup() {
+    const self = this;
 
     try {
       const res = await this.app.apiClient.request({ url: 'auth:check', method: 'GET' });

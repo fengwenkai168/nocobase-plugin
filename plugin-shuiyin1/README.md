@@ -1,6 +1,6 @@
 # @my-project/plugin-shuiyin1
 
-> 当前版本：**v0.2.4**
+> 当前版本：**v0.2.5**
 
 NocoBase 全局水印插件，在页面最上层覆盖半透明水印，显示当前登录用户名称，支持通过插件设置页动态配置水印内容、透明度、字号、排列密度及是否显示当前年月日时间，并具备防删除与定时刷新能力。
 
@@ -54,7 +54,7 @@ nb pm enable @my-project/plugin-shuiyin1
 
 ```bash
 cd my-nocobase-app/packages/plugins/@my-project
-tar -czf plugin-shuiyin1-0.2.4.tar.gz plugin-shuiyin1/
+tar -czf plugin-shuiyin1-0.2.5.tar.gz plugin-shuiyin1/
 ```
 
 然后到后台 → 插件管理 → 上传该 `.tar.gz` 文件。
@@ -306,6 +306,24 @@ nb app logs
 ---
 
 ## 11. 更新日志
+
+### v0.2.5
+
+**Bug 描述：**
+1. 在登录页面刷新浏览器 → 水印消失（正常）
+2. 登录后 → 水印仍然不出现，设置菜单中的水印设置入口也消失
+3. 需要手动刷新浏览器才恢复正常
+
+**根因：**
+`src/client/plugin.tsx:160` 中 `if (isAuthPage()) return;` 在登录页面时导致整个 `load()` 方法提前返回，包含：
+- 设置菜单注册（`pluginSettingsManager.add()`）被跳过
+- 水印初始化代码被跳过
+- 用户认证后 SPA 客户端路由切换，`load()` 不会再次调用
+
+**修复内容：**
+- 设置菜单注册移到 `isAuthPage()` 检查前，始终注册菜单
+- 认证页面不直接返回，通过劫持 `history.pushState` + `popstate` 监听 + `requestAnimationFrame` 兜底检测路由变化，用户登录后自动调用 `startup()` 初始化水印
+- 同步修改 `client-v2/plugin.tsx` 保持双端一致
 
 ### v0.2.4
 
