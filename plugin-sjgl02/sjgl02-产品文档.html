@@ -45,12 +45,12 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 <div class="container">
 
 <div class="cover">
-  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v2.0</h1>
+  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v3.0</h1>
   <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · 与交互原型 <code>sjgl02-ui.html</code> 同步</div>
   <div class="meta">
     <span>📅 2026-06-22</span>
-    <span>🏷️ v1.0.0（重构目标）</span>
-    <span>📄 状态：终稿</span>
+    <span>🏷️ v1.0.0（已实现）</span>
+    <span>📄 状态：终稿 v3.0</span>
     <span>🎯 参考原型：sjgl02-ui.html</span>
   </div>
 </div>
@@ -452,9 +452,48 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
   </ul>
 </div>
 
+<!-- ==================== 11. 实现说明 ==================== -->
+<div class="section" id="changelog">
+  <h2>11. 实现说明 <span class="badge">v1.0.0 最终版</span></h2>
+
+  <h3>11.1 客户端架构</h3>
+  <table>
+    <tr><th>模块</th><th>文件</th><th>说明</th></tr>
+    <tr><td>v2 设置页外壳</td><td><code>src/client-v2/pages/Sjgl02SettingsPage.tsx</code></td><td>LazyTab 按需懒加载 4 个 Tab，切换时重新挂载</td></tr>
+    <tr><td>导入向导</td><td><code>src/client-v2/pages/ImportTab.tsx</code></td><td>3 步向导，表列表从 API 动态加载，文件校验 + 字段映射</td></tr>
+    <tr><td>导出向导</td><td><code>src/client-v2/pages/ExportTab.tsx</code></td><td>3 步向导，字段从 API 加载自动分组，文件名模板可编辑，进度轮询</td></tr>
+    <tr><td>任务管理</td><td><code>src/client-v2/pages/TaskTab.tsx</code></td><td>筛选 + 表格 + 日志抽屉</td></tr>
+    <tr><td>权限管理</td><td><code>src/client-v2/pages/PermissionTab.tsx</code></td><td>左用户/角色列表 + 右权限卡片 + 编辑弹窗</td></tr>
+    <tr><td>v1 设置页</td><td><code>src/client/plugin.tsx</code></td><td>完整设置页面 + SjglBlock 区块组件 + schemaInitializer 注册</td></tr>
+    <tr><td>v2 入口</td><td><code>src/client-v2/plugin.tsx</code></td><td>addMenuItem + addPageTabItem（懒加载）</td></tr>
+  </table>
+
+  <h3>11.2 服务端</h3>
+  <table>
+    <tr><th>模块</th><th>文件</th><th>端点</th></tr>
+    <tr><td>导入</td><td><code>src/server/actions/import.ts</code></td><td>tableFields / upload / preview / execute</td></tr>
+    <tr><td>导出</td><td><code>src/server/actions/export.ts</code></td><td>tableFields / previewCount / execute / progress / download</td></tr>
+    <tr><td>任务</td><td><code>src/server/actions/tasks.ts</code></td><td>list / detail / logs / cancel</td></tr>
+    <tr><td>权限</td><td><code>src/server/actions/permissions.ts</code></td><td>userRoleList / tables / get / save / settings / saveSettings</td></tr>
+    <tr><td>数据表</td><td><code>src/server/collections/</code></td><td>sjgl02_tasks / sjgl02_table_permissions / sjgl02_settings</td></tr>
+  </table>
+
+  <h3>11.3 关键实现细节</h3>
+  <ul>
+    <li><strong>动态数据表</strong>：表选择器从 <code>sjgl02Permissions:tables</code> API 获取数据库实际表（当前 106 张），非硬编码</li>
+    <li><strong>动态字段</strong>：选表后自动调用 <code>tableFields</code> API 加载该表真实字段，按类型分组（常规/关联/附件）</li>
+    <li><strong>懒加载 Tab</strong>：LazyTab 组件按需异步加载 tab 内容模块，切换时销毁重建，解决状态残留问题</li>
+    <li><strong>文件校验</strong>：<code>beforeUpload</code> 校验 .xlsx/.xls/.csv + ≤50MB，不合法直接 <code>LIST_IGNORE</code></li>
+    <li><strong>文件名模板</strong>：全表导出和单表导出均支持自定义文件名，支持 <code>{表名}</code> <code>{日期}</code> 占位符</li>
+    <li><strong>防重入</strong>：导出执行中按钮 loading + disabled，完成后才可再次操作</li>
+    <li><strong>服务端兼容</strong>：tables / fields API 适配 NocoBase <code>ctx.db.collections</code> Map 结构</li>
+    <li><strong>双入口注册</strong>：v1 客户端注册 schemaInitializerManager.addItem 到 page:addBlock 和 popup:common:addBlock</li>
+  </ul>
+</div>
+
 <hr style="margin:40px 0">
 <div style="text-align:center;font-size:13px;color:#9ca3af;padding-bottom:40px">
-  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v2.0 —
+  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v3.0（最终实现版）—
 </div>
 
 </div>
