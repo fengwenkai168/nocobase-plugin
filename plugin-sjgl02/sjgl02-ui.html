@@ -1,0 +1,2417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据管理 - sjgl02 插件交互原型</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#f0f2f5; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; padding:24px; color:#333; }
+.app { max-width:1280px; margin:0 auto; }
+
+/* Header */
+.header { background:linear-gradient(135deg,#1677ff,#0958d9); border-radius:12px; padding:14px 24px; color:#fff; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; }
+.header h1 { font-size:18px; font-weight:600; }
+.header .sub { opacity:.8; font-size:12px; margin-top:2px; }
+.header .badge { background:rgba(255,255,255,.2); border-radius:20px; padding:4px 14px; font-size:11px; }
+
+/* Tabs */
+.tabs { display:flex; gap:4px; background:#fff; border-radius:10px 10px 0 0; padding:4px 4px 0 4px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+.tab { padding:12px 24px; cursor:pointer; border-radius:8px 8px 0 0; font-size:14px; font-weight:500; color:#666; display:flex; align-items:center; gap:8px; transition:all .15s; user-select:none; }
+.tab.active { background:#f0f5ff; color:#1677ff; position:relative; }
+.tab.active::after { content:''; position:absolute; bottom:0; left:12px; right:12px; height:2px; background:#1677ff; border-radius:2px 2px 0 0; }
+.tab:hover:not(.active) { background:#fafafa; }
+
+/* Content */
+.content { background:#fff; border-radius:0 0 10px 10px; padding:24px; box-shadow:0 1px 2px rgba(0,0,0,.06); min-height:600px; }
+.tab-page { display:none; }
+.tab-page.active { display:block; }
+
+/* Steps */
+.steps { display:flex; margin-bottom:28px; background:#fafafa; border-radius:8px; padding:4px; }
+.step { flex:1; text-align:center; padding:10px 16px; border-radius:6px; font-size:13px; color:#999; display:flex; align-items:center; justify-content:center; gap:8px; transition:all .2s; }
+.step.active { background:#1677ff; color:#fff; font-weight:500; }
+.step.done { color:#1677ff; }
+.step-num { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; border:2px solid currentColor; flex-shrink:0; }
+.step.active .step-num { background:#fff; color:#1677ff; border-color:#fff; }
+.step.done .step-num { background:#1677ff; color:#fff; border-color:#1677ff; }
+
+/* Panels */
+.panel { border:1px solid #e8e8e8; border-radius:8px; padding:20px; margin-bottom:20px; }
+.panel-title { font-size:14px; font-weight:600; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+
+/* Tags */
+.tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:500; }
+.tag-blue { background:#e6f4ff; color:#1677ff; }
+.tag-red { background:#fff2f0; color:#ff4d4f; }
+.tag-orange { background:#fff7e6; color:#fa8c16; }
+.tag-green { background:#f6ffed; color:#52c41a; }
+.tag-purple { background:#f5f3ff; color:#7c3aed; }
+.tag-cyan { background:#ecfeff; color:#0891b2; }
+.tag-default { background:#f5f5f5; color:#666; }
+
+/* Buttons */
+.btn { display:inline-flex; align-items:center; gap:6px; padding:8px 20px; border-radius:6px; font-size:13px; cursor:pointer; border:1px solid transparent; font-weight:500; transition:all .15s; user-select:none; font-family:inherit; }
+.btn:disabled { opacity:.45; cursor:not-allowed; }
+.btn-primary { background:#1677ff; color:#fff; border-color:#1677ff; }
+.btn-primary:hover:not(:disabled) { background:#4096ff; }
+.btn-default { background:#fff; color:#333; border-color:#d9d9d9; }
+.btn-default:hover:not(:disabled) { border-color:#1677ff; color:#1677ff; }
+.btn-danger { color:#ff4d4f; border-color:#ff4d4f; background:#fff; }
+.btn-danger:hover:not(:disabled) { background:#ff4d4f; color:#fff; }
+.btn-sm { padding:4px 12px; font-size:12px; }
+.btn-text { border:none; background:none; color:#666; padding:4px 8px; }
+.btn-text:hover { color:#1677ff; }
+.btn-dashed { border:1px dashed #d9d9d9; background:#fff; color:#666; width:100%; justify-content:center; }
+.btn-dashed:hover { border-color:#1677ff; color:#1677ff; }
+
+/* Table */
+.tbl { width:100%; border-collapse:collapse; font-size:13px; }
+.tbl th { background:#fafafa; padding:10px 12px; text-align:left; font-weight:500; color:#666; border-bottom:1px solid #f0f0f0; white-space:nowrap; }
+.tbl td { padding:10px 12px; border-bottom:1px solid #f0f0f0; }
+.tbl tr:hover td { background:#fafafa; }
+
+/* Upload */
+.upload-zone { border:2px dashed #d9d9d9; border-radius:8px; padding:48px 20px; text-align:center; cursor:pointer; transition:all .2s; }
+.upload-zone:hover { border-color:#1677ff; background:#f0f5ff; }
+.upload-zone .big-icon { font-size:40px; color:#bbb; margin-bottom:8px; }
+.upload-zone .text { color:#333; font-size:14px; }
+.upload-zone .hint { color:#999; font-size:12px; margin-top:4px; }
+
+/* Toggle switch */
+.toggle { width:36px; height:20px; border-radius:10px; background:#d9d9d9; position:relative; cursor:pointer; transition:all .2s; flex-shrink:0; }
+.toggle.on { background:#1677ff; }
+.toggle::after { content:''; position:absolute; width:16px; height:16px; border-radius:50%; background:#fff; top:2px; left:2px; transition:all .2s; }
+.toggle.on::after { left:18px; }
+
+/* Progress */
+.progress-bar { height:6px; background:#f0f0f0; border-radius:3px; overflow:hidden; min-width:100px; }
+.progress-bar .fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#52c41a,#73d13d); transition:width .3s; }
+.progress-bar .fill.red { background:linear-gradient(90deg,#ff4d4f,#ff7875); }
+.progress-bar .fill.blue { background:linear-gradient(90deg,#1677ff,#4096ff); }
+.progress-bar .fill.gray { background:linear-gradient(90deg,#d9d9d9,#bfbfbf); }
+
+/* Select */
+.sel { position:relative; display:inline-block; }
+.sel-btn { display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid #d9d9d9; border-radius:6px; padding:6px 12px; font-size:13px; cursor:pointer; background:#fff; min-width:120px; transition:all .15s; font-family:inherit; }
+.sel-btn:hover { border-color:#1677ff; }
+.sel-dropdown { display:none; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #d9d9d9; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.1); z-index:100; max-height:200px; overflow-y:auto; margin-top:2px; }
+.sel-dropdown.open { display:block; }
+.sel-opt { padding:8px 12px; cursor:pointer; font-size:13px; }
+.sel-opt:hover { background:#f0f5ff; color:#1677ff; }
+.sel-opt.disabled { color:#ccc; cursor:not-allowed; }
+.sel-opt.disabled:hover { background:transparent; color:#ccc; }
+
+/* Checkbox */
+.cb { display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:13px; user-select:none; }
+.cb-box { width:16px; height:16px; border:1px solid #d9d9d9; border-radius:4px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:#fff; }
+.cb-box.checked { background:#1677ff; border-color:#1677ff; }
+.cb-box.checked::after { content:'✓'; color:#fff; font-size:11px; font-weight:700; }
+.cb-box.indeterminate { background:#1677ff; border-color:#1677ff; }
+.cb-box.indeterminate::after { content:'−'; color:#fff; font-size:11px; font-weight:700; }
+
+/* Split */
+.split { display:flex; gap:20px; height:100%; }
+
+/* Sidebar */
+.sidebar { width:220px; flex-shrink:0; border:1px solid #e8e8e8; border-radius:8px; padding:8px; overflow-y:auto; }
+.sidebar-title { font-size:13px; font-weight:600; padding:8px 8px 12px; color:#374151; }
+.sidebar-group { font-size:11px; color:#999; padding:8px 8px 4px; }
+.sidebar-item { padding:8px 10px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:2px; }
+.sidebar-item:hover { background:#f5f5f5; }
+.sidebar-item.active { background:#e6f4ff; color:#1677ff; }
+.sidebar .avatar { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; font-weight:600; flex-shrink:0; }
+
+/* Cards */
+.cardx { border:1px solid #f0f0f0; border-radius:8px; padding:14px 16px; margin-bottom:10px; }
+.cardx-hd { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.cardx-hd .name { font-weight:600; font-size:14px; }
+
+/* Grid */
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; }
+.grid-4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:16px; }
+.stat-card { border:1px solid #f0f0f0; border-radius:8px; padding:16px 20px; text-align:center; }
+.stat-card .num { font-size:24px; font-weight:600; color:#1677ff; }
+.stat-card .lbl { font-size:12px; color:#999; margin-top:4px; }
+
+/* Modal overlay */
+.m-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; align-items:center; justify-content:center; }
+.m-overlay.open { display:flex; }
+.m-box { background:#fff; border-radius:10px; max-height:85vh; overflow-y:auto; }
+.m-box.w-sm { width:480px; }
+.m-box.w-md { width:640px; }
+.m-box.w-lg { width:720px; }
+.m-hd { padding:20px 24px 0; font-size:16px; font-weight:600; }
+.m-body { padding:20px 24px; }
+.m-ft { padding:12px 24px 20px; display:flex; gap:8px; justify-content:flex-end; border-top:1px solid #f0f0f0; }
+
+/* Drawer */
+.d-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; }
+.d-overlay.open { display:block; }
+.d-box { display:none; position:fixed; right:0; top:0; bottom:0; width:680px; background:#fff; box-shadow:-4px 0 12px rgba(0,0,0,.1); z-index:1001; padding:24px; overflow-y:auto; }
+.d-box.open { display:block; }
+.d-box h3 { font-size:16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; }
+.d-box .close-btn { cursor:pointer; font-size:20px; color:#999; }
+
+/* Form */
+.frm-row { margin-bottom:14px; }
+.frm-row label { display:block; font-size:12px; color:#666; margin-bottom:4px; font-weight:500; }
+.frm-row .frm-val { font-size:14px; }
+.frm-inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+
+/* Misc */
+.flex { display:flex; gap:12px; }
+.flex-1 { flex:1; }
+.mt-8 { margin-top:8px; }
+.mt-12 { margin-top:12px; }
+.mt-16 { margin-top:16px; }
+.mb-8 { margin-bottom:8px; }
+.mb-12 { margin-bottom:12px; }
+.mb-16 { margin-bottom:16px; }
+.ml-auto { margin-left:auto; }
+.text-center { text-align:center; }
+.text-right { text-align:right; }
+.text-muted { color:#999; font-size:12px; }
+.text-danger { color:#ff4d4f; }
+.fw-600 { font-weight:600; }
+.gap-4 { gap:4px; }
+.gap-8 { gap:8px; }
+.w-full { width:100%; }
+
+/* Descriptions */
+.desc { font-size:13px; }
+.desc-row { display:flex; border-bottom:1px solid #f0f0f0; }
+.desc-row .lbl { width:100px; padding:8px 12px; color:#999; flex-shrink:0; }
+.desc-row .val { flex:1; padding:8px 12px; font-weight:500; }
+
+/* Stepper progress */
+.step-content { display:none; }
+.step-content.active { display:block; }
+
+/* Search input */
+.s-input { padding:8px 12px; border:1px solid #d9d9d9; border-radius:6px; font-size:13px; width:100%; outline:none; font-family:inherit; }
+.s-input:focus { border-color:#1677ff; box-shadow:0 0 0 2px rgba(22,119,255,.1); }
+.s-input-wrap { position:relative; }
+.s-input-wrap .icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#999; }
+.s-input-wrap .s-input { padding-left:30px; }
+
+/* Alert */
+.alert { padding:10px 16px; border-radius:6px; font-size:13px; margin:12px 0; display:flex; align-items:center; gap:8px; }
+.alert-success { background:#f6ffed; border:1px solid #b7eb8f; color:#135200; }
+.alert-error { background:#fff2f0; border:1px solid #ffccc7; color:#820014; }
+.alert-info { background:#e6f4ff; border:1px solid #91caff; color:#003eb3; }
+
+/* Filter buttons */
+.filter-group { display:flex; gap:6px; flex-wrap:wrap; }
+.filter-btn { padding:4px 14px; border-radius:6px; font-size:12px; cursor:pointer; border:1px solid #d9d9d9; background:#fff; color:#666; transition:all .15s; font-family:inherit; }
+.filter-btn.active { background:#1677ff; color:#fff; border-color:#1677ff; }
+.filter-btn:hover:not(.active) { border-color:#1677ff; color:#1677ff; }
+
+/* Field mapping table */
+.map-col { max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Status dot */
+.sdot { width:6px; height:6px; border-radius:50%; display:inline-block; margin-right:4px; }
+.sdot.green { background:#52c41a; }
+.sdot.red { background:#ff4d4f; }
+.sdot.orange { background:#fa8c16; }
+.sdot.blue { background:#1677ff; }
+.sdot.gray { background:#d9d9d9; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ==================== HEADER ==================== -->
+<div class="header">
+  <div>
+    <h1>📊 数据管理</h1>
+    <div class="sub">导入导出 · 任务管理 · 表级权限控制</div>
+  </div>
+  <div class="badge">@my-project/plugin-sjgl02 v1.0.0 | 交互原型</div>
+</div>
+
+<!-- ==================== TABS ==================== -->
+<div class="tabs" id="tabBar">
+  <div class="tab active" data-tab="import"><span>⬇</span> 导入</div>
+  <div class="tab" data-tab="export"><span>⬆</span> 导出</div>
+  <div class="tab" data-tab="tasks"><span>☰</span> 任务管理</div>
+  <div class="tab" data-tab="permissions"><span>✓</span> 权限管理</div>
+</div>
+
+<div class="content">
+
+<!-- ================================================================ -->
+<!--  TAB: 导入                                                       -->
+<!-- ================================================================ -->
+<div class="tab-page active" id="tp-import">
+  <!-- Steps indicator -->
+  <div class="steps" id="importSteps">
+    <div class="step active" data-is="0"><span class="step-num">1</span>选择数据表</div>
+    <div class="step" data-is="1"><span class="step-num">2</span>上传文件 &amp; 字段映射</div>
+    <div class="step" data-is="2"><span class="step-num">3</span>预览 &amp; 执行</div>
+  </div>
+
+  <!-- Step 0: 选择数据表 -->
+  <div class="step-content active" data-isc="0">
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">📋 选择目标数据表</div>
+        <div class="frm-row">
+          <label>数据表</label>
+          <div class="sel" style="width:100%">
+            <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="imTableName">— 请选择数据表 —</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickImportTable(this,'用户 (users)')">📁 用户 (users)</div>
+              <div class="sel-opt" onclick="pickImportTable(this,'角色 (roles)')">📁 角色 (roles)</div>
+              <div class="sel-opt" onclick="pickImportTable(this,'文章 (posts)')">📁 文章 (posts)</div>
+              <div class="sel-opt" onclick="pickImportTable(this,'订单 (orders)')">📁 订单 (orders)</div>
+              <div class="sel-opt" onclick="pickImportTable(this,'产品 (products)')">📁 产品 (products)</div>
+              <div class="sel-opt" onclick="pickImportTable(this,'产品分类 (categories)')">📁 产品分类 (categories)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">ℹ️ 导入说明</div>
+        <div style="font-size:13px;color:#666;line-height:1.9">
+          <p>• 支持 <strong>.xlsx</strong> / <strong>.xls</strong> / <strong>.csv</strong> 格式</p>
+          <p>• 文件最大 <strong>50 MB</strong></p>
+          <p>• 三种导入模式：<span class="tag tag-blue">新增</span> <span class="tag tag-green">更新</span> <span class="tag tag-orange">新增+更新</span></p>
+          <p>• 必填字段自动标记 <span class="text-danger">*</span></p>
+          <p>• 支持关联字段按显示名称匹配</p>
+          <p>• 附件字段支持 URL / ZIP 上传</p>
+        </div>
+      </div>
+    </div>
+    <div class="text-right mt-12">
+      <button class="btn btn-primary" id="imStep1Next" disabled onclick="goImportStep(1)">下一步 →</button>
+    </div>
+  </div>
+
+  <!-- Step 1: 上传文件 + 字段映射 -->
+  <div class="step-content" data-isc="1">
+    <div style="font-weight:600;margin-bottom:12px;font-size:14px">目标表：<span id="imTableDisplay">—</span></div>
+
+    <!-- Upload area (shown before upload) -->
+    <div id="imUploadArea">
+      <div class="upload-zone" onclick="simulateUpload()">
+        <div class="big-icon">📤</div>
+        <div class="text">点击或拖拽上传文件</div>
+        <div class="hint">支持 .xlsx / .xls / .csv 格式，最大 50MB</div>
+      </div>
+    </div>
+
+    <!-- After upload (hidden initially) -->
+    <div id="imAfterUpload" style="display:none">
+      <!-- Sheet + Header row -->
+      <div class="panel">
+        <div class="frm-inline">
+          <span class="text-muted">Sheet名称：</span>
+          <div class="sel">
+            <button class="sel-btn" onclick="toggleSel(this)"><span id="imSheetName">Sheet1</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt disabled">Sheet1</div>
+              <div class="sel-opt disabled">Sheet2（仅有1个Sheet时禁用）</div>
+            </div>
+          </div>
+          <span class="text-muted">表头行：</span>
+          <div class="sel">
+            <button class="sel-btn" onclick="toggleSel(this)"><span>1</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'1')">1</div>
+              <div class="sel-opt" onclick="pickVal(this,'2')">2</div>
+              <div class="sel-opt" onclick="pickVal(this,'3')">3</div>
+            </div>
+          </div>
+          <button class="btn btn-default btn-sm">🔄 刷新</button>
+        </div>
+      </div>
+
+      <!-- Import mode + Unique fields -->
+      <div class="panel">
+        <div class="frm-inline mb-12">
+          <span class="text-muted">导入模式：</span>
+          <div class="sel">
+            <button class="sel-btn" onclick="toggleSel(this)"><span id="imMode">新增 (insert)</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickImportMode(this,'新增 (insert)','insert')">📄 新增 (insert)<br><span style="font-size:11px;color:#999">直接创建新记录，不匹配已有数据</span></div>
+              <div class="sel-opt" onclick="pickImportMode(this,'更新 (update)','update')">🔄 更新 (update)<br><span style="font-size:11px;color:#999">按唯一值匹配并更新已有记录</span></div>
+              <div class="sel-opt" onclick="pickImportMode(this,'新增+更新 (upsert)','upsert')">📄🔄 新增+更新 (upsert)<br><span style="font-size:11px;color:#999">存在则更新，不存在则新增</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Unique fields: shown when mode is update or upsert -->
+        <div id="imUniqueFieldsArea" style="display:none;border-top:1px solid #f0f0f0;padding-top:14px">
+          <div class="frm-row" style="margin-bottom:0">
+            <label style="font-weight:600;color:#fa8c16">🔑 唯一值字段（用于匹配已有记录）</label>
+            <div style="font-size:12px;color:#999;margin-bottom:8px">选择用于判断记录是否已存在的组合字段。选多个字段时，所有字段值都匹配才视为同一条记录。</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0" id="imUniqueTags">
+              <span class="tag" style="background:#fff7e6;color:#fa8c16;border:1px solid #ffd591;padding:4px 10px;cursor:pointer;font-size:13px" data-field="手机号" onclick="this.remove();refreshUniqueFieldsDropdown()">手机号 ✕</span>
+              <span class="tag" style="background:#fff7e6;color:#fa8c16;border:1px solid #ffd591;padding:4px 10px;cursor:pointer;font-size:13px" data-field="邮箱" onclick="this.remove();refreshUniqueFieldsDropdown()">邮箱 ✕</span>
+              <span class="sel" style="display:inline-block;vertical-align:middle">
+                <button class="btn btn-default btn-sm" style="padding:4px 10px;font-size:12px" onclick="toggleSel(this);refreshUniqueFieldsDropdown()">+ 添加字段</button>
+                <div class="sel-dropdown" style="min-width:160px" id="imUniqueFieldsDropdown"></div>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Field mapping table -->
+      <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:600;font-size:14px">📊 字段映射 <span class="text-muted" style="font-weight:400;font-size:12px">（共6列/已用3/剩余3 · 共8字段/已映射3/忽略5）</span></div>
+        <button class="btn btn-default btn-sm" onclick="autoMatchFields()">⚡ 自动匹配</button>
+      </div>
+      <div class="text-muted" style="font-size:12px;margin-bottom:8px;background:#f0f5ff;padding:6px 10px;border-radius:4px">💡 在「Excel列」下拉中选择字段来源。选 Excel 列名则自动映射；选「自定义内容」可输入固定值；不选则为「忽略」。点击「自动匹配」按名称自动对应。</div>
+
+      <table class="tbl" style="font-size:12px">
+        <thead>
+          <tr>
+            <th style="width:240px">Excel列 <span class="tag tag-blue" style="margin-left:4px">共6/已用3/剩余3</span></th>
+            <th style="width:100px;text-align:center">映射方式</th>
+            <th style="width:30px"></th>
+            <th style="width:240px">工作表字段 <span class="tag tag-green" style="margin-left:4px">共8/已映射3/忽略5</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="sel" style="width:100%">
+                <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="mapVal_0">姓名</span> <span>▼</span></button>
+                <div class="sel-dropdown">
+                  <div class="sel-opt" onclick="pickMappingNone(0)" style="color:#999">🚫 未选择（忽略）</div>
+                  <div class="sel-opt" onclick="pickMapping(0,'姓名')">姓名</div>
+                  <div class="sel-opt" onclick="pickMapping(0,'手机号')">手机号</div>
+                  <div class="sel-opt" onclick="pickMapping(0,'邮箱')">邮箱</div>
+                  <div class="sel-opt disabled">年龄（已选）</div>
+                  <div class="sel-opt" onclick="pickMappingCustom(0)">✏️ 自定义内容</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center"><span class="tag tag-blue" id="mapType_0">Excel列</span></td>
+            <td class="text-center text-muted">→</td>
+            <td><span class="text-danger">*</span> 姓名 <span class="text-muted" style="font-size:11px">(name)</span></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="sel" style="width:100%">
+                <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="mapVal_1">手机号</span> <span>▼</span></button>
+                <div class="sel-dropdown">
+                  <div class="sel-opt" onclick="pickMappingNone(1)" style="color:#999">🚫 未选择（忽略）</div>
+                  <div class="sel-opt disabled">姓名（已选）</div>
+                  <div class="sel-opt" onclick="pickMapping(1,'手机号')">手机号</div>
+                  <div class="sel-opt" onclick="pickMapping(1,'邮箱')">邮箱</div>
+                  <div class="sel-opt disabled">年龄（已选）</div>
+                  <div class="sel-opt" onclick="pickMappingCustom(1)">✏️ 自定义内容</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center"><span class="tag tag-blue" id="mapType_1">Excel列</span></td>
+            <td class="text-center text-muted">→</td>
+            <td><span class="text-danger">*</span> 手机号 <span class="text-muted" style="font-size:11px">(phone)</span></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="sel" style="width:100%">
+                <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="mapVal_2">年龄</span> <span>▼</span></button>
+                <div class="sel-dropdown">
+                  <div class="sel-opt" onclick="pickMappingNone(2)" style="color:#999">🚫 未选择（忽略）</div>
+                  <div class="sel-opt disabled">姓名（已选）</div>
+                  <div class="sel-opt disabled">手机号（已选）</div>
+                  <div class="sel-opt" onclick="pickMapping(2,'邮箱')">邮箱</div>
+                  <div class="sel-opt" onclick="pickMapping(2,'年龄')">年龄</div>
+                  <div class="sel-opt" onclick="pickMappingCustom(2)">✏️ 自定义内容</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center"><span class="tag tag-blue" id="mapType_2">Excel列</span></td>
+            <td class="text-center text-muted">→</td>
+            <td>年龄 <span class="text-muted" style="font-size:11px">(age)</span> <span class="tag tag-purple" style="font-size:10px">关联字段</span></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="sel" style="width:100%">
+                <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="mapVal_3" style="color:#999">未选择</span> <span>▼</span></button>
+                <div class="sel-dropdown">
+                  <div class="sel-opt" onclick="pickMappingNone(3)" style="color:#999">🚫 未选择（忽略）</div>
+                  <div class="sel-opt disabled">姓名（已选）</div>
+                  <div class="sel-opt disabled">手机号（已选）</div>
+                  <div class="sel-opt" onclick="pickMapping(3,'邮箱')">邮箱</div>
+                  <div class="sel-opt disabled">年龄（已选）</div>
+                  <div class="sel-opt" onclick="pickMappingCustom(3)">✏️ 自定义内容</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center"><span class="tag tag-default" id="mapType_3">忽略</span></td>
+            <td class="text-center text-muted">→</td>
+            <td>邮箱 <span class="text-muted" style="font-size:11px">(email)</span></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="sel" style="width:100%">
+                <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="mapVal_4" style="color:#999">未选择</span> <span>▼</span></button>
+                <div class="sel-dropdown">
+                  <div class="sel-opt" onclick="pickMappingNone(4)" style="color:#999">🚫 未选择（忽略）</div>
+                  <div class="sel-opt disabled">姓名（已选）</div>
+                  <div class="sel-opt disabled">手机号（已选）</div>
+                  <div class="sel-opt" onclick="pickMapping(4,'邮箱')">邮箱</div>
+                  <div class="sel-opt disabled">年龄（已选）</div>
+                  <div class="sel-opt" onclick="pickMappingCustom(4)">✏️ 自定义内容</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center"><span class="tag tag-default" id="mapType_4">忽略</span></td>
+            <td class="text-center text-muted">→</td>
+            <td>地址 <span class="text-muted" style="font-size:11px">(address)</span></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="sel" style="width:100%">
+                <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="mapVal_5" style="color:#999">未选择</span> <span>▼</span></button>
+                <div class="sel-dropdown">
+                  <div class="sel-opt" onclick="pickMappingNone(5)" style="color:#999">🚫 未选择（忽略）</div>
+                  <div class="sel-opt disabled">姓名（已选）</div>
+                  <div class="sel-opt disabled">手机号（已选）</div>
+                  <div class="sel-opt" onclick="pickMapping(5,'邮箱')">邮箱</div>
+                  <div class="sel-opt disabled">年龄（已选）</div>
+                  <div class="sel-opt" onclick="pickMappingCustom(5)">✏️ 自定义内容</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center"><span class="tag tag-default" id="mapType_5">忽略</span></td>
+            <td class="text-center text-muted">→</td>
+            <td>头像 <span class="text-muted" style="font-size:11px">(avatar)</span> <span class="tag tag-cyan" style="font-size:10px">附件字段</span></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="sel" style="width:100%">
+                <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="mapVal_6" style="color:#999">未选择</span> <span>▼</span></button>
+                <div class="sel-dropdown">
+                  <div class="sel-opt" onclick="pickMappingNone(6)" style="color:#999">🚫 未选择（忽略）</div>
+                  <div class="sel-opt disabled">姓名（已选）</div>
+                  <div class="sel-opt disabled">手机号（已选）</div>
+                  <div class="sel-opt" onclick="pickMapping(6,'邮箱')">邮箱</div>
+                  <div class="sel-opt disabled">年龄（已选）</div>
+                  <div class="sel-opt" onclick="pickMappingCustom(6)">✏️ 自定义内容</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center"><span class="tag tag-default" id="mapType_6">忽略</span></td>
+            <td class="text-center text-muted">→</td>
+            <td>角色 <span class="text-muted" style="font-size:11px">(role)</span> <span class="tag tag-purple" style="font-size:10px">关联字段</span></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="sel" style="width:100%">
+                <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="mapVal_7" style="color:#999">未选择</span> <span>▼</span></button>
+                <div class="sel-dropdown">
+                  <div class="sel-opt" onclick="pickMappingNone(7)" style="color:#999">🚫 未选择（忽略）</div>
+                  <div class="sel-opt disabled">姓名（已选）</div>
+                  <div class="sel-opt disabled">手机号（已选）</div>
+                  <div class="sel-opt" onclick="pickMapping(7,'邮箱')">邮箱</div>
+                  <div class="sel-opt disabled">年龄（已选）</div>
+                  <div class="sel-opt" onclick="pickMappingCustom(7)">✏️ 自定义内容</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:center"><span class="tag tag-default" id="mapType_7">忽略</span></td>
+            <td class="text-center text-muted">→</td>
+            <td>部门 <span class="text-muted" style="font-size:11px">(dept)</span> <span class="tag tag-purple" style="font-size:10px">关联字段</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="text-right mt-12">
+      <button class="btn btn-default" onclick="goImportStep(0)">← 上一步</button>
+      <button class="btn btn-primary" id="imStep2Next" onclick="goImportStep(2)">下一步 →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: 预览 + 执行 -->
+  <div class="step-content" data-isc="2">
+    <div style="font-weight:600;font-size:14px;margin-bottom:16px">预览确认 — <span id="imPreviewTable">用户</span></div>
+
+    <div class="grid-4">
+      <div class="stat-card"><div class="num" id="imStatRows">1,256</div><div class="lbl">预计导入行数</div></div>
+      <div class="stat-card"><div class="num" style="color:#52c41a">0</div><div class="lbl">错误行数</div></div>
+      <div class="stat-card"><div class="num" id="imStatMode">新增+更新</div><div class="lbl">导入模式</div></div>
+      <div class="stat-card"><div class="num" id="imStatSheet">Sheet1</div><div class="lbl">Sheet名称</div></div>
+    </div>
+
+    <!-- Unique key info (shown when update/upsert) -->
+    <div id="imUniqueInfo" class="alert alert-info" style="display:flex">
+      <span>🔑</span>
+      <span>唯一值匹配字段：<strong id="imUniqueDisplay">手机号, 邮箱</strong>（同时满足这两个字段值相同的记录将被视为已存在，执行更新操作）</span>
+    </div>
+
+    <div style="font-weight:600;font-size:13px;margin:16px 0 8px">👁️ 预览数据（前10行）</div>
+    <table class="tbl" style="font-size:12px">
+      <thead>
+        <tr>
+          <th>姓名</th><th>手机号</th><th>年龄</th><th>邮箱</th><th>地址</th><th>角色</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>张三</td><td>13800138001</td><td>28</td><td>zhangsan@example.com</td><td>北京市朝阳区</td><td>管理员</td></tr>
+        <tr><td>李四</td><td>13800138002</td><td>35</td><td>lisi@example.com</td><td>上海市浦东新区</td><td>编辑</td></tr>
+        <tr><td>王五</td><td>13800138003</td><td>22</td><td>wangwu@example.com</td><td>广州市天河区</td><td>用户</td></tr>
+        <tr><td>赵六</td><td>13800138004</td><td>30</td><td>zhaoliu@example.com</td><td>深圳市南山区</td><td>编辑</td></tr>
+        <tr><td>孙七</td><td>13800138005</td><td>42</td><td>sunqi@example.com</td><td>杭州市西湖区</td><td>管理员</td></tr>
+      </tbody>
+    </table>
+
+    <div class="text-right mt-16">
+      <button class="btn btn-default" onclick="goImportStep(1)">← 上一步</button>
+      <button class="btn btn-primary" onclick="confirmImport()">▶ 执行导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!--  TAB: 导出                                                       -->
+<!-- ================================================================ -->
+<div class="tab-page" id="tp-export">
+  <div class="steps" id="exportSteps">
+    <div class="step active" data-es="0"><span class="step-num">1</span>选择数据表</div>
+    <div class="step" data-es="1"><span class="step-num">2</span>选择字段 &amp; 配置</div>
+    <div class="step" data-es="2"><span class="step-num">3</span>执行导出</div>
+  </div>
+
+  <!-- Step 0 -->
+  <div class="step-content active" data-esc="0">
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">📋 选择数据表</div>
+        <div class="frm-row">
+          <label>数据表</label>
+          <div class="sel" style="width:100%">
+            <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="exTableName">— 请选择数据表 —</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" style="border-bottom:1px solid #f0f0f0;font-weight:600;color:#1677ff" onclick="pickExportTable(this,'全部数据表（含系统表）')">📦 全部数据表（含系统表）</div>
+              <div class="sel-opt" onclick="pickExportTable(this,'用户 (users)')">📁 用户 (users)</div>
+              <div class="sel-opt" onclick="pickExportTable(this,'角色 (roles)')">📁 角色 (roles)</div>
+              <div class="sel-opt" onclick="pickExportTable(this,'订单 (orders)')">📁 订单 (orders)</div>
+              <div class="sel-opt" onclick="pickExportTable(this,'产品 (products)')">📁 产品 (products)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">⚙️ 简要配置</div>
+        <div style="font-size:13px;color:#666;line-height:1.9">
+          <p>• 支持全字段选择和自定义筛选</p>
+          <p>• 关联字段可选择「显示值」或「仅ID」</p>
+          <p>• 支持生成关联数据独立 Sheet</p>
+          <p>• 自定义文件名模板</p>
+        </div>
+      </div>
+    </div>
+    <div class="text-right mt-12">
+      <button class="btn btn-primary" id="exStep1Next" disabled onclick="goExportStep(1)">下一步 →</button>
+    </div>
+  </div>
+
+  <!-- Step 1: 选择字段 + 配置 -->
+  <div class="step-content" data-esc="1">
+    <div style="font-weight:600;margin-bottom:12px;font-size:14px">目标表：<span id="exTableDisplay">—</span></div>
+
+    <!-- Single table config -->
+    <div id="exSingleTableConfig">
+      <!-- Field checkboxes -->
+      <div class="panel">
+        <div class="panel-title">☑️ 字段选择</div>
+      <div class="mb-12">
+        <label class="cb"><span class="cb-box indeterminate"></span> 全选</label>
+        <span class="text-muted" style="margin-left:12px">已选: 17 / 20</span>
+      </div>
+      <div style="font-weight:600;font-size:12px;color:#333;margin-bottom:6px">📄 常规字段 (14)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <label class="cb"><span class="cb-box checked"></span> 姓名</label>
+        <label class="cb"><span class="cb-box checked"></span> 手机号</label>
+        <label class="cb"><span class="cb-box checked"></span> 邮箱</label>
+        <label class="cb"><span class="cb-box checked"></span> 年龄</label>
+        <label class="cb"><span class="cb-box checked"></span> 地址</label>
+        <label class="cb"><span class="cb-box checked"></span> 创建时间</label>
+        <label class="cb"><span class="cb-box checked"></span> 更新时间</label>
+        <label class="cb"><span class="cb-box checked"></span> 状态</label>
+        <label class="cb"><span class="cb-box checked"></span> 备注</label>
+        <label class="cb"><span class="cb-box checked"></span> 性别</label>
+        <label class="cb"><span class="cb-box checked"></span> 生日</label>
+        <label class="cb"><span class="cb-box"></span> 身份证号</label>
+        <label class="cb"><span class="cb-box"></span> 身高</label>
+        <label class="cb"><span class="cb-box"></span> 体重</label>
+      </div>
+      <div style="font-weight:600;font-size:12px;color:#7c3aed;margin-bottom:6px">🔗 关联字段 (4)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <label class="cb"><span class="cb-box checked"></span> 角色</label>
+        <label class="cb"><span class="cb-box checked"></span> 部门</label>
+        <label class="cb"><span class="cb-box checked"></span> 创建人</label>
+        <label class="cb"><span class="cb-box checked"></span> 上级</label>
+      </div>
+      <div style="font-weight:600;font-size:12px;color:#0891b2;margin-bottom:6px">📎 附件字段 (2)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <label class="cb"><span class="cb-box checked"></span> 头像</label>
+        <label class="cb"><span class="cb-box"></span> 附件</label>
+      </div>
+    </div>
+
+    <!-- Association display mode -->
+    <div class="panel">
+      <div class="panel-title">🔗 关联字段显示模式</div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px">
+        <div class="frm-inline">
+          <span style="font-size:13px">角色</span>
+          <div class="sel">
+            <button class="sel-btn" onclick="toggleSel(this)"><span>显示值</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'显示值')">显示值</div>
+              <div class="sel-opt" onclick="pickVal(this,'仅ID')">仅ID</div>
+            </div>
+          </div>
+        </div>
+        <div class="frm-inline">
+          <span style="font-size:13px">部门</span>
+          <div class="sel">
+            <button class="sel-btn" onclick="toggleSel(this)"><span>显示值</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'显示值')">显示值</div>
+              <div class="sel-opt" onclick="pickVal(this,'仅ID')">仅ID</div>
+            </div>
+          </div>
+        </div>
+        <div class="frm-inline">
+          <span style="font-size:13px">创建人</span>
+          <div class="sel">
+            <button class="sel-btn" onclick="toggleSel(this)"><span>仅ID</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'显示值')">显示值</div>
+              <div class="sel-opt" onclick="pickVal(this,'仅ID')">仅ID</div>
+            </div>
+          </div>
+        </div>
+        <div class="frm-inline">
+          <span style="font-size:13px">上级</span>
+          <div class="sel">
+            <button class="sel-btn" onclick="toggleSel(this)"><span>显示值</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'显示值')">显示值</div>
+              <div class="sel-opt" onclick="pickVal(this,'仅ID')">仅ID</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Association sheet -->
+    <div class="panel">
+      <div class="panel-title">📑 关联数据 Sheet</div>
+      <div class="frm-inline">
+        <span class="toggle" onclick="toggleSwitch(this)"></span>
+        <span style="font-size:13px">包含关联数据 Sheet</span>
+      </div>
+      <div style="margin-top:8px;font-size:13px;color:#999;display:none" id="assocSheetSelect">
+        已选关联表：<span class="tag tag-blue">角色</span> <span class="tag tag-blue">部门</span>
+      </div>
+    </div>
+
+    <!-- Data range -->
+    <div class="panel">
+      <div class="panel-title">📊 数据范围</div>
+      <div class="frm-inline mb-12">
+        <button class="filter-btn active" onclick="setDataRange(this,'all')">全部数据</button>
+        <button class="filter-btn" onclick="setDataRange(this,'filtered')">自定义条件</button>
+      </div>
+      <div id="filterArea" style="display:none">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px">筛选条件（AND）</div>
+        <div class="frm-inline mb-8">
+          <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>年龄</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'姓名')">姓名</div>
+              <div class="sel-opt" onclick="pickVal(this,'年龄')">年龄</div>
+              <div class="sel-opt" onclick="pickVal(this,'创建时间')">创建时间</div>
+              <div class="sel-opt" onclick="pickVal(this,'状态')">状态</div>
+            </div>
+          </div>
+          <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>大于</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'大于')">大于</div>
+              <div class="sel-opt" onclick="pickVal(this,'大于等于')">大于等于</div>
+              <div class="sel-opt" onclick="pickVal(this,'小于')">小于</div>
+              <div class="sel-opt" onclick="pickVal(this,'等于')">等于</div>
+            </div>
+          </div>
+          <input class="s-input" style="width:120px;display:inline-block" value="18" placeholder="值">
+          <button class="btn btn-text btn-sm" style="color:#ff4d4f">🗑</button>
+        </div>
+        <div class="frm-inline">
+          <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>状态</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'姓名')">姓名</div>
+              <div class="sel-opt" onclick="pickVal(this,'年龄')">年龄</div>
+              <div class="sel-opt" onclick="pickVal(this,'状态')">状态</div>
+            </div>
+          </div>
+          <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>等于</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'等于')">等于</div>
+              <div class="sel-opt" onclick="pickVal(this,'不等于')">不等于</div>
+            </div>
+          </div>
+          <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>激活</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickVal(this,'激活')">激活</div>
+              <div class="sel-opt" onclick="pickVal(this,'停用')">停用</div>
+            </div>
+          </div>
+          <button class="btn btn-text btn-sm" style="color:#ff4d4f">🗑</button>
+        </div>
+        <button class="btn btn-dashed btn-sm mt-8" style="width:auto">+ 添加条件</button>
+      </div>
+    </div>
+
+    <!-- Advanced -->
+    <div class="panel">
+      <div class="panel-title">⚙️ 高级选项</div>
+      <div class="frm-inline mb-12">
+        <span class="text-muted">文件命名规则：</span>
+        <input class="s-input" style="width:260px;display:inline-block" value="{表名}_{日期}.xlsx">
+      </div>
+      <div class="frm-inline">
+        <span class="toggle" onclick="toggleSwitch(this)"></span>
+        <span style="font-size:13px">包含附件文件（如图片、文档等，将打包为 ZIP）</span>
+      </div>
+      <div class="text-muted mt-8" style="font-size:12px;background:#f0f5ff;padding:8px 10px;border-radius:4px">
+        💡 单表导出为 <strong>.xlsx</strong> 文件；若勾选「包含附件文件」或有附件字段被选中，则生成 <strong>.zip</strong> 压缩包（内含 .xlsx + 附件文件夹）
+      </div>
+    </div>
+
+    </div><!-- end single-table config -->
+
+    <!-- All tables config -->
+    <div id="exAllTablesConfig" style="display:none">
+      <div class="alert alert-info" style="margin-bottom:12px;font-size:13px">
+        ⚠️ 将导出全部 <strong>8 张数据表</strong>（含系统表），打包为 .zip 文件。如果数据量较大，导出时间可能较长，请耐心等待。
+      </div>
+      <div class="panel">
+        <div class="panel-title">📦 全部数据表导出</div>
+        <div style="font-size:13px;color:#666;line-height:1.9">
+          <p>✅ 将导出系统中 <strong>所有数据表</strong>（含系统内置表），每张表生成一个独立 .xlsx 文件</p>
+          <p>📦 最终打包为 <strong>ZIP 压缩包</strong> 下载，内含所有表文件和附件</p>
+          <p>📋 包含以下 8 张表：</p>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 用户 (users) <span class="text-muted" style="font-weight:400">含附件</span></span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 角色 (roles)</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 订单 (orders)</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 产品 (products) <span class="text-muted" style="font-weight:400">含附件</span></span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 分类 (categories)</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 文章 (posts) <span class="text-muted" style="font-weight:400">含附件</span></span>
+          <span class="tag" style="background:#f0f5ff;color:#1677ff;font-size:13px;padding:6px 12px">⚙️ 系统配置 (settings)</span>
+          <span class="tag" style="background:#f0f5ff;color:#1677ff;font-size:13px;padding:6px 12px">⚙️ 审计日志 (audit_logs)</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">⚙️ 导出配置</div>
+        <div class="frm-inline mb-12">
+          <span class="text-muted">文件命名规则：</span>
+          <input class="s-input" style="width:280px;display:inline-block" value="全部数据表_{日期}.zip">
+        </div>
+        <div class="text-muted" style="font-size:12px;background:#f0f5ff;padding:8px 10px;border-radius:4px">
+          💡 多表导出将生成 <strong>.zip</strong> 压缩包，内含每张表的 .xlsx 文件；</div>
+      </div>
+    </div>
+
+    <div class="text-right mt-12">
+      <button class="btn btn-default" onclick="goExportStep(0)">← 上一步</button>
+      <button class="btn btn-primary" onclick="goExportStep(2)">下一步 →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: 执行导出 -->
+  <div class="step-content" data-esc="2">
+    <div style="font-weight:600;font-size:14px;margin-bottom:16px">执行导出 — <span id="exPreviewTable">用户</span></div>
+
+    <!-- Single table stats -->
+    <div id="exSingleTableStats">
+      <div class="grid-4">
+        <div class="stat-card"><div class="num">17</div><div class="lbl">选择字段 (个)</div></div>
+        <div class="stat-card"><div class="num" id="exEstRows">5,230</div><div class="lbl">预计导出行数</div></div>
+        <div class="stat-card"><div class="num">全部数据</div><div class="lbl">数据范围</div></div>
+        <div class="stat-card"><div class="num">否</div><div class="lbl">关联数据 Sheet</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">🏷️ 选中字段</div>
+      <div class="flex" style="flex-wrap:wrap">
+        <span class="tag tag-blue">姓名</span>
+        <span class="tag tag-blue">手机号</span>
+        <span class="tag tag-blue">邮箱</span>
+        <span class="tag tag-blue">年龄</span>
+        <span class="tag tag-blue">地址</span>
+        <span class="tag tag-blue">创建时间</span>
+        <span class="tag tag-blue">更新时间</span>
+        <span class="tag tag-blue">状态</span>
+        <span class="tag tag-blue">备注</span>
+        <span class="tag tag-blue">性别</span>
+        <span class="tag tag-blue">生日</span>
+        <span class="tag tag-blue" style="background:#e6f4ff">角色</span>
+        <span class="tag tag-blue" style="background:#e6f4ff">部门</span>
+        <span class="tag tag-blue" style="background:#e6f4ff">创建人</span>
+        <span class="tag tag-blue" style="background:#e6f4ff">上级</span>
+        <span class="tag tag-blue" style="background:#ecfeff">头像</span>
+      </div>
+    </div><!-- end single-table panel -->
+    </div><!-- end exSingleTableStats -->
+
+    <!-- All tables stats -->
+    <div id="exAllTablesStats" style="display:none">
+      <div class="grid-4">
+        <div class="stat-card"><div class="num">8</div><div class="lbl">导出表数量</div></div>
+        <div class="stat-card"><div class="num" id="exEstRowsAll">32,150</div><div class="lbl">预计总行数</div></div>
+        <div class="stat-card"><div class="num">含系统表</div><div class="lbl">导出范围</div></div>
+        <div class="stat-card"><div class="num">8 Sheets</div><div class="lbl">生成文件 (.zip)</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">📋 导出表清单</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 用户 (users) — 1,256 行</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 角色 (roles) — 8 行</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 订单 (orders) — 5,750 行</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 产品 (products) — 320 行</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 分类 (categories) — 24 行</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 文章 (posts) — 180 行</span>
+          <span class="tag" style="background:#f0f5ff;color:#1677ff;font-size:13px;padding:6px 12px">⚙️ 系统配置 — 15 行</span>
+          <span class="tag" style="background:#f0f5ff;color:#1677ff;font-size:13px;padding:6px 12px">⚙️ 审计日志 — 24,597 行</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Done alert (content set dynamically by doExport) -->
+    <div id="exportDoneAlert" style="display:none"></div>
+
+    <div class="text-right mt-16">
+      <button class="btn btn-default" id="exBackBtn" onclick="goExportStep(1)">← 上一步</button>
+      <button class="btn btn-primary" id="exExecBtn" onclick="executeExport()">▶ 执行导出</button>
+      <button class="btn btn-default" id="exResetBtn" style="display:none" onclick="resetExport()">🔄 返回</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!--  TAB: 任务管理                                                    -->
+<!-- ================================================================ -->
+<div class="tab-page" id="tp-tasks">
+  <!-- Filters -->
+  <div class="flex mb-16" style="align-items:flex-end">
+    <div>
+      <div class="text-muted mb-8">任务类型</div>
+      <div class="filter-group">
+        <button class="filter-btn active" onclick="setTaskType(this,'')">全部</button>
+        <button class="filter-btn" onclick="setTaskType(this,'import')">⬇ 导入</button>
+        <button class="filter-btn" onclick="setTaskType(this,'export')">⬆ 导出</button>
+      </div>
+    </div>
+    <div>
+      <div class="text-muted mb-8">状态</div>
+      <div class="filter-group">
+        <button class="filter-btn active" onclick="setTaskStatus(this,'')">全部</button>
+        <button class="filter-btn" onclick="setTaskStatus(this,'pending')">⏳ 排队中</button>
+        <button class="filter-btn" onclick="setTaskStatus(this,'processing')">🔄 进行中</button>
+        <button class="filter-btn" onclick="setTaskStatus(this,'completed')">✅ 已完成</button>
+        <button class="filter-btn" onclick="setTaskStatus(this,'failed')">❌ 失败</button>
+      </div>
+    </div>
+    <div class="ml-auto">
+      <div class="s-input-wrap"><span class="icon">🔍</span><input class="s-input" style="width:200px" placeholder="搜索表名..."></div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th style="width:65px">任务ID</th>
+        <th style="width:60px">类型</th>
+        <th style="width:100px">目标表</th>
+        <th style="width:70px">状态</th>
+        <th style="width:130px">进度</th>
+        <th style="width:80px">数据量</th>
+        <th style="width:100px">创建人</th>
+        <th style="width:130px">创建时间</th>
+        <th style="width:130px">完成时间</th>
+        <th style="width:60px">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>#1001</td>
+        <td><span class="tag tag-blue">导入</span></td>
+        <td>用户 (users)</td>
+        <td><span class="sdot green"></span>已完成</td>
+        <td><div class="progress-bar"><div class="fill" style="width:100%"></div></div><span class="text-muted" style="margin-left:6px">100%</span></td>
+        <td>1,256 行</td>
+        <td>张明</td>
+        <td>2024-06-22 10:30:00</td>
+        <td>2024-06-22 10:32:15</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-text btn-sm" onclick="openLogDrawer(1001,'import','用户',1256,1256,false,false,true,'用户导入数据_20240622.xlsx','','张明','2024-06-22 10:30:00','2024-06-22 10:32:15')">👁 查看</button>
+        </td>
+      </tr>
+      <tr>
+        <td>#1002</td>
+        <td><span class="tag tag-green">导出</span></td>
+        <td>订单 (orders)</td>
+        <td><span class="sdot blue"></span>进行中</td>
+        <td><div class="progress-bar"><div class="fill blue" style="width:60%"></div></div><span class="text-muted" style="margin-left:6px">60%</span></td>
+        <td>3,450/5,750</td>
+        <td>李华</td>
+        <td>2024-06-22 11:15:00</td>
+        <td>—</td>
+        <td>
+          <button class="btn btn-text btn-sm" onclick="openLogDrawer(1002,'export','订单',3450,5750,false,false,false,'','','李华','2024-06-22 11:15:00','')">👁 查看</button>
+          <button class="btn btn-text btn-sm" style="color:#fa8c16" onclick="confirmCancel(1002)">⏹ 取消</button>
+        </td>
+      </tr>
+      <tr>
+        <td>#1003</td>
+        <td><span class="tag tag-blue">导入</span></td>
+        <td>产品 (products)</td>
+        <td><span class="sdot red"></span>失败</td>
+        <td><div class="progress-bar"><div class="fill red" style="width:45%"></div></div><span class="text-muted" style="margin-left:6px">45%</span></td>
+        <td>89/200</td>
+        <td>王芳</td>
+        <td>2024-06-22 09:00:00</td>
+        <td>—</td>
+        <td>
+          <button class="btn btn-text btn-sm" onclick="openLogDrawer(1003,'import','产品',89,200,true,false,true,'产品导入数据_20240622.xlsx','','王芳','2024-06-22 09:00:00','')">👁 查看</button>
+        </td>
+      </tr>
+      <tr>
+        <td>#1004</td>
+        <td><span class="tag tag-green">导出</span></td>
+        <td>分类 (categories)</td>
+        <td><span class="sdot orange"></span>排队中</td>
+        <td><div class="progress-bar"><div class="fill gray" style="width:0%"></div></div><span class="text-muted" style="margin-left:6px">0%</span></td>
+        <td>—</td>
+        <td>张明</td>
+        <td>2024-06-21 18:00:00</td>
+        <td>—</td>
+        <td>
+          <button class="btn btn-text btn-sm" onclick="openLogDrawer(1004,'export','分类',0,0,false,false,false,'','','张明','2024-06-21 18:00:00','')">👁 查看</button>
+          <button class="btn btn-text btn-sm" style="color:#fa8c16" onclick="confirmCancel(1004)">⏹ 取消</button>
+        </td>
+      </tr>
+      <tr>
+        <td>#1005</td>
+        <td><span class="tag tag-green">导出</span></td>
+        <td>订单 (orders)</td>
+        <td><span class="sdot green"></span>已完成</td>
+        <td><div class="progress-bar"><div class="fill" style="width:100%"></div></div><span class="text-muted" style="margin-left:6px">100%</span></td>
+        <td>5,750 行</td>
+        <td>李华</td>
+        <td>2024-06-22 14:00:00</td>
+        <td>2024-06-22 14:05:30</td>
+        <td>
+          <button class="btn btn-text btn-sm" onclick="openLogDrawer(1005,'export','订单',5750,5750,false,true,false,'','orders_20240622.xlsx','李华','2024-06-22 14:00:00','2024-06-22 14:05:30')">👁 查看</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  <div class="flex mt-16" style="justify-content:space-between;align-items:center">
+    <span class="text-muted">共 5 条（每页 20 条）</span>
+    <div class="flex gap-4">
+      <button class="btn btn-default btn-sm" disabled>‹</button>
+      <button class="btn btn-primary btn-sm">1</button>
+      <button class="btn btn-default btn-sm" disabled>›</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!--  TAB: 权限管理                                                    -->
+<!-- ================================================================ -->
+<div class="tab-page" id="tp-permissions">
+  <div class="split">
+    <!-- Left sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-title">👥 用户/角色</div>
+      <div class="s-input-wrap" style="margin-bottom:8px"><span class="icon">🔍</span><input class="s-input" id="permSearchInput" placeholder="搜索..." oninput="filterPermSidebar()"></div>
+
+      <div id="permSidebarList">
+        <div class="sidebar-group">👤 用户</div>
+        <div class="sidebar-item active" data-ptarget="user:1" onclick="selectTarget(this,'张明','user')">
+          <div class="avatar" style="background:#1677ff">张</div><span>张明</span>
+        </div>
+        <div class="sidebar-item" data-ptarget="user:2" onclick="selectTarget(this,'李华','user')">
+          <div class="avatar" style="background:#1677ff">李</div><span>李华</span>
+        </div>
+        <div class="sidebar-item" data-ptarget="user:3" onclick="selectTarget(this,'王芳','user')">
+          <div class="avatar" style="background:#1677ff">王</div><span>王芳</span>
+        </div>
+
+        <div class="sidebar-group">🔐 角色</div>
+        <div class="sidebar-item" data-ptarget="role:1" onclick="selectTarget(this,'管理员','role')">
+          <div class="avatar" style="background:#52c41a">R</div><span>管理员</span>
+        </div>
+        <div class="sidebar-item" data-ptarget="role:2" onclick="selectTarget(this,'编辑','role')">
+          <div class="avatar" style="background:#52c41a">R</div><span>编辑</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right main area -->
+    <div class="flex-1">
+      <!-- Header -->
+      <div class="flex mb-16" style="justify-content:space-between;align-items:center">
+        <span style="font-size:15px;font-weight:600"><span id="permTargetIcon">👤</span> <span id="permTargetName">张明</span> 的权限配置 <span class="tag tag-blue" id="permTargetTag">用户</span></span>
+        <div class="frm-inline">
+          <span class="text-muted">任务查看范围：</span>
+          <div class="sel">
+            <button class="sel-btn" onclick="toggleSel(this)"><span id="permScopeLabel">仅查看自己的</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="setPermScope(this,'仅查看自己的')">仅查看自己的</div>
+              <div class="sel-opt" onclick="setPermScope(this,'查看全部')">查看全部</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Permission cards container -->
+      <div id="permCardsContainer"></div>
+
+      <button class="btn btn-default mt-12" onclick="openPermEdit('','add')">+ 添加权限配置</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /.content -->
+</div><!-- /.app -->
+
+<!-- ==================== MODAL: 确认导入 ==================== -->
+<div class="m-overlay" id="modalConfirmImport">
+  <div class="m-box w-sm">
+    <div class="m-hd">⚠️ 确认导入</div>
+    <div class="m-body">
+      <p style="font-size:14px;line-height:1.6">此操作将导入 <strong id="confirmImportTotal">1,256</strong> 行数据到 <strong id="confirmImportTable">用户</strong> 表，确认继续？</p>
+    </div>
+    <div class="m-ft">
+      <button class="btn btn-default" onclick="closeModal('modalConfirmImport')">取消</button>
+      <button class="btn btn-primary" onclick="doImport()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: 确认导出 ==================== -->
+<div class="m-overlay" id="modalConfirmExport">
+  <div class="m-box w-sm">
+    <div class="m-hd">⚠️ 确认导出</div>
+    <div class="m-body">
+      <p style="font-size:14px;line-height:1.6">将导出约 <strong id="confirmExportTotal">5,230</strong> 行数据到 Excel 文件，确认继续？</p>
+    </div>
+    <div class="m-ft">
+      <button class="btn btn-default" onclick="closeModal('modalConfirmExport')">取消</button>
+      <button class="btn btn-primary" onclick="doExport()">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: 权限编辑 ==================== -->
+<div class="m-overlay" id="modalPermEdit">
+  <div class="m-box w-lg">
+    <div class="m-hd" id="permEditTitle">✏️ 编辑权限</div>
+    <div class="m-body">
+      <div class="frm-row">
+        <label>选择数据表 <span class="text-danger">*</span></label>
+        <div class="sel" style="width:100%">
+          <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="permEditTable">— 请选择数据表 —</span> <span>▼</span></button>
+          <div class="sel-dropdown">
+            <div class="sel-opt" onclick="pickPermEditTable(this,'用户 (users)')">用户 (users)</div>
+            <div class="sel-opt" onclick="pickPermEditTable(this,'订单 (orders)')">订单 (orders)</div>
+            <div class="sel-opt" onclick="pickPermEditTable(this,'产品 (products)')">产品 (products)</div>
+            <div class="sel-opt" onclick="pickPermEditTable(this,'角色 (roles)')">角色 (roles)</div>
+            <div class="sel-opt" onclick="pickPermEditTable(this,'文章 (posts)')">文章 (posts)</div>
+            <div class="sel-opt" onclick="pickPermEditTable(this,'分类 (categories)')">分类 (categories)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin:16px 0">
+        <div class="frm-row" style="margin:0">
+          <label>允许导入</label>
+          <div class="frm-inline">
+            <span class="toggle" id="permEditCanImport" onclick="togglePermImport(this)"></span>
+            <span id="permEditCanImportLabel" style="font-size:13px;color:#999">关闭</span>
+          </div>
+        </div>
+        <div class="frm-row" style="margin:0">
+          <label>允许导出</label>
+          <div class="frm-inline">
+            <span class="toggle" id="permEditCanExport" onclick="togglePermExport(this)"></span>
+            <span id="permEditCanExportLabel" style="font-size:13px;color:#999">关闭</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Import config section -->
+      <div id="permEditImportConfig" style="display:none;border:1px solid #e6f4ff;border-radius:8px;padding:16px;margin-bottom:16px;background:#fafffe">
+        <div style="font-weight:600;font-size:13px;margin-bottom:12px;color:#1677ff">⬇ 导入配置</div>
+        <div class="grid-2">
+          <div class="frm-row">
+            <label>导入模式</label>
+            <div class="sel" style="width:100%">
+              <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="permEditImportMode">新增 (insert)</span> <span>▼</span></button>
+              <div class="sel-dropdown">
+                <div class="sel-opt" onclick="pickVal(this,'新增 (insert)')">新增 (insert)</div>
+                <div class="sel-opt" onclick="pickVal(this,'更新 (update)')">更新 (update)</div>
+                <div class="sel-opt" onclick="pickVal(this,'新增+更新 (upsert)')">新增+更新 (upsert)</div>
+              </div>
+            </div>
+          </div>
+          <div class="frm-row">
+            <label>唯一值字段 <span class="text-muted" style="font-weight:400">（用于匹配判断）</span></label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 0;align-items:center" id="permEditUniqueFields">
+              <div class="sel" style="display:inline-block">
+                <button class="btn btn-default btn-sm" style="padding:4px 10px;font-size:12px" onclick="toggleMultiSelect(this,'permEditUniqueFields','unique')"><span id="permEditUniqueFieldsLabel">选择唯一值字段</span> <span>▼</span></button>
+                <div class="sel-dropdown multi-select-dd" style="min-width:200px;padding:6px" id="permEditUniqueFieldsDropdown"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="frm-row">
+            <label>必填字段</label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 0;align-items:center" id="permEditRequiredFields">
+              <div class="sel" style="display:inline-block">
+                <button class="btn btn-default btn-sm" style="padding:4px 10px;font-size:12px" onclick="toggleMultiSelect(this,'permEditRequiredFields','required')"><span id="permEditRequiredFieldsLabel">选择必填字段</span> <span>▼</span></button>
+                <div class="sel-dropdown multi-select-dd" style="min-width:200px;padding:6px" id="permEditRequiredFieldsDropdown"></div>
+              </div>
+            </div>
+          </div>
+          <div class="frm-row">
+            <label>可导入字段 <span class="text-muted" style="font-weight:400">（空=全部允许）</span></label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 0;align-items:center" id="permEditImportFields">
+              <div class="sel" style="display:inline-block">
+                <button class="btn btn-default btn-sm" style="padding:4px 10px;font-size:12px" onclick="toggleMultiSelect(this,'permEditImportFields','importable')"><span id="permEditImportFieldsLabel">选择可导入字段</span> <span>▼</span></button>
+                <div class="sel-dropdown multi-select-dd" style="min-width:200px;padding:6px" id="permEditImportFieldsDropdown"></div>
+              </div>
+              <span class="text-muted" style="font-size:11px;margin-left:4px">（空=全部允许）</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export config section -->
+      <div id="permEditExportConfig" style="display:none;border:1px solid #f6ffed;border-radius:8px;padding:16px;margin-bottom:16px;background:#fefff8">
+        <div style="font-weight:600;font-size:13px;margin-bottom:12px;color:#52c41a">⬆ 导出配置</div>
+        <div class="grid-2">
+          <div class="frm-row">
+            <label>可导出字段 <span class="text-muted" style="font-weight:400">（空=全部允许）</span></label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 0;align-items:center" id="permEditExportFields">
+              <div class="sel" style="display:inline-block">
+                <button class="btn btn-default btn-sm" style="padding:4px 10px;font-size:12px" onclick="toggleMultiSelect(this,'permEditExportFields','exportable')"><span id="permEditExportFieldsLabel">选择可导出字段</span> <span>▼</span></button>
+                <div class="sel-dropdown multi-select-dd" style="min-width:200px;padding:6px" id="permEditExportFieldsDropdown"></div>
+              </div>
+              <span class="text-muted" style="font-size:11px;margin-left:4px">（空=全部允许）</span>
+            </div>
+          </div>
+          <div class="frm-row">
+            <label>导出范围筛选</label>
+            <div style="font-size:13px;color:#999;padding:4px 0">
+              <div class="frm-inline">
+                <div class="sel">
+                  <button class="sel-btn" onclick="toggleSel(this)"><span>字段</span> <span>▼</span></button>
+                  <div class="sel-dropdown">
+                    <div class="sel-opt" onclick="pickVal(this,'状态')">状态</div>
+                    <div class="sel-opt" onclick="pickVal(this,'金额')">金额</div>
+                    <div class="sel-opt" onclick="pickVal(this,'创建时间')">创建时间</div>
+                  </div>
+                </div>
+                <div class="sel">
+                  <button class="sel-btn" onclick="toggleSel(this)"><span>等于</span> <span>▼</span></button>
+                  <div class="sel-dropdown">
+                    <div class="sel-opt" onclick="pickVal(this,'等于')">等于</div>
+                    <div class="sel-opt" onclick="pickVal(this,'大于')">大于</div>
+                    <div class="sel-opt" onclick="pickVal(this,'小于')">小于</div>
+                    <div class="sel-opt" onclick="pickVal(this,'包含')">包含</div>
+                  </div>
+                </div>
+                <input class="s-input" style="width:100px;display:inline-block" placeholder="值">
+                <span style="color:#ff4d4f;cursor:pointer;font-size:16px" onclick="this.parentElement.remove()">✕</span>
+              </div>
+              <button class="btn btn-text btn-sm" style="color:#1677ff;padding:4px 0" onclick="addFilterRow(this)">+ 添加筛选条件</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="text-muted" style="font-size:12px;padding:4px 0">* 开启导入/导出开关后，可配置对应的详细规则</div>
+    </div>
+    <div class="m-ft">
+      <button class="btn btn-default" onclick="closeModal('modalPermEdit')">取消</button>
+      <button class="btn btn-primary" onclick="savePermEdit()">保存配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: 确认删除任务 ==================== -->
+<div class="m-overlay" id="modalConfirmDelete">
+  <div class="m-box w-sm">
+    <div class="m-hd">🗑 确认删除</div>
+    <div class="m-body">
+      <p style="font-size:14px">确认删除此任务？此操作不可撤销。</p>
+    </div>
+    <div class="m-ft">
+      <button class="btn btn-default" onclick="closeModal('modalConfirmDelete')">取消</button>
+      <button class="btn btn-danger" onclick="closeModal('modalConfirmDelete');showToast('任务已删除')">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: 确认取消任务 ==================== -->
+<div class="m-overlay" id="modalConfirmCancel">
+  <div class="m-box w-sm">
+    <div class="m-hd">⏹ 确认取消</div>
+    <div class="m-body">
+      <p style="font-size:14px">确认取消此任务？已处理的数据将被回滚。</p>
+    </div>
+    <div class="m-ft">
+      <button class="btn btn-default" onclick="closeModal('modalConfirmCancel')">取消</button>
+      <button class="btn btn-primary" onclick="closeModal('modalConfirmCancel');showToast('任务已取消')">确认取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODAL: 确认删除权限 ==================== -->
+<div class="m-overlay" id="modalConfirmDelPerm">
+  <div class="m-box w-sm">
+    <div class="m-hd">🗑 确认删除</div>
+    <div class="m-body">
+      <p style="font-size:14px">确认删除此权限配置？</p>
+    </div>
+    <div class="m-ft">
+      <button class="btn btn-default" onclick="closeModal('modalConfirmDelPerm')">取消</button>
+      <button class="btn btn-danger" onclick="closeModal('modalConfirmDelPerm');showToast('权限配置已删除')">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== DRAWER: 任务日志 ==================== -->
+<div class="d-overlay" id="drawerOverlay" onclick="closeLogDrawer()"></div>
+<div class="d-box" id="drawerLog">
+  <h3>📋 任务日志 <span class="close-btn" onclick="closeLogDrawer()">✕</span></h3>
+
+  <!-- Summary -->
+  <div style="font-weight:600;font-size:13px;margin-bottom:8px">📄 任务摘要</div>
+  <div class="desc mb-16">
+    <div class="desc-row"><span class="lbl">任务ID</span><span class="val" id="logTaskId">#1001</span></div>
+    <div class="desc-row"><span class="lbl">任务类型</span><span class="val" id="logTaskType"><span class="tag tag-blue">导入</span></span></div>
+    <div class="desc-row"><span class="lbl">目标表</span><span class="val" id="logTaskTable">用户</span></div>
+    <div class="desc-row"><span class="lbl">创建人</span><span class="val" id="logTaskCreator">—</span></div>
+    <div class="desc-row"><span class="lbl">创建时间</span><span class="val" id="logTaskCreatedAt">—</span></div>
+    <div class="desc-row"><span class="lbl">完成时间</span><span class="val" id="logTaskCompletedAt">—</span></div>
+    <div class="desc-row"><span class="lbl">文件名</span><span class="val" id="logTaskFileName">—</span></div>
+    <div class="desc-row"><span class="lbl">状态</span><span class="val" id="logTaskStatus"><span class="sdot green"></span>已完成</span></div>
+    <div class="desc-row"><span class="lbl">数据量</span><span class="val" id="logTaskCount">1,256 / 1,256</span></div>
+    <div class="desc-row"><span class="lbl">Sheet</span><span class="val" id="logTaskSheet">Sheet1</span></div>
+  </div>
+
+  <!-- Download section -->
+  <div id="drawerDownloadSection" style="display:none;margin-bottom:16px;padding:12px 16px;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;flex-wrap:wrap;gap:8px;align-items:center">
+    <div style="flex:1;min-width:200px">
+      <div style="font-size:13px;color:#135200;font-weight:600" id="drawerDownloadLabel">✅ 文件可下载</div>
+      <div style="font-size:12px;color:#389e0d;margin-top:2px" id="drawerDownloadFileName">文件名：—</div>
+    </div>
+    <button class="btn btn-primary btn-sm" id="drawerDownloadResultBtn" style="display:none" onclick="downloadFile('result')">⬇ 下载导出文件</button>
+    <button class="btn btn-default btn-sm" id="drawerDownloadSourceBtn" style="display:none" onclick="downloadFile('source')">⬇ 下载导入源文件</button>
+  </div>
+
+  <!-- Field mapping detail: Import mode -->
+  <div id="drawerImportDetail">
+    <div style="font-weight:600;font-size:13px;margin-bottom:8px">📊 字段映射详情</div>
+    <table class="tbl" style="font-size:12px;margin-bottom:16px">
+      <thead>
+        <tr><th>Excel列名</th><th>工作表字段</th><th>映射方式</th><th>固定值</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>姓名</td><td>name</td><td><span class="tag tag-blue">Excel列</span></td><td>—</td></tr>
+        <tr><td>手机号</td><td>phone</td><td><span class="tag tag-blue">Excel列</span></td><td>—</td></tr>
+        <tr><td>年龄</td><td>age</td><td><span class="tag tag-blue">Excel列</span></td><td>—</td></tr>
+        <tr><td>—</td><td>email</td><td><span class="tag tag-default">忽略</span></td><td>—</td></tr>
+        <tr><td>—</td><td>address</td><td><span class="tag tag-default">忽略</span></td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Field selection detail: Export mode -->
+  <div id="drawerExportDetail" style="display:none">
+    <div style="font-weight:600;font-size:13px;margin-bottom:8px">📋 导出字段选择</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">
+      <span class="tag tag-blue">姓名</span>
+      <span class="tag tag-blue">手机号</span>
+      <span class="tag tag-blue">邮箱</span>
+      <span class="tag tag-blue">年龄</span>
+      <span class="tag tag-blue">地址</span>
+      <span class="tag tag-blue">创建时间</span>
+      <span class="tag tag-blue">更新时间</span>
+      <span class="tag tag-blue">状态</span>
+      <span class="tag tag-blue">备注</span>
+      <span class="tag tag-blue">性别</span>
+      <span class="tag tag-blue">生日</span>
+      <span class="tag tag-blue">角色</span>
+      <span class="tag tag-blue">部门</span>
+      <span class="tag tag-blue">创建人</span>
+      <span class="tag tag-blue">上级</span>
+      <span class="tag tag-blue">头像</span>
+    </div>
+  </div>
+
+  <!-- Error logs -->
+  <div style="font-weight:600;font-size:13px;margin-bottom:8px">❌ 错误日志 <span class="text-muted" style="font-weight:400" id="logErrorCount">（无错误）</span></div>
+  <div id="logErrorContent">
+    <div style="text-align:center;padding:24px;color:#999">✅ 该任务无错误记录</div>
+  </div>
+  <div id="logErrorTable" style="display:none">
+    <table class="tbl" style="font-size:12px">
+      <thead><tr><th>行号</th><th>错误原因</th><th>字段值快照</th></tr></thead>
+      <tbody id="logErrorBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ==================== TOAST ==================== -->
+<div id="toastContainer" style="position:fixed;top:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px"></div>
+
+<!-- ================================================================ -->
+<!--  JAVASCRIPT                                                      -->
+<!-- ================================================================ -->
+<script>
+// ---- Tab switching ----
+document.querySelectorAll('#tabBar .tab').forEach(tab => {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('#tabBar .tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById('tp-' + this.dataset.tab).classList.add('active');
+  });
+});
+
+// ---- Toast ----
+function showToast(msg, type) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  const bg = type === 'success' ? '#f0fdf4' : type === 'error' ? '#fef2f2' : '#eff6ff';
+  const bd = type === 'success' ? '#bbf7d0' : type === 'error' ? '#fecaca' : '#bfdbfe';
+  const cl = type === 'success' ? '#166534' : type === 'error' ? '#991b1b' : '#1e40af';
+  t.style.cssText = `background:${bg};border:1px solid ${bd};color:${cl};padding:10px 20px;border-radius:8px;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.1);animation:fadeIn .2s`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(() => t.remove(),300); }, 2000);
+}
+
+// ---- Dropdown toggles ----
+function toggleSel(btn) {
+  const dd = btn.parentElement.querySelector('.sel-dropdown');
+  if (!dd) return;
+  document.querySelectorAll('.sel-dropdown.open').forEach(d => { if (d !== dd) d.classList.remove('open'); });
+  dd.classList.toggle('open');
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.sel')) {
+    document.querySelectorAll('.sel-dropdown.open').forEach(d => d.classList.remove('open'));
+  }
+});
+
+// ---- Pick value helpers ----
+function pickVal(opt, val) {
+  const btn = opt.closest('.sel').querySelector('.sel-btn span:first-child');
+  if (btn) btn.textContent = val;
+  opt.closest('.sel-dropdown').classList.remove('open');
+}
+
+// ---- Toggle switch ----
+function toggleSwitch(el) {
+  el.classList.toggle('on');
+}
+
+// =====================================================
+//  IMPORT
+// =====================================================
+let importStep = 0;
+let selectedImportTable = '';
+
+function pickImportTable(opt, name) {
+  document.getElementById('imTableName').textContent = name;
+  selectedImportTable = name;
+  document.getElementById('imStep1Next').disabled = false;
+  opt.closest('.sel-dropdown').classList.remove('open');
+}
+
+function goImportStep(n) {
+  // Update steps
+  document.querySelectorAll('#importSteps .step').forEach((s,i) => {
+    s.classList.toggle('active', i === n);
+    s.classList.toggle('done', i < n);
+  });
+  document.querySelectorAll('[data-isc]').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.isc) === n);
+  });
+  importStep = n;
+
+  if (n === 1) {
+    document.getElementById('imTableDisplay').textContent = selectedImportTable;
+    // Simulate upload auto-completing after a moment
+    setTimeout(() => {
+      document.getElementById('imUploadArea').style.display = 'none';
+      document.getElementById('imAfterUpload').style.display = 'block';
+    }, 300);
+  }
+
+  // Step 3: update unique key info
+  if (n === 2) {
+    const modeText = document.getElementById('imMode').textContent;
+    const isUpdateMode = modeText.includes('更新');
+    const info = document.getElementById('imUniqueInfo');
+    if (isUpdateMode) {
+      // Collect unique field tags
+      const tags = document.querySelectorAll('#imUniqueTags .tag');
+      const fields = [];
+      tags.forEach(t => {
+        const txt = t.textContent.replace(' ✕','').trim();
+        if (txt && txt !== '+ 添加字段') fields.push(txt);
+      });
+      if (fields.length > 0) {
+        document.getElementById('imUniqueDisplay').textContent = fields.join('、');
+      }
+      info.style.display = 'flex';
+    } else {
+      info.style.display = 'none';
+    }
+  }
+}
+
+function simulateUpload() {
+  document.getElementById('imUploadArea').querySelector('.upload-zone').innerHTML = '<div style="color:#52c41a;font-size:16px">✅ 上传成功！文件：用户导入数据_20240622.xlsx (128 KB)</div>';
+  setTimeout(() => {
+    document.getElementById('imUploadArea').style.display = 'none';
+    document.getElementById('imAfterUpload').style.display = 'block';
+    showToast('文件上传成功', 'success');
+  }, 500);
+}
+
+// ---- Field mapping picks ----
+function pickImportMode(opt, label, mode) {
+  document.getElementById('imMode').textContent = label;
+  const area = document.getElementById('imUniqueFieldsArea');
+  // Show unique fields only for update/upsert modes
+  if (mode === 'update' || mode === 'upsert') {
+    area.style.display = 'block';
+    refreshUniqueFieldsDropdown();
+  } else {
+    area.style.display = 'none';
+  }
+  opt.closest('.sel-dropdown').classList.remove('open');
+}
+
+function addUniqueKeyField(opt, fieldName) {
+  const container = document.getElementById('imUniqueTags');
+  // Prevent duplicates
+  if (container.querySelector(`[data-field="${fieldName}"]`)) {
+    opt.closest('.sel-dropdown').classList.remove('open');
+    showToast('「' + fieldName + '」已在唯一值字段中');
+    return;
+  }
+  const tag = document.createElement('span');
+  tag.className = 'tag';
+  tag.style.cssText = 'background:#fff7e6;color:#fa8c16;border:1px solid #ffd591;padding:4px 10px;cursor:pointer;font-size:13px';
+  tag.setAttribute('data-field', fieldName);
+  tag.textContent = fieldName + ' ✕';
+  tag.onclick = function() { this.remove(); refreshUniqueFieldsDropdown(); };
+  // Insert before the add button
+  const addBtn = container.querySelector('.sel');
+  container.insertBefore(tag, addBtn);
+  opt.closest('.sel-dropdown').classList.remove('open');
+  refreshUniqueFieldsDropdown();
+}
+
+function refreshUniqueFieldsDropdown() {
+  const dd = document.getElementById('imUniqueFieldsDropdown');
+  if (!dd) return;
+  const container = document.getElementById('imUniqueTags');
+  const selected = new Set();
+  container.querySelectorAll('.tag[data-field]').forEach(t => selected.add(t.getAttribute('data-field')));
+  const allFields = ['姓名','手机号','邮箱','年龄','地址','头像','角色','部门','身份证号','工号'];
+  dd.innerHTML = allFields.map(f => {
+    const disabled = selected.has(f) ? 'disabled' : '';
+    return `<div class="sel-opt ${disabled}" onclick="${disabled ? '' : "addUniqueKeyField(this,'" + f + "')"}" style="${disabled ? 'color:#ccc;cursor:not-allowed' : ''}">${f} ${disabled ? '（已选择）' : ''}</div>`;
+  }).join('');
+}
+
+function autoMatchFields() {
+  // Simulate auto-matching by name: assign matching Excel columns to fields
+  const matches = {0:'姓名',1:'手机号',2:'年龄',3:'邮箱',4:'地址',5:'头像',6:'角色',7:'部门'};
+  const excelCols = ['姓名','手机号','年龄','邮箱','地址','头像','角色','部门'];
+  let used = 0;
+  for (let i = 0; i < 8; i++) {
+    const btn = document.getElementById('mapVal_' + i);
+    const typeTag = document.getElementById('mapType_' + i);
+    if (btn && excelCols[i]) {
+      btn.textContent = excelCols[i];
+      btn.style.color = '#333';
+      if (typeTag) {
+        typeTag.className = 'tag tag-blue';
+        typeTag.textContent = 'Excel列';
+      }
+      used++;
+    }
+  }
+  showToast('自动匹配完成：' + used + ' 个字段已对应', 'success');
+  refreshMappingDropdowns();
+}
+
+function refreshMappingDropdowns() {
+  // Collect all selected column values
+  const selected = {};
+  for (let i = 0; i < 8; i++) {
+    const el = document.getElementById('mapVal_' + i);
+    if (el) {
+      const txt = el.textContent;
+      if (txt && txt !== '未选择' && txt !== '✏️ 输入固定值...') {
+        selected[i] = txt;
+      }
+    }
+  }
+  // Update each dropdown: disable options already selected in other rows
+  for (let i = 0; i < 8; i++) {
+    const wrapper = document.querySelector('#mapVal_' + i)?.closest('.sel');
+    if (!wrapper) continue;
+    const dropdown = wrapper.querySelector('.sel-dropdown');
+    if (!dropdown) continue;
+    const options = dropdown.querySelectorAll('.sel-opt:not(.disabled)');
+    options.forEach(opt => {
+      const optName = opt.textContent.trim();
+      // Check if this field name is selected in any other row
+      let isSelectedElsewhere = false;
+      for (const [rowIdx, colName] of Object.entries(selected)) {
+        if (parseInt(rowIdx) !== i && colName === optName) {
+          isSelectedElsewhere = true;
+          break;
+        }
+      }
+      if (isSelectedElsewhere) {
+        opt.classList.add('disabled');
+      } else {
+        opt.classList.remove('disabled');
+      }
+    });
+  }
+}
+
+function pickMapping(rowIndex, val) {
+  const btn = document.getElementById('mapVal_' + rowIndex);
+  if (btn) {
+    btn.textContent = val;
+    btn.style.color = '#333';
+    // Restore dropdown UI if it was a custom input
+    const wrapper = btn.closest('.sel');
+    if (wrapper && wrapper.dataset.customMode === 'true') {
+      // Remove the input and restore the button
+      const selBtn = wrapper.querySelector('.sel-btn');
+      selBtn.innerHTML = '<span id="mapVal_' + rowIndex + '">' + val + '</span> <span>▼</span>';
+      selBtn.onclick = function() { toggleSel(this); };
+      wrapper.dataset.customMode = 'false';
+    }
+  }
+  // Update mapping type tag to "Excel列" (blue)
+  const typeTag = document.getElementById('mapType_' + rowIndex);
+  if (typeTag) {
+    typeTag.className = 'tag tag-blue';
+    typeTag.textContent = 'Excel列';
+  }
+  // Close dropdown
+  document.querySelectorAll('.sel-dropdown.open').forEach(d => d.classList.remove('open'));
+  refreshMappingDropdowns();
+}
+
+function pickMappingNone(rowIndex) {
+  const btn = document.getElementById('mapVal_' + rowIndex);
+  if (btn) {
+    btn.textContent = '未选择';
+    btn.style.color = '#999';
+    // Restore dropdown UI if it was a custom input
+    const wrapper = btn.closest('.sel');
+    if (wrapper && wrapper.dataset.customMode === 'true') {
+      const selBtn = wrapper.querySelector('.sel-btn');
+      selBtn.innerHTML = '<span id="mapVal_' + rowIndex + '" style="color:#999">未选择</span> <span>▼</span>';
+      selBtn.onclick = function() { toggleSel(this); };
+      wrapper.dataset.customMode = 'false';
+    }
+  }
+  const typeTag = document.getElementById('mapType_' + rowIndex);
+  if (typeTag) {
+    typeTag.className = 'tag tag-default';
+    typeTag.textContent = '忽略';
+  }
+  document.querySelectorAll('.sel-dropdown.open').forEach(d => d.classList.remove('open'));
+  refreshMappingDropdowns();
+}
+
+function pickMappingCustom(rowIndex) {
+  const wrapper = document.querySelector('#mapVal_' + rowIndex).closest('.sel');
+  if (!wrapper) return;
+  // Replace the dropdown button with an input field for fixed value
+  const selBtn = wrapper.querySelector('.sel-btn');
+  selBtn.innerHTML = '<input style="border:none;outline:none;width:100%;font-size:13px;font-family:inherit;color:#52c41a" placeholder="输入固定值..." id="customInput_' + rowIndex + '">';
+  wrapper.dataset.customMode = 'true';
+  // Focus the input
+  setTimeout(() => {
+    const inp = document.getElementById('customInput_' + rowIndex);
+    if (inp) inp.focus();
+  }, 50);
+  // Update mapping type tag to "固定值" (green)
+  const typeTag = document.getElementById('mapType_' + rowIndex);
+  if (typeTag) {
+    typeTag.className = 'tag tag-green';
+    typeTag.textContent = '固定值';
+  }
+  // Close dropdown
+  document.querySelectorAll('.sel-dropdown.open').forEach(d => d.classList.remove('open'));
+}
+
+// ---- Confirm import ----
+function confirmImport() {
+  document.getElementById('confirmImportTotal').textContent = document.getElementById('imStatRows').textContent;
+  document.getElementById('confirmImportTable').textContent = document.getElementById('imPreviewTable').textContent;
+  // Update confirmation message with mode and unique fields
+  const modeText = document.getElementById('imMode').textContent;
+  const modalBody = document.getElementById('modalConfirmImport').querySelector('.m-body p');
+  let extra = '';
+  if (modeText.includes('更新')) {
+    const tags = document.querySelectorAll('#imUniqueTags .tag');
+    const fields = [];
+    tags.forEach(t => {
+      const txt = t.textContent.replace(' ✕','').trim();
+      if (txt && txt !== '+ 添加字段') fields.push(txt);
+    });
+    if (fields.length > 0) {
+      extra = '<br><br>🔑 唯一值匹配字段：<strong>' + fields.join('、') + '</strong>';
+    }
+  }
+  modalBody.innerHTML = '此操作将导入 <strong>' + document.getElementById('confirmImportTotal').textContent + '</strong> 行数据到 <strong>' + document.getElementById('confirmImportTable').textContent + '</strong> 表。<br>导入模式：<strong>' + modeText + '</strong>' + extra;
+  openModal('modalConfirmImport');
+}
+
+function doImport() {
+  closeModal('modalConfirmImport');
+  showToast('导入任务已提交！', 'success');
+  setTimeout(() => {
+    // Reset to step 1
+    goImportStep(0);
+    document.getElementById('imUploadArea').style.display = 'block';
+    document.getElementById('imAfterUpload').style.display = 'none';
+    document.getElementById('imUploadArea').querySelector('.upload-zone').innerHTML = '<div class="big-icon">📤</div><div class="text">点击或拖拽上传文件</div><div class="hint">支持 .xlsx / .xls / .csv 格式，最大 50MB</div>';
+  }, 1500);
+}
+
+// =====================================================
+//  EXPORT
+// =====================================================
+let exportStep = 0;
+
+function pickExportTable(opt, name) {
+  document.getElementById('exTableName').textContent = name;
+  document.getElementById('exStep1Next').disabled = false;
+  opt.closest('.sel-dropdown').classList.remove('open');
+}
+
+function isExportAllTables() {
+  return document.getElementById('exTableName').textContent === '全部数据表（含系统表）';
+}
+
+function goExportStep(n) {
+  document.querySelectorAll('#exportSteps .step').forEach((s,i) => {
+    s.classList.toggle('active', i === n);
+    s.classList.toggle('done', i < n);
+  });
+  document.querySelectorAll('[data-esc]').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.esc) === n);
+  });
+  exportStep = n;
+  if (n === 1) {
+    document.getElementById('exTableDisplay').textContent = document.getElementById('exTableName').textContent;
+
+    // Show/hide single-table vs all-tables UI
+    const allTables = isExportAllTables();
+    document.getElementById('exSingleTableConfig').style.display = allTables ? 'none' : 'block';
+    document.getElementById('exAllTablesConfig').style.display = allTables ? 'block' : 'none';
+    // Update step title
+    document.querySelector('#exportSteps .step[data-es="1"]').innerHTML = '<span class="step-num">2</span>' + (allTables ? '选择数据范围' : '选择字段 &amp; 配置');
+  }
+  if (n === 2) {
+    document.getElementById('exPreviewTable').textContent = document.getElementById('exTableDisplay').textContent;
+    const allTables = isExportAllTables();
+    document.getElementById('exSingleTableStats').style.display = allTables ? 'none' : 'block';
+    document.getElementById('exAllTablesStats').style.display = allTables ? 'block' : 'none';
+  }
+}
+
+function setDataRange(btn, mode) {
+  btn.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('filterArea').style.display = mode === 'filtered' ? 'block' : 'none';
+}
+
+function executeExport() {
+  const allTables = isExportAllTables();
+  const confirmEl = document.getElementById('modalConfirmExport');
+  if (allTables) {
+    confirmEl.querySelector('.m-body p').innerHTML = '将导出 <strong>全部 8 张数据表</strong>（含系统表），预计约 <strong>32,150</strong> 行数据，生成 <strong>.zip</strong> 压缩包（内含 8 个 .xlsx 文件及附件），确认继续？';
+  } else {
+    const rows = document.getElementById('exEstRows').textContent;
+    confirmEl.querySelector('.m-body p').innerHTML = '将导出约 <strong>' + rows + '</strong> 行数据，生成 <strong>.xlsx</strong> 文件，确认继续？';
+  }
+  openModal('modalConfirmExport');
+}
+
+function doExport() {
+  closeModal('modalConfirmExport');
+  const btn = document.getElementById('exExecBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 导出中...';
+  document.getElementById('exBackBtn').disabled = true;
+
+  const allTables = isExportAllTables();
+
+  setTimeout(() => {
+    btn.style.display = 'none';
+    document.getElementById('exResetBtn').style.display = 'inline-flex';
+    const alert = document.getElementById('exportDoneAlert');
+    alert.style.display = 'block';
+    const fileType = allTables ? '.zip' : '.xlsx';
+    const fileName = allTables ? '全部数据表_{日期}.zip' : '{表名}_{日期}.xlsx';
+    alert.innerHTML = '<div class="alert alert-success"><span>✅</span><div style="flex:1"><div>' + (allTables ? '全部数据表已生成' : '文件已生成') + '</div><div class="text-muted" style="font-size:12px;margin-top:2px">文件名：' + fileName + '（' + fileType + ' 格式）</div></div><button class="btn btn-primary btn-sm" onclick="downloadFile(\'result\')">⬇ 下载</button></div>';
+    document.getElementById('exBackBtn').disabled = false;
+    showToast('导出完成！', 'success');
+  }, 2000);
+}
+
+function downloadFile(type) {
+  const label = type === 'source' ? '导入源文件' : '导出文件';
+  showToast('正在下载' + label + '...', 'success');
+}
+
+function resetExport() {
+  goExportStep(0);
+  document.getElementById('exExecBtn').style.display = 'inline-flex';
+  document.getElementById('exExecBtn').disabled = false;
+  document.getElementById('exExecBtn').textContent = '▶ 执行导出';
+  document.getElementById('exResetBtn').style.display = 'none';
+  document.getElementById('exportDoneAlert').style.display = 'none';
+}
+
+// =====================================================
+//  TASK FILTERS
+// =====================================================
+function setTaskType(btn) {
+  btn.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function setTaskStatus(btn) {
+  btn.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function confirmCancel(id) { openModal('modalConfirmCancel'); }
+function confirmDelete(id) { openModal('modalConfirmDelete'); }
+
+// =====================================================
+//  LOG DRAWER
+// =====================================================
+function openLogDrawer(id, type, table, processed, total, hasError, canDownloadResult, canDownloadSource, sourceFileName, resultFileName, creator, createdAt, completedAt) {
+  // Normalize type label
+  const typeLabel = (type === 'import') ? '导入' : (type === 'export') ? '导出' : type;
+  const isExport = (type === 'export' || type === '导出');
+
+  document.getElementById('logTaskId').textContent = '#' + id;
+  document.getElementById('logTaskType').innerHTML = '<span class="tag tag-' + (isExport ? 'green' : 'blue') + '">' + typeLabel + '</span>';
+  document.getElementById('logTaskTable').textContent = table;
+  document.getElementById('logTaskCreator').textContent = creator || '—';
+  document.getElementById('logTaskCreatedAt').textContent = createdAt || '—';
+  document.getElementById('logTaskCompletedAt').textContent = completedAt || '—';
+
+  let statusHtml;
+  if (hasError) {
+    statusHtml = '<span class="sdot red"></span>失败';
+  } else {
+    statusHtml = (processed === total) ? '<span class="sdot green"></span>已完成' : '<span class="sdot green"></span>已完成';
+  }
+  document.getElementById('logTaskStatus').innerHTML = statusHtml;
+  document.getElementById('logTaskCount').textContent = (processed || '—') + ' / ' + (total || '—');
+  document.getElementById('logTaskSheet').textContent = 'Sheet1';
+
+  // Set file name in summary
+  const fileNameEl = document.getElementById('logTaskFileName');
+  if (isExport && resultFileName) {
+    fileNameEl.textContent = resultFileName;
+  } else if (!isExport && sourceFileName) {
+    fileNameEl.textContent = sourceFileName;
+  } else {
+    fileNameEl.textContent = '—';
+  }
+
+  // Show/hide download buttons in drawer
+  const downloadSection = document.getElementById('drawerDownloadSection');
+  const resultBtn = document.getElementById('drawerDownloadResultBtn');
+  const sourceBtn = document.getElementById('drawerDownloadSourceBtn');
+  const downloadLabel = document.getElementById('drawerDownloadLabel');
+  const downloadFileName = document.getElementById('drawerDownloadFileName');
+  let showSection = false;
+
+  if (canDownloadResult && isExport) {
+    resultBtn.style.display = 'inline-flex';
+    downloadLabel.textContent = '✅ 导出文件可下载';
+    downloadFileName.textContent = '文件名：' + (resultFileName || 'export.xlsx');
+    showSection = true;
+  } else {
+    resultBtn.style.display = 'none';
+  }
+
+  if (canDownloadSource) {
+    sourceBtn.style.display = 'inline-flex';
+    downloadLabel.textContent = '✅ 源文件可下载';
+    downloadFileName.textContent = '文件名：' + (sourceFileName || 'import.xlsx');
+    showSection = true;
+  } else {
+    sourceBtn.style.display = 'none';
+  }
+
+  // If both are shown, show combined label
+  if (canDownloadResult && canDownloadSource) {
+    downloadLabel.textContent = '✅ 文件可下载';
+    downloadFileName.textContent = '导出：' + (resultFileName || 'export.xlsx') + ' ｜ 源文件：' + (sourceFileName || 'import.xlsx');
+  }
+
+  downloadSection.style.display = showSection ? 'flex' : 'none';
+
+  // Toggle import/export detail sections
+  const importDetail = document.getElementById('drawerImportDetail');
+  const exportDetail = document.getElementById('drawerExportDetail');
+  if (isExport) {
+    importDetail.style.display = 'none';
+    exportDetail.style.display = 'block';
+  } else {
+    importDetail.style.display = 'block';
+    exportDetail.style.display = 'none';
+  }
+
+  if (hasError) {
+    document.getElementById('logErrorCount').textContent = '（有 2 条错误）';
+    document.getElementById('logErrorContent').style.display = 'none';
+    document.getElementById('logErrorTable').style.display = 'table';
+    document.getElementById('logErrorBody').innerHTML =
+      '<tr><td>5</td><td>手机号格式不正确</td><td>{"phone": "13800138abc", "name": "张三"}</td></tr>' +
+      '<tr><td>12</td><td>关联字段"角色"匹配失败</td><td>{"role": "超级管理员", "name": "李四"}</td></tr>';
+  } else {
+    document.getElementById('logErrorCount').textContent = '（无错误）';
+    document.getElementById('logErrorContent').style.display = 'block';
+    document.getElementById('logErrorTable').style.display = 'none';
+  }
+
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.getElementById('drawerLog').classList.add('open');
+}
+
+function closeLogDrawer() {
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.getElementById('drawerLog').classList.remove('open');
+}
+
+// =====================================================
+//  PERMISSIONS - Full interactive data layer
+// =====================================================
+
+// Permission data store
+const permStore = {
+  'user:1': { name:'张明', type:'user',
+    perms: {
+      '用户':   { canImport:true, canExport:true,  importMode:'upsert', unique:['手机号','邮箱'], required:['姓名','手机号'], importFields:['姓名','手机号','邮箱','年龄','地址','角色','部门','头像'], exportFields:['姓名','手机号','邮箱','年龄','地址','角色','部门','头像','创建时间','更新时间','状态','备注'] },
+      '订单':   { canImport:false,canExport:true,  importMode:'insert', unique:[], required:[], importFields:[], exportFields:['订单编号','客户','金额','状态','创建时间'] },
+      '产品':   { canImport:false,canExport:false, importMode:'insert', unique:[], required:[], importFields:[], exportFields:[] }
+    }
+  },
+  'user:2': { name:'李华', type:'user',
+    perms: {
+      '用户': { canImport:true, canExport:false, importMode:'insert', unique:[], required:['姓名'], importFields:['姓名','手机号','邮箱'], exportFields:[] },
+      '订单': { canImport:false,canExport:true, importMode:'insert', unique:[], required:[], importFields:[], exportFields:['订单编号','金额','状态'] },
+      '角色': { canImport:true, canExport:true, importMode:'upsert', unique:['角色名'], required:['角色名'], importFields:['角色名','描述'], exportFields:['角色名','描述','创建时间'] }
+    }
+  },
+  'user:3': { name:'王芳', type:'user',
+    perms: {
+      '文章': { canImport:true, canExport:true, importMode:'update', unique:['标题'], required:['标题','内容'], importFields:['标题','内容','分类','状态'], exportFields:['标题','内容','分类','状态','创建时间','作者'] }
+    }
+  },
+  'role:1': { name:'管理员', type:'role',
+    perms: {
+      '用户':   { canImport:true, canExport:true, importMode:'upsert', unique:['手机号'], required:['姓名','手机号'], importFields:[], exportFields:[] },
+      '订单':   { canImport:true, canExport:true, importMode:'insert', unique:[], required:[], importFields:[], exportFields:[] },
+      '产品':   { canImport:true, canExport:true, importMode:'upsert', unique:['产品编号'], required:['产品名','价格'], importFields:['产品名','价格','库存','分类'], exportFields:['产品名','价格','库存'] },
+      '角色':   { canImport:false,canExport:true, importMode:'insert', unique:[], required:[], importFields:[], exportFields:['角色名','描述'] }
+    }
+  },
+  'role:2': { name:'编辑', type:'role',
+    perms: {
+      '文章': { canImport:true, canExport:true, importMode:'update', unique:['标题'], required:['标题'], importFields:['标题','内容'], exportFields:['标题','内容','状态'] },
+      '分类': { canImport:true, canExport:false, importMode:'insert', unique:[], required:['分类名'], importFields:['分类名','描述'], exportFields:[] }
+    }
+  }
+};
+
+let currentTarget = 'user:1';
+
+function filterPermSidebar() {
+  const q = document.getElementById('permSearchInput').value.toLowerCase();
+  document.querySelectorAll('#permSidebarList .sidebar-item').forEach(el => {
+    const name = el.querySelector('span:last-child').textContent.toLowerCase();
+    el.style.display = name.includes(q) ? '' : 'none';
+  });
+}
+
+function selectTarget(el, name, type) {
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  const key = type + ':' + getTargetId(name, type);
+  currentTarget = key;
+  renderPermCards();
+}
+
+function getTargetId(name, type) {
+  const map = { '张明':'1', '李华':'2', '王芳':'3', '管理员':'1', '编辑':'2' };
+  return map[name] || '0';
+}
+
+function renderPermCards() {
+  const data = permStore[currentTarget];
+  if (!data) return;
+  const icon = data.type === 'user' ? '👤' : '👥';
+  document.getElementById('permTargetIcon').textContent = icon;
+  document.getElementById('permTargetName').textContent = data.name;
+  document.getElementById('permTargetTag').textContent = data.type === 'user' ? '用户' : '角色';
+  document.getElementById('permTargetTag').className = 'tag tag-' + (data.type === 'user' ? 'blue' : 'green');
+
+  const container = document.getElementById('permCardsContainer');
+  const tables = Object.keys(data.perms);
+  if (tables.length === 0) {
+    container.innerHTML = '<div class="cardx" style="text-align:center;color:#999;padding:32px">暂无权限配置，点击下方按钮添加</div>';
+    return;
+  }
+  let html = '';
+  tables.forEach(table => {
+    const p = data.perms[table];
+    const importLabel = p.canImport ? '是' : '否';
+    const exportLabel = p.canExport ? '是' : '否';
+    const tags = [];
+    tags.push(`<span class="tag ${p.canImport ? 'tag-blue' : 'tag-default'}">导入: ${importLabel}</span>`);
+    tags.push(`<span class="tag ${p.canExport ? 'tag-green' : 'tag-default'}">导出: ${exportLabel}</span>`);
+    if (p.canImport) {
+      tags.push(`<span class="tag tag-blue">导入模式: ${p.importMode === 'insert' ? '新增' : p.importMode === 'update' ? '更新' : '新增+更新'}</span>`);
+      if (p.unique.length > 0) tags.push(`<span class="tag tag-orange">唯一值: ${p.unique.join(', ')}</span>`);
+      if (p.required.length > 0) tags.push(`<span class="tag tag-red">必填: ${p.required.join(', ')}</span>`);
+      tags.push(`<span class="tag tag-blue">可导入: ${p.importFields.length || '全部'}</span>`);
+    }
+    if (p.canExport) {
+      tags.push(`<span class="tag tag-green">可导出: ${p.exportFields.length || '全部'}</span>`);
+    }
+    const hasConfig = p.canImport || p.canExport;
+    html += `<div class="cardx">
+      <div class="cardx-hd">
+        <span class="name">📁 ${table}</span>
+        <div class="frm-inline">
+          <span class="text-muted">导入</span>
+          <span class="toggle ${p.canImport ? 'on' : ''}" onclick="togglePermCardImport(this,'${table}')"></span>
+          <span class="text-muted">导出</span>
+          <span class="toggle ${p.canExport ? 'on' : ''}" onclick="togglePermCardExport(this,'${table}')"></span>
+          <button class="btn btn-default btn-sm" onclick="openPermEdit('${table}','edit')">✏️ 编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="confirmDelPerm('${table}')">🗑 删除</button>
+        </div>
+      </div>
+      <div class="flex gap-4" style="flex-wrap:wrap">${tags.join('')}</div>
+      ${hasConfig ? '' : '<div style="color:#999;font-size:13px;font-style:italic;margin-top:4px">未配置权限</div>'}
+    </div>`;
+  });
+  container.innerHTML = html;
+}
+
+function togglePermCardImport(el, table) {
+  el.classList.toggle('on');
+  if (permStore[currentTarget].perms[table]) {
+    permStore[currentTarget].perms[table].canImport = el.classList.contains('on');
+  }
+  renderPermCards();
+  showToast(table + ' 导入权限已' + (el.classList.contains('on') ? '开启' : '关闭'));
+}
+
+function togglePermCardExport(el, table) {
+  el.classList.toggle('on');
+  if (permStore[currentTarget].perms[table]) {
+    permStore[currentTarget].perms[table].canExport = el.classList.contains('on');
+  }
+  renderPermCards();
+  showToast(table + ' 导出权限已' + (el.classList.contains('on') ? '开启' : '关闭'));
+}
+
+function confirmDelPerm(table) {
+  document.getElementById('modalConfirmDelPerm').querySelector('.m-body p').textContent = '确认删除「' + table + '」的权限配置？';
+  document.getElementById('modalConfirmDelPerm').dataset.table = table;
+  openModal('modalConfirmDelPerm');
+}
+
+// Override the delete modal confirm
+const origDelConfirm = document.querySelector('#modalConfirmDelPerm .btn-danger');
+if (origDelConfirm) {
+  origDelConfirm.onclick = function() {
+    const table = document.getElementById('modalConfirmDelPerm').dataset.table;
+    if (table && permStore[currentTarget].perms[table]) {
+      delete permStore[currentTarget].perms[table];
+      renderPermCards();
+      showToast('权限配置已删除');
+    }
+    closeModal('modalConfirmDelPerm');
+  };
+}
+
+let permEditMode = 'add';
+let permEditTableName = '';
+
+// Available fields per table for dropdown selects
+const tableFieldMap = {
+  '用户': ['姓名','手机号','邮箱','年龄','地址','角色','部门','头像','创建时间','更新时间','状态','备注','性别','生日','身份证号'],
+  '订单': ['订单编号','客户','金额','状态','创建时间','更新时间','商品','数量','收货地址','联系电话'],
+  '产品': ['产品名','价格','库存','分类','描述','创建时间','状态','图片','规格','颜色'],
+  '角色': ['角色名','描述','创建时间','更新时间','状态'],
+  '文章': ['标题','内容','分类','状态','创建时间','作者','标签','浏览量','点赞数'],
+  '分类': ['分类名','描述','排序','状态','创建时间','父分类']
+};
+
+// ---- Multi-select store for permission edit fields ----
+const permMultiSelect = {};
+
+function toggleMultiSelect(btn, containerId, type) {
+  // Toggle dropdown
+  const dd = btn.parentElement.querySelector('.sel-dropdown');
+  if (!dd) return;
+  const isOpen = dd.classList.contains('open');
+  document.querySelectorAll('.sel-dropdown.open').forEach(d => d.classList.remove('open'));
+  if (!isOpen) dd.classList.add('open');
+}
+
+// Close multi-select dropdowns on outside click
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.multi-select-dd') && !e.target.closest('.sel')) {
+    document.querySelectorAll('.multi-select-dd.open').forEach(d => d.classList.remove('open'));
+  }
+});
+
+function updateFieldDropdowns(tableName) {
+  const fields = tableFieldMap[tableName] || [];
+  const configs = [
+    { dropId:'permEditUniqueFieldsDropdown', containerId:'permEditUniqueFields', labelId:'permEditUniqueFieldsLabel', type:'unique' },
+    { dropId:'permEditRequiredFieldsDropdown', containerId:'permEditRequiredFields', labelId:'permEditRequiredFieldsLabel', type:'required' },
+    { dropId:'permEditImportFieldsDropdown', containerId:'permEditImportFields', labelId:'permEditImportFieldsLabel', type:'importable' },
+    { dropId:'permEditExportFieldsDropdown', containerId:'permEditExportFields', labelId:'permEditExportFieldsLabel', type:'exportable' }
+  ];
+
+  configs.forEach(cfg => {
+    const dd = document.getElementById(cfg.dropId);
+    if (!dd) return;
+    const container = document.getElementById(cfg.containerId);
+    // Get currently selected field names from tags
+    const selected = new Set();
+    container.querySelectorAll('.perm-tag').forEach(t => {
+      selected.add(t.textContent.replace(' ✕','').trim());
+    });
+
+    dd.innerHTML = fields.map(f => {
+      const checked = selected.has(f) ? 'checked' : '';
+      return `<label class="sel-opt" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;font-size:13px">
+        <input type="checkbox" ${checked} style="accent-color:#1677ff" data-field="${f}" onchange="togglePermMultiField('${cfg.containerId}','${cfg.type}','${f}',this)">
+        ${f}
+      </label>`;
+    }).join('');
+    if (fields.length === 0) {
+      dd.innerHTML = '<div class="sel-opt disabled" style="padding:8px">请先选择数据表</div>';
+    }
+    // Update label
+    updateMultiSelectLabel(cfg.containerId, cfg.labelId);
+  });
+}
+
+function togglePermMultiField(containerId, type, fieldName, checkbox) {
+  const colors = { unique: 'orange', required: 'red', importable: 'blue', exportable: 'green' };
+  const bgColors = { unique: '#fff7e6', required: '#fff2f0', importable: '#e6f4ff', exportable: '#f6ffed' };
+  const borderColors = { unique: '#ffd591', required: '#ffccc7', importable: '#91caff', exportable: '#b7eb8f' };
+  const textColors = { unique: '#fa8c16', required: '#ff4d4f', importable: '#1677ff', exportable: '#52c41a' };
+  const c = colors[type];
+  const container = document.getElementById(containerId);
+
+  if (checkbox.checked) {
+    // Add tag
+    const tag = document.createElement('span');
+    tag.className = 'tag perm-tag';
+    tag.style.cssText = `cursor:pointer;background:${bgColors[type]};color:${textColors[type]};border:1px solid ${borderColors[type]};padding:4px 10px;font-size:12px`;
+    tag.textContent = fieldName + ' ✕';
+    tag.onclick = function() {
+      this.remove();
+      // Also uncheck in dropdown
+      const dd = container.querySelector('.sel-dropdown');
+      if (dd) {
+        const cb = dd.querySelector(`input[data-field="${fieldName}"]`);
+        if (cb) cb.checked = false;
+      }
+      const cfg = getConfigForContainer(containerId);
+      if (cfg) updateMultiSelectLabel(cfg.containerId, cfg.labelId);
+    };
+    const addBtn = container.querySelector('.sel');
+    container.insertBefore(tag, addBtn);
+  } else {
+    // Remove tag
+    const tag = container.querySelector(`.perm-tag[data-field="${fieldName}"]`);
+    if (tag) tag.remove();
+    // Also remove by text content
+    container.querySelectorAll('.perm-tag').forEach(t => {
+      if (t.textContent.replace(' ✕','').trim() === fieldName) t.remove();
+    });
+  }
+
+  const cfg = getConfigForContainer(containerId);
+  if (cfg) updateMultiSelectLabel(cfg.containerId, cfg.labelId);
+}
+
+function getConfigForContainer(containerId) {
+  const configs = [
+    { containerId:'permEditUniqueFields', labelId:'permEditUniqueFieldsLabel' },
+    { containerId:'permEditRequiredFields', labelId:'permEditRequiredFieldsLabel' },
+    { containerId:'permEditImportFields', labelId:'permEditImportFieldsLabel' },
+    { containerId:'permEditExportFields', labelId:'permEditExportFieldsLabel' }
+  ];
+  return configs.find(c => c.containerId === containerId);
+}
+
+function updateMultiSelectLabel(containerId, labelId) {
+  const container = document.getElementById(containerId);
+  const count = container.querySelectorAll('.perm-tag').length;
+  const label = document.getElementById(labelId);
+  if (label) {
+    label.textContent = count > 0 ? count + ' 个字段已选' : '选择字段';
+  }
+}
+
+function openPermEdit(table, mode) {
+  permEditMode = mode;
+  permEditTableName = table;
+  const title = document.getElementById('permEditTitle');
+  title.textContent = mode === 'edit' ? '✏️ 编辑权限 - ' + table : '✏️ 添加权限';
+  document.getElementById('permEditTable').textContent = table || '— 请选择数据表 —';
+
+  // Reset form
+  const importToggle = document.getElementById('permEditCanImport');
+  const exportToggle = document.getElementById('permEditCanExport');
+  importToggle.classList.remove('on');
+  exportToggle.classList.remove('on');
+  document.getElementById('permEditCanImportLabel').textContent = '关闭';
+  document.getElementById('permEditCanExportLabel').textContent = '关闭';
+  document.getElementById('permEditImportConfig').style.display = 'none';
+  document.getElementById('permEditExportConfig').style.display = 'none';
+  document.getElementById('permEditImportMode').textContent = '新增 (insert)';
+
+  // Clear all tag containers (keep the add button)
+  ['permEditUniqueFields','permEditRequiredFields','permEditImportFields','permEditExportFields'].forEach(id => {
+    const el = document.getElementById(id);
+    const addBtn = el.querySelector('.sel');
+    el.innerHTML = '';
+    el.appendChild(addBtn);
+    // Reset label
+    const cfg = getConfigForContainer(id);
+    if (cfg) document.getElementById(cfg.labelId).textContent = '选择字段';
+  });
+
+  // Update field dropdowns
+  updateFieldDropdowns(table);
+
+  // If editing, populate form
+  if (mode === 'edit' && table) {
+    const data = permStore[currentTarget];
+    if (data && data.perms[table]) {
+      const p = data.perms[table];
+      if (p.canImport) { importToggle.classList.add('on'); document.getElementById('permEditCanImportLabel').textContent = '开启'; }
+      if (p.canExport) { exportToggle.classList.add('on'); document.getElementById('permEditCanExportLabel').textContent = '开启'; }
+      document.getElementById('permEditImportConfig').style.display = p.canImport ? 'block' : 'none';
+      document.getElementById('permEditExportConfig').style.display = p.canExport ? 'block' : 'none';
+
+      const modeMap = { 'insert':'新增 (insert)', 'update':'更新 (update)', 'upsert':'新增+更新 (upsert)' };
+      document.getElementById('permEditImportMode').textContent = modeMap[p.importMode] || '新增 (insert)';
+
+      // Populate tags
+      addTagsToContainer('permEditUniqueFields', p.unique, 'orange');
+      addTagsToContainer('permEditRequiredFields', p.required, 'red');
+      addTagsToContainer('permEditImportFields', p.importFields, 'blue');
+      addTagsToContainer('permEditExportFields', p.exportFields, 'green');
+    }
+  }
+
+  openModal('modalPermEdit');
+}
+
+function addTagsToContainer(containerId, items, color) {
+  if (!items || items.length === 0) return;
+  const container = document.getElementById(containerId);
+  const addBtn = container.querySelector('.sel');
+  const bgMap = { orange:'#fff7e6', red:'#fff2f0', blue:'#e6f4ff', green:'#f6ffed' };
+  const textMap = { orange:'#fa8c16', red:'#ff4d4f', blue:'#1677ff', green:'#52c41a' };
+  const borderMap = { orange:'#ffd591', red:'#ffccc7', blue:'#91caff', green:'#b7eb8f' };
+  items.forEach(item => {
+    const tag = document.createElement('span');
+    tag.className = 'tag perm-tag';
+    tag.style.cssText = `cursor:pointer;background:${bgMap[color]};color:${textMap[color]};border:1px solid ${borderMap[color]};padding:4px 10px;font-size:12px`;
+    tag.textContent = item + ' ✕';
+    tag.onclick = function() {
+      this.remove();
+      // Also uncheck in dropdown
+      const dd = container.querySelector('.sel-dropdown');
+      if (dd) {
+        const cb = dd.querySelector(`input[data-field="${item}"]`);
+        if (cb) cb.checked = false;
+      }
+      const cfg = getConfigForContainer(containerId);
+      if (cfg) updateMultiSelectLabel(cfg.containerId, cfg.labelId);
+    };
+    container.insertBefore(tag, addBtn);
+  });
+  const cfg = getConfigForContainer(containerId);
+  if (cfg) updateMultiSelectLabel(cfg.containerId, cfg.labelId);
+}
+
+function pickPermEditTable(opt, val) {
+  document.getElementById('permEditTable').textContent = val;
+  const tableName = val.replace(/ \(.*\)$/, '');
+  permEditTableName = tableName;
+  // Update field dropdowns with new table's fields
+  updateFieldDropdowns(tableName);
+  opt.closest('.sel-dropdown').classList.remove('open');
+}
+
+function extractTags(containerId) {
+  const container = document.getElementById(containerId);
+  const tags = container.querySelectorAll('.perm-tag');
+  const result = [];
+  tags.forEach(t => {
+    const txt = t.textContent.replace(' ✕','').trim();
+    if (txt) result.push(txt);
+  });
+  return result;
+}
+
+function savePermEdit() {
+  const table = permEditTableName;
+  if (!table || table === '— 请选择数据表 —') {
+    showToast('请先选择数据表', 'error');
+    return;
+  }
+  if (!permStore[currentTarget].perms[table]) {
+    permStore[currentTarget].perms[table] = { canImport:false, canExport:false, importMode:'insert', unique:[], required:[], importFields:[], exportFields:[] };
+  }
+  const p = permStore[currentTarget].perms[table];
+  p.canImport = document.getElementById('permEditCanImport').classList.contains('on');
+  p.canExport = document.getElementById('permEditCanExport').classList.contains('on');
+
+  const modeMap = { '新增 (insert)':'insert', '更新 (update)':'update', '新增+更新 (upsert)':'upsert' };
+  p.importMode = modeMap[document.getElementById('permEditImportMode').textContent] || 'insert';
+
+  p.unique = extractTags('permEditUniqueFields');
+  p.required = extractTags('permEditRequiredFields');
+  p.importFields = extractTags('permEditImportFields');
+  p.exportFields = extractTags('permEditExportFields');
+
+  closeModal('modalPermEdit');
+  renderPermCards();
+  showToast('权限配置已保存', 'success');
+}
+
+function togglePermImport(el) {
+  el.classList.toggle('on');
+  const on = el.classList.contains('on');
+  document.getElementById('permEditCanImportLabel').textContent = on ? '开启' : '关闭';
+  document.getElementById('permEditImportConfig').style.display = on ? 'block' : 'none';
+}
+
+function togglePermExport(el) {
+  el.classList.toggle('on');
+  const on = el.classList.contains('on');
+  document.getElementById('permEditCanExportLabel').textContent = on ? '开启' : '关闭';
+  document.getElementById('permEditExportConfig').style.display = on ? 'block' : 'none';
+}
+
+function setPermScope(el, val) {
+  document.getElementById('permScopeLabel').textContent = val;
+  el.closest('.sel-dropdown').classList.remove('open');
+  showToast('任务查看范围已切换为「' + val + '」');
+}
+
+function addFilterRow(el) {
+  const row = document.createElement('div');
+  row.className = 'frm-inline';
+  row.style.marginTop = '6px';
+  row.innerHTML = `
+    <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>字段</span> <span>▼</span></button>
+      <div class="sel-dropdown">
+        <div class="sel-opt" onclick="pickVal(this,'状态')">状态</div>
+        <div class="sel-opt" onclick="pickVal(this,'金额')">金额</div>
+        <div class="sel-opt" onclick="pickVal(this,'创建时间')">创建时间</div>
+      </div>
+    </div>
+    <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>等于</span> <span>▼</span></button>
+      <div class="sel-dropdown">
+        <div class="sel-opt" onclick="pickVal(this,'等于')">等于</div>
+        <div class="sel-opt" onclick="pickVal(this,'大于')">大于</div>
+      </div>
+    </div>
+    <input class="s-input" style="width:100px;display:inline-block" placeholder="值">
+    <span style="color:#ff4d4f;cursor:pointer;font-size:16px" onclick="this.parentElement.remove()">✕</span>
+  `;
+  el.parentElement.insertBefore(row, el);
+}
+
+// =====================================================
+//  MODAL HELPERS
+// =====================================================
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// Close modals on overlay click
+document.querySelectorAll('.m-overlay').forEach(m => {
+  m.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+});
+
+// Close regular dropdowns on outside click
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.sel')) {
+    document.querySelectorAll('.sel-dropdown.open').forEach(d => d.classList.remove('open'));
+  }
+});
+
+// Animation
+const style = document.createElement('style');
+style.textContent = '@keyframes fadeIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }';
+document.head.appendChild(style);
+</script>
+</body>
+</html>

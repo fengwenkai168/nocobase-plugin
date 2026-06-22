@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sjgl02 插件 - 产品需求规格说明书（v2.0）</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#f5f7fa; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; color:#1f2937; padding:40px 0; }
+.container { max-width:1100px; margin:0 auto; padding:0 24px; }
+.cover { background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460); border-radius:16px; padding:48px; color:#fff; margin-bottom:40px; }
+.cover h1 { font-size:32px; font-weight:700; margin-bottom:8px; }
+.cover .subtitle { font-size:16px; opacity:.75; margin-bottom:20px; }
+.cover .meta { display:flex; gap:24px; font-size:13px; opacity:.6; }
+.toc { background:#fff; border-radius:12px; padding:28px 32px; margin-bottom:32px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.toc h2 { font-size:16px; margin-bottom:12px; color:#6b7280; }
+.toc ol { columns:2; column-gap:32px; padding-left:20px; }
+.toc li { margin-bottom:6px; font-size:14px; }
+.toc li a { color:#2563eb; text-decoration:none; }
+.section { background:#fff; border-radius:12px; padding:32px; margin-bottom:24px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+.section h2 { font-size:22px; font-weight:700; margin-bottom:20px; padding-bottom:12px; border-bottom:2px solid #f3f4f6; display:flex; align-items:center; gap:10px; }
+.section h2 .badge { font-size:12px; font-weight:500; background:#eff6ff; color:#2563eb; padding:2px 10px; border-radius:20px; }
+.section h3 { font-size:17px; font-weight:600; margin:24px 0 12px; color:#374151; }
+.section h4 { font-size:14px; font-weight:600; margin:16px 0 8px; color:#4b5563; }
+.section p { font-size:14px; line-height:1.7; color:#4b5563; margin-bottom:10px; }
+.section ul,.section ol { font-size:14px; line-height:1.7; color:#4b5563; padding-left:20px; margin-bottom:12px; }
+.section li { margin-bottom:4px; }
+.section table { width:100%; border-collapse:collapse; font-size:13px; margin:12px 0 20px; }
+.section th { background:#f9fafb; padding:10px 12px; text-align:left; font-weight:600; color:#374151; border:1px solid #e5e7eb; }
+.section td { padding:10px 12px; border:1px solid #e5e7eb; color:#4b5563; }
+.section tr:hover td { background:#f9fafb; }
+.tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:500; margin-right:4px; }
+.tag-blue { background:#eff6ff; color:#2563eb; }
+.tag-green { background:#f0fdf4; color:#16a34a; }
+.tag-red { background:#fef2f2; color:#dc2626; }
+.tag-orange { background:#fff7ed; color:#ea580c; }
+.tag-purple { background:#f5f3ff; color:#7c3aed; }
+.tag-cyan { background:#ecfeff; color:#0891b2; }
+.alert-info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:12px 16px; border-radius:8px; font-size:13px; margin:12px 0; }
+.note { font-size:13px; color:#6b7280; background:#f9fafb; padding:12px 16px; border-radius:6px; margin:8px 0 16px; border-left:3px solid #d1d5db; }
+hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="cover">
+  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v2.0</h1>
+  <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · 与交互原型 <code>sjgl02-ui.html</code> 同步</div>
+  <div class="meta">
+    <span>📅 2026-06-22</span>
+    <span>🏷️ v1.0.0（重构目标）</span>
+    <span>📄 状态：终稿</span>
+    <span>🎯 参考原型：sjgl02-ui.html</span>
+  </div>
+</div>
+
+<div class="toc">
+  <h2>📑 目录</h2>
+  <ol>
+    <li><a href="#overview">产品概述</a></li>
+    <li><a href="#layout">全局布局</a></li>
+    <li><a href="#import">导入功能</a></li>
+    <li><a href="#export">导出功能</a></li>
+    <li><a href="#tasks">任务管理</a></li>
+    <li><a href="#permissions">权限管理</a></li>
+    <li><a href="#components">通用组件</a></li>
+    <li><a href="#api">API 端点清单</a></li>
+    <li><a href="#data">数据模型</a></li>
+    <li><a href="#errata">错误处理与边界情况</a></li>
+  </ol>
+</div>
+
+<!-- ==================== 1. 产品概述 ==================== -->
+<div class="section" id="overview">
+  <h2>1. 产品概述</h2>
+  <p><strong>sjgl02（数据管理）</strong> 是 NocoBase 平台的一个全栈插件，提供 <strong>Excel 数据导入、导出、任务管理、表级权限控制</strong> 四大功能。</p>
+
+  <h3>1.1 入口</h3>
+  <p>插件有 <strong>两个入口</strong>：</p>
+  <table>
+    <tr><th>入口</th><th>路由</th><th>包含 Tab</th><th>说明</th></tr>
+    <tr><td>设置菜单</td><td><code>/settings/sjgl02</code></td><td>导入 / 导出 / 任务管理 / 权限管理</td><td>NocoBase 设置页注册菜单项「数据管理」，完整功能入口</td></tr>
+    <tr><td>区块添加</td><td>v2 页面「添加区块 → 其他区块 → 数据管理」</td><td>导入 / 导出 / 任务管理</td><td>以区块形式添加到 v2 页面，不含权限管理 Tab</td></tr>
+  </table>
+  <table>
+    <tr><th>#</th><th>功能</th><th>入口 Tab</th><th>说明</th></tr>
+    <tr><td>1</td><td>Excel 导入</td><td>导入</td><td>3 步向导：选表 → 上传文件 + 字段映射 → 预览 + 执行</td></tr>
+    <tr><td>2</td><td>Excel 导出</td><td>导出</td><td>3 步向导：选表（含全部数据表）→ 选字段/配置 → 执行 + 下载；支持 .xlsx/.zip</td></tr>
+    <tr><td>3</td><td>任务管理</td><td>任务管理</td><td>所有导入/导出任务的列表、筛选、日志查看、下载文件、取消</td></tr>
+    <tr><td>4</td><td>表级权限</td><td>权限管理</td><td>按用户/角色为每张表配置导入/导出权限、字段范围、导入模式等</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 2. 全局布局 ==================== -->
+<div class="section" id="layout">
+  <h2>2. 全局布局</h2>
+
+  <h3>2.1 页面结构</h3>
+  <p>顶部蓝色 Header（精简高度，标题 + 版本号），下方 4 个 Tab 导航。Tab 切换不保留子页面状态。</p>
+
+  <h3>2.2 Tab 定义</h3>
+  <table>
+    <tr><th>Key</th><th>图标</th><th>标题</th><th>组件</th></tr>
+    <tr><td><code>import</code></td><td>⬇</td><td>导入</td><td><code>ImportTab</code></td></tr>
+    <tr><td><code>export</code></td><td>⬆</td><td>导出</td><td><code>ExportTab</code></td></tr>
+    <tr><td><code>tasks</code></td><td>☰</td><td>任务管理</td><td><code>TaskTab</code></td></tr>
+    <tr><td><code>permissions</code></td><td>✓</td><td>权限管理</td><td><code>PermissionTab</code></td></tr>
+  </table>
+</div>
+
+<!-- ==================== 3. 导入 ==================== -->
+<div class="section" id="import">
+  <h2>3. 导入功能 <span class="badge">ImportTab</span></h2>
+
+  <p>3 步向导（Steps 组件）：<strong>选表 → 上传文件 + 字段映射 → 预览 + 执行</strong>。当前步骤由 <code>currentStep</code>（0/1/2）控制。</p>
+
+  <h3>3.1 Step 1：选择数据表</h3>
+  <table>
+    <tr><th>元素</th><th>说明</th></tr>
+    <tr><td>标题</td><td>"选择数据表"</td></tr>
+    <tr><td>说明</td><td>"请选择要导入数据的目标数据表"</td></tr>
+    <tr><td>数据表选择器</td><td>根据权限配置显示有权限的数据表（<code>filterPermission="import"</code>），搜索过滤</td></tr>
+    <tr><td>「下一步」</td><td>disabled 状态直到选中表</td></tr>
+  </table>
+
+  <h3>3.2 Step 2：上传文件 &amp; 字段映射</h3>
+
+  <h4>3.2.1 上传区</h4>
+  <p><code>FileUploader</code> 拖拽上传组件。校验 .xlsx/.xls/.csv，最大 50MB。上传成功后自动解析并显示 Sheet 列表和表头列名。</p>
+
+  <h4>3.2.2 上传后配置区</h4>
+  <table>
+    <tr><th>区域</th><th>说明</th></tr>
+    <tr><td>Sheet 选择</td><td>下拉 Select，仅 1 个 Sheet 时禁用</td></tr>
+    <tr><td>表头行号</td><td>InputNumber 1-100，默认 1，可「刷新」重新解析</td></tr>
+    <tr><td>导入模式</td><td>Select：「新增(insert)」「更新(update)」「新增+更新(upsert)」，默认从权限配置读取</td></tr>
+    <tr><td>唯一值字段</td><td>仅在 update/upsert 模式下显示。多选组合字段，已选字段在下拉中灰色禁用标注「已选择」</td></tr>
+    <tr><td>字段映射表</td><td>见 3.2.3</td></tr>
+  </table>
+
+  <h4>3.2.3 字段映射表（核心交互）</h4>
+  <p><strong>列顺序</strong>：Excel列 → 映射方式（只读） → → 工作表字段</p>
+  <p><strong>映射方式自动推导规则</strong>：</p>
+  <table>
+    <tr><th>Excel列操作</th><th>映射方式显示</th></tr>
+    <tr><td>选了一个 Excel 列名</td><td><span class="tag tag-blue">Excel列</span></td></tr>
+    <tr><td>选了「自定义内容」</td><td>Excel列单元格变为输入框，显示 <span class="tag tag-green">固定值</span></td></tr>
+    <tr><td>选了「未选择（忽略）」</td><td><span class="tag tag-default">忽略</span></td></tr>
+  </table>
+  <p><strong>去重联动</strong>：已选的 Excel 列名在其他行的下拉中自动灰色禁用。选择「未选择（忽略）」后释放该列。</p>
+  <p><strong>「自动匹配」按钮</strong>：按名称自动对应 Excel 列与工作表字段。</p>
+  <p><strong>标题栏统计</strong>：Excel列标题显示「共N/已用M/剩余K」；工作表字段标题显示「共N/已映射M/忽略K」。</p>
+
+  <h3>3.3 Step 3：预览 &amp; 执行</h3>
+  <table>
+    <tr><th>区域</th><th>说明</th></tr>
+    <tr><td>统计卡片</td><td>预计导入行数、错误行数、导入模式、Sheet 名称</td></tr>
+    <tr><td>唯一值提示</td><td>update/upsert 模式下显示蓝色提示条，列出唯一值字段</td></tr>
+    <tr><td>预览表格</td><td>前 10 行转换后数据，横向滚动</td></tr>
+    <tr><td>错误 Alert</td><td>errorRows &gt; 0 时显示红色 Alert</td></tr>
+    <tr><td>「执行导入」</td><td>弹确认框 → 提交任务 → 成功后 2 秒自动重置到 Step 1</td></tr>
+  </table>
+  <div class="alert-info">
+    <strong>⚠️ 导入事务规则</strong>：导入操作在单一数据库事务中执行，<strong>任一数据行失败则整批全部回滚</strong>，不写入任何数据。不会存在部分成功的情况。
+  </div>
+</div>
+
+<!-- ==================== 4. 导出 ==================== -->
+<div class="section" id="export">
+  <h2>4. 导出功能 <span class="badge">ExportTab</span></h2>
+
+  <p>3 步向导：<strong>选表 → 选字段 &amp; 配置 → 执行导出</strong>。支持两种模式：<strong>单表导出</strong>和<strong>全部数据表导出</strong>。</p>
+
+  <h3>4.1 Step 1：选择数据表</h3>
+  <p>下拉菜单第一个选项为 <span class="tag tag-blue">📦 全部数据表（含系统表）</span>（蓝色加粗分隔），其余为具体数据表。选「全部数据表」后 Step 2 标题自动切换为「选择数据范围」。</p>
+
+  <h3>4.2 Step 2：配置</h3>
+
+  <h4>4.2.1 单表模式</h4>
+  <table>
+    <tr><th>配置项</th><th>说明</th></tr>
+    <tr><td>字段选择</td><td>复选框分组：常规字段 / 关联字段(紫色) / 附件字段(青色)，支持全选，显示「已选: N/M」</td></tr>
+    <tr><td>关联字段显示模式</td><td>每个关联字段可选「显示值」/「仅ID」</td></tr>
+    <tr><td>关联数据 Sheet</td><td>Switch 开关，开启后多选下拉选择关联表</td></tr>
+    <tr><td>数据范围</td><td>「全部数据」/「自定义条件」，选自定义条件展开 FilterConditionBuilder（多行 AND 条件，操作符按字段类型动态切换）</td></tr>
+    <tr><td>高级选项</td><td>文件名模板（默认 <code>{表名}_{日期}.xlsx</code>）+ 包含附件文件开关（勾选后生成 ZIP）</td></tr>
+  </table>
+
+  <h4>4.2.2 全部数据表模式</h4>
+  <p>顶部蓝色警告：⚠️ 将导出全部 8 张表（含系统表），数据量较大时可能耗时较长。</p>
+  <p>显示 8 张表的标签列表（含附件标注），文件名模板默认 <code>全部数据表_{日期}.zip</code>。</p>
+
+  <h3>4.3 Step 3：执行导出</h3>
+  <table>
+    <tr><th>模式</th><th>统计卡片</th><th>文件格式</th></tr>
+    <tr><td>单表</td><td>选择字段数、预计行数、数据范围、关联Sheet</td><td>.xlsx（含附件则 .zip）</td></tr>
+    <tr><td>全部表</td><td>导出表数量(8)、预计总行数、导出范围(含系统表)、生成文件(.zip)</td></tr>
+  </table>
+  <p><strong>轮询进度</strong>：提交后每 2 秒轮询进度（模拟 0→30→60→90→100%），完成后显示下载按钮。</p>
+  <p>确认弹窗信息：单表显示「生成 .xlsx 文件」；全部表显示「生成 .zip 压缩包（内含 N 个 .xlsx 文件及附件）」。</p>
+
+  <h3>4.4 文件格式规则</h3>
+  <ul>
+    <li>单表 + 无附件 → <code>.xlsx</code></li>
+    <li>单表 + 含附件 → <code>.zip</code>（内含 .xlsx + 附件文件夹）</li>
+    <li>全部数据表 → <code>.zip</code>（内含每张表的独立 .xlsx 文件 + 附件）</li>
+  </ul>
+</div>
+
+<!-- ==================== 5. 任务管理 ==================== -->
+<div class="section" id="tasks">
+  <h2>5. 任务管理 <span class="badge">TaskTab</span></h2>
+
+  <h3>5.1 筛选栏</h3>
+  <table>
+    <tr><th>筛选</th><th>组件</th><th>选项</th></tr>
+    <tr><td>任务类型</td><td>按钮组</td><td>全部 / 导入 / 导出</td></tr>
+    <tr><td>状态</td><td>按钮组</td><td>全部 / 排队中 / 进行中 / 已完成 / 失败（产品文档也包含"已取消"）</td></tr>
+  </table>
+
+  <h3>5.2 表格列</h3>
+  <table>
+    <tr><th>列</th><th>说明</th></tr>
+    <tr><td>任务ID</td><td>#1001 格式</td></tr>
+    <tr><td>类型</td><td><span class="tag tag-blue">导入</span> / <span class="tag tag-green">导出</span></td></tr>
+    <tr><td>目标表</td><td>表名</td></tr>
+    <tr><td>状态</td><td>点+颜色：排队中(橙)、进行中(蓝)、已完成(绿)、失败(红)</td></tr>
+    <tr><td>进度</td><td>Progress 条 + 百分比。排队中为灰色，失败为红色</td></tr>
+    <tr><td>数据量</td><td>已处理/总数</td></tr>
+    <tr><td>创建人</td><td>用户名</td></tr>
+    <tr><td>创建时间</td><td>日期时间</td></tr>
+    <tr><td>完成时间</td><td>日期时间，未完成显示 —</td></tr>
+    <tr><td>操作</td><td>👁 查看（打开日志抽屉） / ⏹ 取消（仅 pending/processing）</td></tr>
+  </table>
+  <p><strong>注意</strong>：没有删除任务功能。已完成导出任务在日志抽屉中提供下载。</p>
+
+  <h3>5.3 日志抽屉</h3>
+  <p>右侧 Drawer，宽度 680px。内容：</p>
+  <ul>
+    <li><strong>任务摘要</strong>：任务ID、类型、目标表、创建人、创建时间、完成时间、文件名、状态、数据量、Sheet</li>
+    <li><strong>下载区域</strong>：已完成任务显示绿色提示条 + 下载按钮。导入任务 ->「下载导入源文件」；导出任务 ->「下载导出文件」。同时显示文件名。</li>
+    <li><strong>字段详情</strong>：导入任务显示📊字段映射表（Excel列名 → 工作表字段 → 映射方式 → 固定值）；导出任务显示📋导出字段选择标签列表</li>
+    <li><strong>错误日志</strong>：表格（行号、错误原因、字段值快照），无错误时显示空状态</li>
+  </ul>
+</div>
+
+<!-- ==================== 6. 权限管理 ==================== -->
+<div class="section" id="permissions">
+  <h2>6. 权限管理 <span class="badge">PermissionTab</span></h2>
+
+  <h3>6.1 布局</h3>
+  <p>左右分栏：左侧用户/角色列表（span=6）+ 右侧权限卡片（span=18）。</p>
+
+  <h3>6.2 左侧列表</h3>
+  <p>搜索过滤本地实时。分组：用户（蓝色头像+名字）在上，角色（绿色头像+名字）在下。点击激活高亮（蓝色背景+边框）。</p>
+
+  <h3>6.3 右侧区域</h3>
+  <p><strong>头部</strong>：选中目标图标+名称+类型标签 + 「添加权限」按钮 + 全局设置（任务查看范围：仅查看自己的/查看全部）。</p>
+
+  <p><strong>权限卡片</strong>：每张表一张卡片，显示：</p>
+  <ul>
+    <li>表名 + 导入/导出开关（可点击切换，实时保存到内存） + 编辑/删除按钮</li>
+    <li>标签行：<span class="tag tag-blue">导入: 是/否</span> <span class="tag tag-green">导出: 是/否</span> 导入模式、唯一值字段(橙)、必填字段(红)、可导入数、可导出数</li>
+  </ul>
+
+  <h3>6.4 权限编辑弹窗</h3>
+  <p>Modal 宽度 720px。表单：</p>
+  <table>
+    <tr><th>字段</th><th>组件</th><th>说明</th></tr>
+    <tr><td>选择数据表</td><td>Select showSearch</td><td>必填，格式「标题 (表名)」，选后自动加载该表字段列表</td></tr>
+    <tr><td>允许导入/导出</td><td>Switch 开关</td><td>分别控制下方导入/导出配置区域的显示/隐藏</td></tr>
+    <tr><td>导入模式</td><td>Select</td><td>新增 / 更新 / 新增+更新</td></tr>
+    <tr><td>唯一值字段</td><td>多选 Select（checkbox）</td><td>下拉复选框，已选显示为标签，按钮文字实时更新「N 个字段已选」</td></tr>
+    <tr><td>必填字段</td><td>同上多选 Select</td><td></td></tr>
+    <tr><td>可导入字段</td><td>同上多选 Select</td><td>空=全部允许</td></tr>
+    <tr><td>可导出字段</td><td>同上多选 Select</td><td>空=全部允许</td></tr>
+    <tr><td>导出范围筛选</td><td>FilterConditionBuilder</td><td>多行 AND 条件，支持添加/删除行</td></tr>
+  </table>
+
+  <h3>6.5 交互数据层</h3>
+  <p>前端内存中维护每个用户/角色的权限配置数据（<code>permStore</code> 对象）。点击左侧切换用户时右侧实时重渲染。卡片上的导入/导出开关点击后立即更新内存并触发重新渲染。</p>
+
+  <h3>6.6 预置权限数据</h3>
+  <p>系统预设一个管理员角色，拥有全部数据表的全部权限（导入+导出）。</p>
+  <table>
+    <tr><th>目标</th><th>拥有的表权限</th></tr>
+    <tr><td>管理员(角色)</td><td>全部数据表：导入+导出全开，可导入/可导出字段为空（全部允许），导入模式 insert</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 7. 通用组件 ==================== -->
+<div class="section" id="components">
+  <h2>7. 通用组件 <span class="badge">Components</span></h2>
+
+  <h3>7.1 TableSelector</h3>
+  <p>搜索过滤的数据表下拉选择器。支持 <code>filterPermission='import'|'export'</code> 按权限过滤（根据权限配置显示有权限的表）。调用 API <code>sjgl02Permissions:tables</code> 获取表列表。</p>
+
+  <h3>7.2 FileUploader</h3>
+  <p>拖拽上传 Excel。校验 .xlsx/.xls/.csv，最大 50MB。请求 <code>POST sjgl02Import:upload</code>。</p>
+
+  <h3>7.3 FieldCheckboxGroup</h3>
+  <p>按类型分组展示字段复选框（常规/关联/附件），支持全选。</p>
+
+  <h3>7.4 FilterConditionBuilder</h3>
+  <p>多行 AND 筛选条件。每行：字段选择 → 操作符（按字段类型动态：字符串有包含/开头等，数字有大于/小于等，日期有早于/晚于） → 值输入 → 删除按钮。支持添加/删除行。</p>
+</div>
+
+<!-- ==================== 8. API ==================== -->
+<div class="section" id="api">
+  <h2>8. API 端点清单</h2>
+
+  <h3>8.1 导入</h3>
+  <table>
+    <tr><th>端点</th><th>方法</th><th>参数</th></tr>
+    <tr><td><code>sjgl02Import:tableFields</code></td><td>GET</td><td><code>tableName</code></td></tr>
+    <tr><td><code>sjgl02Import:upload</code></td><td>POST</td><td>multipart <code>file</code> → <code>{ sheets, headerColumns, fileId }</code></td></tr>
+    <tr><td><code>sjgl02Import:preview</code></td><td>POST</td><td><code>{ fileId, sheetName, headerRow, fieldMapping }</code> → 预览 N 行</td></tr>
+    <tr><td><code>sjgl02Import:execute</code></td><td>POST</td><td><code>{ tableName, fileId, sheetName, headerRow, fieldMapping, importMode }</code> → <code>{ taskId }</code></td></tr>
+    <tr><td><code>sjgl02Import:progress</code></td><td>GET</td><td><code>taskId</code> → 进度</td></tr>
+  </table>
+
+  <h3>8.2 导出</h3>
+  <table>
+    <tr><th>端点</th><th>方法</th><th>参数</th></tr>
+    <tr><td><code>sjgl02Export:tableFields</code></td><td>GET</td><td><code>tableName</code></td></tr>
+    <tr><td><code>sjgl02Export:previewCount</code></td><td>POST</td><td><code>{ tableName, filter }</code> → 预估行数</td></tr>
+    <tr><td><code>sjgl02Export:execute</code></td><td>POST</td><td><code>{ tableName, selectedFields, associationDisplayMode, includeAssociationSheet, associationSheetTables, filter, fileNameTemplate }</code> → <code>{ taskId }</code></td></tr>
+    <tr><td><code>sjgl02Export:progress</code></td><td>GET</td><td><code>taskId</code> → 进度 + exportFileId</td></tr>
+    <tr><td><code>sjgl02Export:download</code></td><td>GET</td><td><code>taskId</code> → 文件流</td></tr>
+  </table>
+
+  <h3>8.3 任务管理</h3>
+  <table>
+    <tr><th>端点</th><th>方法</th><th>参数</th></tr>
+    <tr><td><code>sjgl02Tasks:list</code></td><td>GET</td><td>分页 + 筛选</td></tr>
+    <tr><td><code>sjgl02Tasks:detail</code></td><td>GET</td><td><code>taskId</code></td></tr>
+    <tr><td><code>sjgl02Tasks:logs</code></td><td>GET</td><td><code>taskId</code> → errorLogs + fieldMapping</td></tr>
+    <tr><td><code>sjgl02Tasks:cancel</code></td><td>POST</td><td><code>{ taskId }</code></td></tr>
+  </table>
+
+  <h3>8.4 权限管理</h3>
+  <table>
+    <tr><th>端点</th><th>方法</th><th>参数</th></tr>
+    <tr><td><code>sjgl02Permissions:userRoleList</code></td><td>GET</td><td>—</td></tr>
+    <tr><td><code>sjgl02Permissions:tables</code></td><td>GET</td><td>—</td></tr>
+    <tr><td><code>sjgl02Permissions:get</code></td><td>GET</td><td><code>targetType, targetId</code></td></tr>
+    <tr><td><code>sjgl02Permissions:save</code></td><td>POST</td><td>全量权限对象（upsert）</td></tr>
+    <tr><td><code>sjgl02Permissions:settings</code></td><td>GET</td><td>— 全局设置</td></tr>
+    <tr><td><code>sjgl02Permissions:saveSettings</code></td><td>POST</td><td>全局设置</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 9. 数据模型 ==================== -->
+<div class="section" id="data">
+  <h2>9. 数据模型 <span class="badge">Collections</span></h2>
+
+  <h3>9.1 sjgl02Tasks</h3>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td>id</td><td>integer PK</td><td></td></tr>
+    <tr><td>taskType</td><td>select</td><td>import / export</td></tr>
+    <tr><td>tableName</td><td>string</td><td>目标表名</td></tr>
+    <tr><td>status</td><td>select</td><td>pending / processing / completed / failed / cancelled</td></tr>
+    <tr><td>fieldMapping</td><td>json</td><td>字段映射配置</td></tr>
+    <tr><td>selectedFields</td><td>json</td><td>导出选中字段</td></tr>
+    <tr><td>exportFilter</td><td>json</td><td>导出筛选条件</td></tr>
+    <tr><td>errorLogs</td><td>json</td><td>错误日志数组</td></tr>
+    <tr><td>progress</td><td>integer</td><td>0-100</td></tr>
+    <tr><td>totalRows</td><td>integer</td><td>总行数</td></tr>
+    <tr><td>processedRows</td><td>integer</td><td>已处理行数</td></tr>
+    <tr><td>importMode</td><td>string</td><td>insert / update / upsert</td></tr>
+    <tr><td>sheetName</td><td>string</td><td>Sheet 名称</td></tr>
+    <tr><td>headerRow</td><td>integer</td><td>表头行号，默认1</td></tr>
+    <tr><td>importFileId</td><td>integer</td><td>导入源文件附件ID</td></tr>
+    <tr><td>exportFileId</td><td>integer</td><td>导出文件附件ID</td></tr>
+    <tr><td>errorMessage</td><td>text</td><td>失败错误信息</td></tr>
+    <tr><td>includeAssociationSheet</td><td>boolean</td><td></td></tr>
+    <tr><td>associationSheetTables</td><td>json</td><td></td></tr>
+    <tr><td>associationDisplayMode</td><td>json</td><td></td></tr>
+    <tr><td>completedAt</td><td>datetime</td><td>完成时间</td></tr>
+    <tr><td>createdById</td><td>integer</td><td>创建人ID</td></tr>
+    <tr><td>createdAt / updatedAt</td><td>datetime</td><td></td></tr>
+  </table>
+
+  <h3>9.2 sjgl02TablePermissions</h3>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td>id</td><td>integer PK</td><td></td></tr>
+    <tr><td>targetType</td><td>select</td><td>user / role</td></tr>
+    <tr><td>targetId</td><td>integer</td><td></td></tr>
+    <tr><td>targetName</td><td>string</td><td>冗余</td></tr>
+    <tr><td>tableName</td><td>string</td><td></td></tr>
+    <tr><td>canImport</td><td>boolean</td><td>默认 false</td></tr>
+    <tr><td>canExport</td><td>boolean</td><td>默认 false</td></tr>
+    <tr><td>importMode</td><td>select</td><td>insert / update / upsert</td></tr>
+    <tr><td>uniqueFields</td><td>json</td><td>唯一值字段列表</td></tr>
+    <tr><td>requiredFields</td><td>json</td><td>必填字段列表</td></tr>
+    <tr><td>importFields</td><td>json</td><td>可导入字段（空=全部）</td></tr>
+    <tr><td>exportFields</td><td>json</td><td>可导出字段（空=全部）</td></tr>
+    <tr><td>exportFilter</td><td>json</td><td>导出筛选</td></tr>
+  </table>
+
+  <h3>9.3 sjgl02Settings</h3>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>默认</th></tr>
+    <tr><td>taskViewScope</td><td>string</td><td>own</td></tr>
+    <tr><td>maxFileSize</td><td>integer</td><td>50MB</td></tr>
+    <tr><td>batchSize</td><td>integer</td><td>1000</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 10. 错误处理 ==================== -->
+<div class="section" id="errata">
+  <h2>10. 错误处理与边界情况</h2>
+
+  <h3>10.1 通用</h3>
+  <ul>
+    <li>所有 API 请求失败 → <code>message.error</code> 提示</li>
+    <li>操作确认（导入/导出/取消/删除）→ <code>Modal.confirm</code></li>
+    <li>任务进度轮询超时 → <code>clearInterval</code> + 提示失败</li>
+  </ul>
+
+  <h3>10.2 导入</h3>
+  <ul>
+    <li>不支持格式/超 50MB → <code>Upload.LIST_IGNORE</code> + 提示</li>
+    <li>必填字段未映射 → 后端校验返回错误</li>
+    <li>关联字段匹配不到 → 记录行级错误日志</li>
+    <li>附件下载失败 → 记录行级错误日志</li>
+    <li>同一 Excel 列不可重复选择（下拉自动禁用）</li>
+    <li><strong>事务回滚</strong>：导入在单一事务中执行，<strong>任一数据行失败则整批全部回滚</strong>，不写入任何数据</li>
+  </ul>
+
+  <h3>10.3 导出</h3>
+  <ul>
+    <li>全部数据表导出前有警告提示</li>
+    <li>文件名模板支持 <code>{表名}</code> <code>{日期}</code> 占位符</li>
+  </ul>
+
+  <h3>10.4 任务</h3>
+  <ul>
+    <li>已完成/失败任务不可取消</li>
+    <li>导出任务完成后才可下载</li>
+    <li>未完成的导出任务在日志抽屉中不显示下载</li>
+  </ul>
+
+  <h3>10.5 权限</h3>
+  <ul>
+    <li>无权限的表在选择时不可见</li>
+    <li>权限 API 不可用降级显示所有表</li>
+    <li>可导入/可导出字段为空数组 = 全部允许</li>
+  </ul>
+</div>
+
+<hr style="margin:40px 0">
+<div style="text-align:center;font-size:13px;color:#9ca3af;padding-bottom:40px">
+  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v2.0 —
+</div>
+
+</div>
+</body>
+</html>
