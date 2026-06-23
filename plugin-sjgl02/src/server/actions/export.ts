@@ -1,8 +1,68 @@
 import { Context, Next } from '@nocobase/actions';
-import { DataSource } from '@nocobase/data-source-manager';
+import ExcelJS from 'exceljs';
+import fs from 'fs';
+import fsp from 'fs/promises';
+import path from 'path';
+import archiver from 'archiver';
+import { Mutex } from 'async-mutex';
+
+const exportMutex = new Mutex();
+
+function sanitizeSheetName(name: string): string {
+  return name.replace(/[\\\/\*\?\[\]:!@#\$%\^&\(\)]/g, '_').substring(0, 31);
+}
+
+function formatFileName(template: string, tableName: string): string {
+  const date = new Date().toISOString().substring(0, 10);
+  return template.replace(/\{表名\}/g, tableName).replace(/\{日期\}/g, date);
+}
+
+function formatValue(val: any): string {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'object') return JSON.stringify(val);
+  if (val instanceof Date) return val.toISOString();
+  return String(val);
+}
+
+function getScalarFields(coll: any): string[] {
+  if (!coll) return [];
+  const names: string[] = [];
+  try {
+    for (const f of Array.from(coll.fields?.values() || coll.fields || [])) {
+      const type = (f as any).type;
+      if (!['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(type)) {
+        names.push((f as any).name);
+      }
+    }
+  } catch {}
+  return names;
+}
+
+function getAssociationFields(coll: any): Array<{ name: string; type: string; target: string }> {
+  if (!coll) return [];
+  const fields: Array<{ name: string; type: string; target: string }> = [];
+  try {
+    for (const f of Array.from(coll.fields?.values() || coll.fields || [])) {
+      const type = (f as any).type;
+      if (['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(type)) {
+        fields.push({
+          name: (f as any).name,
+          type,
+          target: (f as any).options?.target || (f as any).target || '',
+        });
+      }
+    }
+  } catch {}
+  return fields;
+}
 
 export async function getExportTableFields(ctx: Context, next: Next) {
   const { tableName } = ctx.action.params;
+  if (!tableName || tableName === '__all__') {
+    ctx.body = [];
+    await next();
+    return;
+  }
   const coll: any = ctx.db.getCollection(tableName);
   if (!coll) {
     ctx.throw(404, `Table ${tableName} not found`);
@@ -13,78 +73,14 @@ export async function getExportTableFields(ctx: Context, next: Next) {
   } catch {
     rawFields = [];
   }
-  const fields = rawFields.map((f: any) => ({
-    name: f.name,
-    type: f.type,
-    uiSchema: f.options?.uiSchema || null,
-    interface: f.options?.interface || null,
-    isRequired: f.options?.allowNull === false,
-    isAssociation: ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(f.type),
-  }));
-  ctx.body = { data: fields };
-  await next();
-}
-
-export async function previewCount(ctx: Context, next: Next) {
-  const { tableName, filter } = ctx.action.params;
-  const repo = ctx.db.getRepository(tableName);
-  const count = repo ? await repo.count({ filter }) : 0;
-  ctx.body = { data: { estimatedRows: count || 5230 } };
-  await next();
-}
-
-export async function executeExport(ctx: Context, next: Next) {
-  const { tableName, selectedFields, associationDisplayMode, includeAssociationSheet, associationSheetTables, filter, fileNameTemplate } = ctx.action.params;
-  const repo = ctx.db.getRepository('sjgl02_tasks');
-  const task = await repo.create({
-    values: {
-      taskType: 'export',
-      tableName,
-      status: 'processing',
-      selectedFields,
-      exportFilter: filter,
-      associationDisplayMode,
-      includeAssociationSheet,
-      associationSheetTables,
-      totalRows: 5230,
-      progress: 0,
-      createdById: ctx.state.currentUser?.id,
-    },
-  });
-  setTimeout(async () => {
-    await repo.update({
-      filterByTk: task.id,
-      values: {
-        status: 'completed',
-        progress: 100,
-        processedRows: 5230,
-        exportFileId: task.id,
-        completedAt: new Date(),
-      },
-    });
-  }, 3000);
-  ctx.body = { data: { taskId: task.id } };
-  await next();
-}
-
-export async function getProgress(ctx: Context, next: Next) {
-  const { taskId } = ctx.action.params;
-  const repo = ctx.db.getRepository('sjgl02_tasks');
-  const task = await repo.findOne({ filter: { id: taskId } });
-  if (!task) {
-    ctx.throw(404, 'Task not found');
-  }
-  ctx.body = { data: { progress: task.progress, status: task.status, exportFileId: task.exportFileId } };
-  await next();
-}
-
-export async function downloadExport(ctx: Context, next: Next) {
-  const { taskId } = ctx.action.params;
-  const repo = ctx.db.getRepository('sjgl02_tasks');
-  const task = await repo.findOne({ filter: { id: taskId } });
-  if (!task) {
-    ctx.throw(404, 'Task not found');
-  }
-  ctx.body = { data: { downloadUrl: `/api/sjgl02Export:downloadFile/${taskId}` } };
-  await next();
-}
+  const autoFields = ['id', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'createdById', 'updatedById'];
+  const fields = rawFields.map((f: any) => {
+    let title = f.options?.uiSchema?.title || null;
+    if (title && /^\{\{/.test(title)) title = null;
+    return {
+      name: f.name,
+      type: f.type,
+      uiSchema: { ...(f.options?.uiSchema || {}), title },
+      interface: f.options?.interface || null,
+      isRequired: autoFields.includes(f.name) ? false : f.options?.allowNull === false,
+      isAssociation: ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes

@@ -1,52 +1,52 @@
 import { Context, Next } from '@nocobase/actions';
 
 export async function listTasks(ctx: Context, next: Next) {
-  const { page = 1, pageSize = 20, taskType, status } = ctx.action.params;
+  const { taskType, status } = ctx.action.params;
+  const page = Math.max(1, parseInt(ctx.action.params.page || '1', 10) || 1);
+  const pageSize = Math.min(200, Math.max(1, parseInt(ctx.action.params.pageSize || '20', 10) || 20));
   const filter: any = {};
   if (taskType && taskType !== 'all') filter.taskType = taskType;
   if (status && status !== 'all') filter.status = status;
+
+  const taskViewScope = await getTaskViewScope(ctx);
+  if (taskViewScope === 'own') {
+    filter.createdById = ctx.state.currentUser?.id || -1;
+  }
+
   const repo = ctx.db.getRepository('sjgl02_tasks');
   const [rows, total] = await repo.findAndCount({
     filter,
+    appends: ['createdBy'],
     page,
     pageSize,
     sort: ['-createdAt'],
-    appends: ['createdBy'],
   });
-  ctx.body = { data: rows, meta: { total, page, pageSize } };
+  ctx.body = {
+    items: rows,
+    total,
+    page,
+    pageSize,
+  };
   await next();
 }
 
 export async function getTaskDetail(ctx: Context, next: Next) {
   const { taskId } = ctx.action.params;
   const repo = ctx.db.getRepository('sjgl02_tasks');
-  const task = await repo.findOne({ filter: { id: taskId }, appends: ['createdBy'] });
+  const task = await repo.findOne({
+    filter: { id: taskId },
+    appends: ['createdBy'],
+  });
   if (!task) {
     ctx.throw(404, 'Task not found');
   }
-  ctx.body = { data: task };
-  await next();
-}
-
-export async function getTaskLogs(ctx: Context, next: Next) {
-  const { taskId } = ctx.action.params;
-  const repo = ctx.db.getRepository('sjgl02_tasks');
-  const task = await repo.findOne({ filter: { id: taskId } });
-  if (!task) {
-    ctx.throw(404, 'Task not found');
-  }
-  ctx.body = {
-    data: {
-      errorLogs: task.errorLogs || [],
-      fieldMapping: task.fieldMapping || null,
-      selectedFields: task.selectedFields || null,
-    },
-  };
+  ctx.body = task;
   await next();
 }
 
 export async function cancelTask(ctx: Context, next: Next) {
-  const { taskId } = ctx.action.params;
+  const params = ctx.action.params.values || ctx.action.params;
+  const { taskId } = params;
   const repo = ctx.db.getRepository('sjgl02_tasks');
   const task = await repo.findOne({ filter: { id: taskId } });
   if (!task) {
@@ -59,6 +59,10 @@ export async function cancelTask(ctx: Context, next: Next) {
     filterByTk: task.id,
     values: { status: 'cancelled', progress: task.progress },
   });
-  ctx.body = { data: { success: true } };
+  ctx.body = { success: true };
   await next();
 }
+
+async function getTaskViewScope(ctx: Context): Promise<string> {
+  try {
+    const settingRepo = ctx.db.getRe

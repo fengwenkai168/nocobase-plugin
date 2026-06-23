@@ -1,6 +1,7 @@
 import { Context, Next } from '@nocobase/actions';
-import { Repository } from '@nocobase/database';
-import { DataSource } from '@nocobase/data-source-manager';
+import * as XLSX from 'xlsx';
+import fs from 'fs';
+import path from 'path';
 
 export async function getTableFields(ctx: Context, next: Next) {
   const { tableName } = ctx.action.params;
@@ -14,86 +15,65 @@ export async function getTableFields(ctx: Context, next: Next) {
   } catch {
     rawFields = [];
   }
-  const fields = rawFields.map((f: any) => ({
-    name: f.name,
-    type: f.type,
-    uiSchema: f.options?.uiSchema || null,
-    interface: f.options?.interface || null,
-    isRequired: f.options?.allowNull === false,
-    isRelation: ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(f.type),
-  }));
-  ctx.body = { data: fields };
+  const autoFields = ['id', 'createdAt', 'updatedAt', 'createdBy', 'updatedBy', 'createdById', 'updatedById'];
+  const fields = rawFields.map((f: any) => {
+    let title = f.options?.uiSchema?.title || null;
+    if (title && /^\{\{/.test(title)) title = null;
+    return {
+      name: f.name,
+      type: f.type,
+      uiSchema: { ...(f.options?.uiSchema || {}), title },
+      interface: f.options?.interface || null,
+      isRequired: autoFields.includes(f.name) ? false : f.options?.allowNull === false,
+      isRelation: ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(f.type),
+    };
+  });
+  ctx.body = fields;
   await next();
 }
 
-export async function uploadFile(ctx: Context, next: Next) {
-  const file = ctx.file;
-  if (!file) {
-    ctx.throw(400, 'No file uploaded');
+export async function uploadParse(ctx: Context, next: Next) {
+  const params = ctx.action.params.values || ctx.action.params;
+  const { fileId } = params;
+  if (!fileId) {
+    ctx.throw(400, 'fileId is required');
   }
-  const ext = file.originalname?.split('.').pop()?.toLowerCase();
-  if (!['xlsx', 'xls', 'csv'].includes(ext)) {
-    ctx.throw(400, 'Unsupported file format. Only .xlsx, .xls, .csv allowed');
+  try {
+    const attachRepo = ctx.db.getRepository('attachments');
+    const attachment = await attachRepo.findOne({ filter: { id: fileId } });
+    if (!attachment) {
+      ctx.throw(404, 'File not found in storage');
+    }
+    const ext = (attachment.extname || '').toLowerCase().replace('.', '');
+    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+      ctx.throw(400, `Unsupported format: ${ext}. Only .xlsx, .xls, .csv allowed`);
+    }
+    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
+    const filePath = path.join(storageDir, attachment.path || attachment.filename);
+    if (!fs.existsSync(filePath)) {
+      ctx.throw(404, 'File not found on disk');
+    }
+    const workbook = XLSX.readFile(filePath, { type: 'file' });
+    const sheets = workbook.SheetNames;
+    const firstSheet = sheets[0];
+    const ws = workbook.Sheets[firstSheet];
+    const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    const headerColumns = (rows[0] || []).map((h: any) => String(h));
+    ctx.body = {
+      sheets,
+      headerColumns,
+      fileId,
+      fileName: attachment.filename || attachment.title,
+    };
+  } catch (err: any) {
+    if (err.status) throw err;
+    ctx.throw(500, 'Failed to parse file: ' + err.message);
   }
-  if (file.size > 50 * 1024 * 1024) {
-    ctx.throw(400, 'File too large. Maximum 50MB');
-  }
-  const workbook = file.path || file.buffer;
-  ctx.body = {
-    data: {
-      fileId: file.id || Date.now(),
-      fileName: file.originalname,
-      size: file.size,
-    },
-  };
   await next();
 }
 
 export async function preview(ctx: Context, next: Next) {
-  const { fileId, sheetName, headerRow } = ctx.action.params;
-  const previewRows = [
-    { 姓名: '张三', 手机号: '13800138001', 年龄: 28, 邮箱: 'zhangsan@example.com', 地址: '北京市朝阳区' },
-    { 姓名: '李四', 手机号: '13800138002', 年龄: 35, 邮箱: 'lisi@example.com', 地址: '上海市浦东新区' },
-  ];
-  ctx.body = {
-    data: {
-      rows: previewRows,
-      totalRows: 1256,
-      columns: Object.keys(previewRows[0]),
-    },
-  };
-  await next();
-}
-
-export async function executeImport(ctx: Context, next: Next) {
-  const { tableName, fileId, sheetName, headerRow, fieldMapping, importMode } = ctx.action.params;
-  const repo = ctx.db.getRepository('sjgl02_tasks');
-  const task = await repo.create({
-    values: {
-      taskType: 'import',
-      tableName,
-      status: 'processing',
-      fieldMapping,
-      importMode,
-      sheetName,
-      headerRow,
-      importFileId: fileId,
-      totalRows: 1256,
-      progress: 0,
-      createdById: ctx.state.currentUser?.id,
-    },
-  });
-  setTimeout(async () => {
-    await repo.update({
-      filterByTk: task.id,
-      values: {
-        status: 'completed',
-        progress: 100,
-        processedRows: 1256,
-        completedAt: new Date(),
-      },
-    });
-  }, 2000);
-  ctx.body = { data: { taskId: task.id } };
-  await next();
-}
+  const params = ctx.action.params.values || ctx.action.params;
+  const { fileId, sheetName, headerRow } = params;
+  if (!fileId) {
+    ctx.throw(400, 'fileId is requi

@@ -1,7 +1,7 @@
 import { Plugin } from '@nocobase/server';
 import {
   getTableFields,
-  uploadFile,
+  uploadParse,
   preview,
   executeImport,
 } from './actions/import';
@@ -15,7 +15,6 @@ import {
 import {
   listTasks,
   getTaskDetail,
-  getTaskLogs,
   cancelTask,
 } from './actions/tasks';
 import {
@@ -38,7 +37,7 @@ export class PluginSjgl02Server extends Plugin {
       name: 'sjgl02Import',
       actions: {
         tableFields: getTableFields,
-        upload: uploadFile,
+        uploadParse,
         preview,
         execute: executeImport,
       },
@@ -60,7 +59,6 @@ export class PluginSjgl02Server extends Plugin {
       actions: {
         list: listTasks,
         detail: getTaskDetail,
-        logs: getTaskLogs,
         cancel: cancelTask,
       },
     });
@@ -101,7 +99,6 @@ export class PluginSjgl02Server extends Plugin {
         },
       });
     }
-  }
-}
 
-export default PluginSjgl02Server;
+    const permRepo = this.db.getRepository('sjgl02_table_permissions');
+    const permCou
