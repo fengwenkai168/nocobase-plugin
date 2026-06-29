@@ -46,9 +46,9 @@ async function getUserRoleList(ctx, next) {
       type: "user"
     })),
     roles: roles.map((r) => ({
-      id: String(r.name),
+      id: r.name,
       name: r.name,
-      title: r.title,
+      title: r.title && !/^\{\{/.test(r.title) ? r.title : r.name,
       type: "role"
     }))
   };
@@ -84,8 +84,46 @@ async function getTables(ctx, next) {
 }
 async function getPermissions(ctx, next) {
   const { targetType, targetId } = ctx.action.params;
+  if (!targetType || !targetId) {
+    ctx.body = [];
+    await next();
+    return;
+  }
+  if (targetType === "role") {
+    try {
+      const roleRepo = ctx.db.getRepository("roles");
+      const role = await roleRepo.findOne({ filter: { name: targetId } });
+      if ((role == null ? void 0 : role.name) === "admin" || (role == null ? void 0 : role.name) === "root") {
+        const repo2 = ctx.db.getRepository("sjgl02_table_permissions");
+        const existing = await repo2.find({ filter: { targetType: "role", targetId: String(targetId) } });
+        const existingNames = new Set(existing.map((p) => p.tableName));
+        const tables = ctx.db.collections;
+        for (const [name] of tables) {
+          if (name.startsWith("sjgl02_")) continue;
+          if (!existingNames.has(name)) {
+            await repo2.create({
+              values: {
+                targetType: "role",
+                targetId: String(targetId),
+                targetName: "\u7BA1\u7406\u5458",
+                tableName: name,
+                canImport: true,
+                canExport: true,
+                importMode: ["insert", "update", "upsert"],
+                uniqueFields: [],
+                requiredFields: [],
+                importFields: [],
+                exportFields: []
+              }
+            });
+          }
+        }
+      }
+    } catch {
+    }
+  }
   const repo = ctx.db.getRepository("sjgl02_table_permissions");
-  const permissions = await repo.find({ filter: { targetType, targetId } });
+  const permissions = await repo.find({ filter: { targetType, targetId: String(targetId) } });
   ctx.body = permissions;
   await next();
 }
@@ -104,53 +142,5 @@ async function savePermissions(ctx, next) {
     return;
   }
   const firstPerm = permissions[0];
-  const filter = { targetType: firstPerm.targetType, targetId: firstPerm.targetId };
-  const existingPerms = await repo.find({ filter });
-  const submittedTableNames = new Set(permissions.map((p) => p.tableName));
-  for (const existing of existingPerms) {
-    if (!submittedTableNames.has(existing.tableName)) {
-      await repo.destroy({ filterByTk: existing.id });
-    }
-  }
-  for (const perm of permissions) {
-    if (perm.id) {
-      await repo.update({ filterByTk: perm.id, values: perm });
-    } else {
-      await repo.create({ values: perm });
-    }
-  }
-  ctx.body = { success: true };
-  await next();
-}
-async function getSettings(ctx, next) {
-  const repo = ctx.db.getRepository("sjgl02_settings");
-  let settings = await repo.findOne();
-  if (!settings) {
-    settings = await repo.create({
-      values: { taskViewScope: "own", maxFileSize: 50, batchSize: 1e3 }
-    });
-  }
-  ctx.body = settings;
-  await next();
-}
-async function saveSettings(ctx, next) {
-  const values = ctx.action.params.values || ctx.action.params;
-  const repo = ctx.db.getRepository("sjgl02_settings");
-  let settings = await repo.findOne();
-  if (settings) {
-    await repo.update({ filterByTk: settings.id, values });
-  } else {
-    await repo.create({ values });
-  }
-  ctx.body = { success: true };
-  await next();
-}
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  getPermissions,
-  getSettings,
-  getTables,
-  getUserRoleList,
-  savePermissions,
-  saveSettings
-});
+  if (!firstPerm.targetType || !firstPerm.targetId) {
+    ctx.body = { suc

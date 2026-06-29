@@ -45,12 +45,12 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 <div class="container">
 
 <div class="cover">
-  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v3.16</h1>
-  <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · v1.0.34 已实现</div>
+  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v3.20</h1>
+  <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · v1.0.39 已实现</div>
   <div class="meta">
     <span>📅 2026-06-29</span>
-    <span>🏷️ v1.0.34（已实现）</span>
-    <span>📄 状态：终稿 v3.16</span>
+    <span>🏷️ v1.0.39（已实现）</span>
+    <span>📄 状态：终稿 v3.20</span>
     <span>🎯 参考原型：sjgl02-ui.html</span>
   </div>
 </div>
@@ -208,14 +208,19 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <li>全部数据表 → <code>.zip</code>（内含每张表的独立 .xlsx 文件 + 附件）</li>
   </ul>
 
-  <h3>4.5 附件导出（v1.0.34+）</h3>
-  <p>勾选「包含附件文件」后，服务端自动识别表中 <code>type='belongsToMany'</code> 且 <code>interface='attachment'</code> 的字段，将附件文件打包进 ZIP。</p>
+  <h3>4.5 附件导出（v1.0.39+）</h3>
+  <p>勾选「包含附件文件」后，服务端自动识别两种附件来源，将附件文件打包进 ZIP：</p>
+  <table>
+    <tr><th>来源</th><th>检测方式</th><th>Excel 列显示</th><th>ZIP 文件夹</th></tr>
+    <tr><td>附件上传字段（头像、照片等）</td><td><code>belongsToMany + interface='attachment'</code></td><td>系统文件名，逗号分隔，如 <code>照片_abc123.jpg</code></td><td>按字段名分文件夹</td></tr>
+    <tr><td>文件ID字段（exportFileId、importFileId 等）</td><td><code>integer + 名称匹配 /FileId$/</code></td><td>附件文件名（批量预查询），如 <code>用户(users)-20260629.xlsx</code></td><td>按字段名分文件夹</td></tr>
+  </table>
   <table>
     <tr><th>ZIP 内容</th><th>说明</th></tr>
-    <tr><td><code>{表名}_{日期}.xlsx</code></td><td>数据表 Excel，附件列显示为系统文件名（逗号分隔），如 <code>照片_abc123.jpg, 文档_def456.pdf</code></td></tr>
-    <tr><td><code>{附件字段显示名}/</code></td><td>按字段分文件夹，内含原始附件文件，文件名与 Excel 中显示的一致</td></tr>
+    <tr><td><code>{表名}_{日期}.xlsx</code></td><td>数据表 Excel，附件列显示为系统文件名（逗号分隔）</td></tr>
+    <tr><td><code>{附件字段显示名}/</code></td><td>按字段分文件夹，内含原始附件文件，文件名与 Excel 列一致</td></tr>
   </table>
-  <div class="alert-info"><strong>对应关系</strong>：Excel 附件列显示的每个文件名，都能在对应字段文件夹中找到同名文件，确保可追溯。</div>
+  <div class="alert-info"><strong>对应关系</strong>：Excel 附件列显示的文件名，与 ZIP 中对应文件夹下的文件完全一致，可一一对应追溯。</div>
 
 </div>
 
@@ -235,7 +240,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <tr><th>列</th><th>说明</th></tr>
     <tr><td>任务ID</td><td>#1001 格式</td></tr>
     <tr><td>类型</td><td><span class="tag tag-blue">导入</span> / <span class="tag tag-green">导出</span></td></tr>
-    <tr><td>目标表</td><td>表名</td></tr>
+    <tr><td>目标表</td><td>表名；全部数据表导出任务显示为"全部数据表"</td></tr>
     <tr><td>状态</td><td>点+颜色：排队中(橙)、进行中(蓝)、已完成(绿)、失败(红)</td></tr>
     <tr><td>进度</td><td>Progress 条 + 百分比。排队中为灰色，失败为红色</td></tr>
     <tr><td>数据量</td><td>已处理/总数</td></tr>
@@ -292,12 +297,15 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
   <h3>6.5 交互数据层</h3>
   <p>前端内存中维护每个用户/角色的权限配置数据（<code>permStore</code> 对象）。点击左侧切换用户时右侧实时重渲染。卡片上的导入/导出开关点击后立即更新内存并触发重新渲染。</p>
 
-  <h3>6.6 预置权限数据</h3>
-  <p>系统预设一个管理员角色，拥有全部数据表的全部权限（导入+导出）。</p>
+  <h3>6.6 预置权限数据与自动同步</h3>
+  <p>系统预设管理员角色（admin），拥有全部数据表的全部权限（导入+导出）。</p>
   <table>
     <tr><th>目标</th><th>拥有的表权限</th></tr>
     <tr><td>管理员(角色)</td><td>全部数据表：导入+导出全开，可导入/可导出字段为空（全部允许），导入模式 insert</td></tr>
   </table>
+  <br>
+  <p><strong>自动同步机制</strong>：每次查看管理员角色的权限时，服务端自动检查是否有新增的数据表未配置权限，如有则自动补齐。管理员无需手动为新表添加权限。</p>
+  <p><strong>角色显示</strong>：角色名优先使用数据库的 <code>title</code> 字段，若为 i18n 模板（如 <code>{{t("Admin")}}</code>）则自动回退使用 <code>name</code> 字段显示，避免乱码。</p>
 </div>
 
 <!-- ==================== 7. 通用组件 ==================== -->
@@ -466,7 +474,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 
 <!-- ==================== 11. 实现说明 ==================== -->
 <div class="section" id="changelog">
-  <h2>11. 实现说明 <span class="badge">v1.0.34 最终版</span></h2>
+  <h2>11. 实现说明 <span class="badge">v1.0.39 最终版</span></h2>
 
   <h3>11.1 客户端架构</h3>
   <table>
@@ -503,15 +511,20 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <li><strong>无硬编码</strong>：所有表列表、字段列表、用户/角色列表均从 API 动态获取，无任何 mock 数据</li>
     <li><strong>Sheet 切换联动</strong>：切换 Sheet 名称或修改表头行号时，自动调用 uploadParse 重新解析并更新表头列表、字段映射和预览元数据</li>
     <li><strong>预览表头弹框</strong>：点击📋按钮弹出 Modal，展示当前 Sheet 的完整表头列名 + 前 10 行表格预览，顶部概览 Sheet 名称、表头行号和数据总行数</li>
-    <li><strong>附件导出</strong>：识别 attachment 类型字段（belongsToMany + interface='attachment'），查询时 appends 加载关联附件数据；Excel 中附件列显示系统文件名（逗号分隔）；用 archiver 将 .xlsx 与附件文件打包为 ZIP，附件按字段名分文件夹存放，文件名与 Excel 列一致</li>
+    <li><strong>附件导出</strong>：识别 attachment 类型字段（belongsToMany + interface='attachment'）；额外识别 integer + /FileId$/ 命名的文件ID字段；查询时 appends 加载关联附件数据；Excel 写入前批量预查 attachments 表获取文件名（Excel 与 ZIP 共用同一份 filenameMap），ZIP 按字段名分文件夹存放，Excel 列和 ZIP 文件名一致可对应</li>
     <li><strong>日期格式统一</strong>：导出时 date/datetime/datetimeTz/unixTimestamp 四类字段统一为本地时区 <code>YYYY-MM-DD HH:mm:ss</code>；导入时自动将 ISO 格式转为标准日期格式；datetimeNoTz/dateOnly/time 三类字段本身兼容，不改动</li>
-    <li><strong>updatedAt 只读</strong>：导入字段映射表中，<code>interface='updatedAt'</code> 的字段显示 🔒 只读标签，不渲染 Excel 列选择器，避免用户映射后值被系统覆盖</li>
+    <li><strong>updatedAt 只读</strong>：导入字段映射表中，<code>interface='updatedAt'</code> 的字段显示 🔒 只读标签，不渲染 Excel 列选择器</li>
+    <li><strong>Sheet 切换联动</strong>：切换 Sheet 名称或修改表头行号时，自动调用 uploadParse 重新解析并更新表头列表、字段映射和预览元数据，同时清空旧的字段映射和唯一值配置</li>
+    <li><strong>预览表头弹框</strong>：点击📋按钮弹出 Modal，展示当前 Sheet 的完整表头列名 + 前 10 行表格预览，顶部概览 Sheet 名称、表头行号和数据总行数；按钮旁显示列数和行数统计</li>
+    <li><strong>管理员权限自动同步</strong>：查看管理员角色权限时自动补齐新增数据表的权限记录</li>
+    <li><strong>角色 ID 修复</strong>：角色标识由名称改为数字 ID，兼容旧数据自动迁移</li>
+    <li><strong>全部数据表任务兼容</strong>：<code>getTableFields</code> 兼容 <code>tableName='__all__'</code> 返回空数组；任务详情中目标表显示为「全部数据表」</li>
   </ul>
 </div>
 
 <hr style="margin:40px 0">
 <div style="text-align:center;font-size:13px;color:#9ca3af;padding-bottom:40px">
-  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v3.16（v1.0.34 实现版）—
+  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v3.20（v1.0.39 实现版）—
 </div>
 
 </div>

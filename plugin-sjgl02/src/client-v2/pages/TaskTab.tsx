@@ -150,7 +150,7 @@ export default function TaskTab() {
             <Descriptions title={t('Task summary')} column={2} size="small" bordered>
               <Descriptions.Item label={t('Task ID')}>#{logDrawer.task.id}</Descriptions.Item>
               <Descriptions.Item label={t('Type')}><Tag color={logDrawer.task.taskType === 'import' ? 'blue' : 'green'}>{logDrawer.task.taskType === 'import' ? t('Import task') : t('Export task')}</Tag></Descriptions.Item>
-              <Descriptions.Item label={t('Target table')}>{(tableTitles[logDrawer.task.tableName] || logDrawer.task.tableName) + '(' + logDrawer.task.tableName + ')'}</Descriptions.Item>
+              <Descriptions.Item label={t('Target table')}>{logDrawer.task.tableName === '__all__' ? '全部数据表' : (tableTitles[logDrawer.task.tableName] || logDrawer.task.tableName) + '(' + logDrawer.task.tableName + ')'}</Descriptions.Item>
               <Descriptions.Item label={t('Status')}><Tag color={STATUS_CONFIG[logDrawer.task.status]?.color}>{STATUS_CONFIG[logDrawer.task.status]?.label || logDrawer.task.status}</Tag></Descriptions.Item>
               {logDrawer.task.taskType === 'import' && <Descriptions.Item label="导入模式">{logDrawer.task.importMode || '—'}</Descriptions.Item>}
               <Descriptions.Item label={t('Creator')}>{logDrawer.task.createdBy?.nickname || '—'}</Descriptions.Item>
@@ -188,9 +188,4 @@ export default function TaskTab() {
                 columns={[{ title: t('Row number'), dataIndex: 'row', width: 60 }, { title: 'Excel行', dataIndex: 'excelRow', width: 60 }, { title: t('Error reason'), dataIndex: 'reason' }, { title: t('Field value snapshot'), dataIndex: 'snapshot' }]}
                 pagination={false} size="small" />
             ) : <Empty description={t('No errors')} />}
-          </div>
-        )}
-      </Drawer>
-    </div>
-  );
-}
+ 

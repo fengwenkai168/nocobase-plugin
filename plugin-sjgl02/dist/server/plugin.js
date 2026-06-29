@@ -96,7 +96,7 @@ class PluginSjgl02Server extends import_server.Plugin {
     if (existing === 0) {
       await settingRepo.create({
         values: {
-          taskViewScope: "own",
+          taskViewScope: "all",
           maxFileSize: 50,
           batchSize: 1e3
         }
@@ -107,35 +107,27 @@ class PluginSjgl02Server extends import_server.Plugin {
     if (permCount === 0) {
       const roleRepo = this.db.getRepository("roles");
       const adminRole = await roleRepo.findOne({ filter: { name: "admin" } });
-      const roleId = adminRole ? String(adminRole.name) : "admin";
+      const rootRole = await roleRepo.findOne({ filter: { name: "root" } });
+      const roleIds = [];
+      if (adminRole) roleIds.push(adminRole.name);
+      if (rootRole) roleIds.push(rootRole.name);
+      if (roleIds.length === 0) return;
       const tables = this.db.collections;
       const tablePermissions = [];
       for (const [name] of tables) {
         if (name.startsWith("sjgl02_")) continue;
-        tablePermissions.push({
-          targetType: "role",
-          targetId: roleId,
-          targetName: "\u7BA1\u7406\u5458",
-          tableName: name,
-          canImport: true,
-          canExport: true,
-          importMode: "insert",
-          uniqueFields: [],
-          requiredFields: [],
-          importFields: [],
-          exportFields: []
-        });
-      }
-      if (tablePermissions.length > 0) {
-        for (const perm of tablePermissions) {
-          await permRepo.create({ values: perm });
+        for (const roleId of roleIds) {
+          tablePermissions.push({
+            targetType: "role",
+            targetId: roleId,
+            targetName: roleId === "admin" ? "\u7BA1\u7406\u5458" : "\u8D85\u7EA7\u7BA1\u7406\u5458",
+            tableName: name,
+            canImport: true,
+            canExport: true,
+            importMode: ["insert", "update", "upsert"],
+            uniqueFields: [],
+            requiredFields: [],
+            importFields: [],
+            exportFields: []
+          });
         }
-      }
-    }
-  }
-}
-var plugin_default = PluginSjgl02Server;
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  PluginSjgl02Server
-});

@@ -85,8 +85,11 @@ function ensureUniqueSheetName(workbook, name) {
 }
 function formatValue(val) {
   if (val === null || val === void 0) return "";
+  if (val instanceof Date) {
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${val.getFullYear()}-${pad(val.getMonth() + 1)}-${pad(val.getDate())} ${pad(val.getHours())}:${pad(val.getMinutes())}:${pad(val.getSeconds())}`;
+  }
   if (typeof val === "object") return JSON.stringify(val);
-  if (val instanceof Date) return val.toISOString();
   return String(val);
 }
 function getScalarFields(coll) {
@@ -189,7 +192,7 @@ async function previewCount(ctx, next) {
   await next();
 }
 async function executeExport(ctx, next) {
-  var _a, _b, _c, _d;
+  var _a, _b, _c, _d, _e;
   const params = ctx.action.params.values || ctx.action.params;
   const {
     tableName,
@@ -260,6 +263,7 @@ async function executeExport(ctx, next) {
       let collectionTotal = 0;
       const appendFields = [];
       const attachmentFieldNames = [];
+      const fileIdFieldNames = [];
       try {
         for (const f of Array.from(((_b = coll.fields) == null ? void 0 : _b.values()) || coll.fields || [])) {
           if (f.type === "belongsTo") appendFields.push(f.name);
@@ -269,6 +273,9 @@ async function executeExport(ctx, next) {
               appendFields.push(f.name);
               attachmentFieldNames.push(f.name);
             }
+          }
+          if (includeAttachments && f.type === "integer" && /FileId$/.test(f.name)) {
+            fileIdFieldNames.push(f.name);
           }
         }
       } catch {
@@ -303,6 +310,41 @@ async function executeExport(ctx, next) {
       const headerRow = mainSheet.getRow(1);
       headerRow.font = { bold: true };
       headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+      const fileIdFilenameMap = /* @__PURE__ */ new Map();
+      const attachedIds = /* @__PURE__ */ new Set();
+      const attachFieldMap = /* @__PURE__ */ new Map();
+      if (includeAttachments && (attachmentFieldNames.length > 0 || fileIdFieldNames.length > 0)) {
+        for (const record of records) {
+          for (const afName of attachmentFieldNames) {
+            const av = record[afName];
+            if (Array.isArray(av)) {
+              for (const a of av) {
+                if ((a == null ? void 0 : a.id) && !attachedIds.has(a.id)) {
+                  attachedIds.add(a.id);
+                  attachFieldMap.set(a.id, afName);
+                }
+              }
+            }
+          }
+          for (const ffName of fileIdFieldNames) {
+            const fid = record[ffName];
+            if (fid && !attachedIds.has(fid)) {
+              attachedIds.add(fid);
+              attachFieldMap.set(fid, ffName);
+            }
+          }
+        }
+        if (attachedIds.size > 0) {
+          try {
+            const attachRepo2 = ctx.db.getRepository("attachments");
+            const attachRecords = await attachRepo2.find({ filter: { id: Array.from(attachedIds) } });
+            for (const at of attachRecords) {
+              if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
+            }
+          } catch {
+          }
+        }
+      }
       for (const record of records) {
         const row = {};
         for (const f of fieldNames) {
@@ -313,6 +355,8 @@ async function executeExport(ctx, next) {
             } else {
               val = "";
             }
+          } else if (fileIdFieldNames.includes(f)) {
+            val = fileIdFilenameMap.get(val) || String(val || "");
           } else if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
             const targetTitleField = ((_d = coll.options) == null ? void 0 : _d.titleField) || "id";
             val = val[targetTitleField] || val.id || JSON.stringify(val);
@@ -375,59 +419,46 @@ async function executeExport(ctx, next) {
       const filePath = import_path.default.join(tempDir, xlsxName);
       await workbook.xlsx.writeFile(filePath);
       outputFiles.push(filePath);
-      if (includeAttachments && attachmentFieldNames.length > 0) {
-        const attachedIds = /* @__PURE__ */ new Set();
-        const attachFileMap = /* @__PURE__ */ new Map();
-        for (const record of records) {
-          for (const afName of attachmentFieldNames) {
-            const av = record[afName];
-            if (Array.isArray(av)) {
-              for (const a of av) {
-                if ((a == null ? void 0 : a.id) && !attachedIds.has(a.id)) {
-                  attachedIds.add(a.id);
-                  attachFileMap.set(a.id, afName);
-                }
+      if (includeAttachments && attachedIds.size > 0 && fileIdFilenameMap.size > 0) {
+        try {
+          const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
+          const attachmentFiles = [];
+          for (const [aid, fn] of fileIdFilenameMap) {
+            const diskPath = import_path.default.join(storageDir, fn);
+            let realPath = diskPath;
+            if (!import_fs.default.existsSync(realPath)) {
+              const atRecords = await ctx.db.getRepository("attachments").find({ filter: { id: [aid] } });
+              if (((_e = atRecords[0]) == null ? void 0 : _e.path) !== void 0) {
+                realPath = import_path.default.join(storageDir, atRecords[0].path || "", fn);
               }
             }
+            if (!import_fs.default.existsSync(realPath)) continue;
+            const afName = attachFieldMap.get(aid) || "\u9644\u4EF6";
+            const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName));
+            attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
           }
-        }
-        if (attachedIds.size > 0) {
-          try {
-            const attachRepo2 = ctx.db.getRepository("attachments");
-            const attachRecords = await attachRepo2.find({ filter: { id: Array.from(attachedIds) } });
-            const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
-            const attachmentFiles = [];
-            for (const at of attachRecords) {
-              if (!at.filename) continue;
-              const diskPath = import_path.default.join(storageDir, at.path || "", at.filename);
-              if (!import_fs.default.existsSync(diskPath)) continue;
-              const afName = attachFileMap.get(at.id) || "\u9644\u4EF6";
-              const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName));
-              attachmentFiles.push({ entryName: `${folderName}/${at.filename}`, diskPath });
-            }
-            if (attachmentFiles.length > 0) {
-              const zipName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.zip", "");
-              const zipPath = import_path.default.join(tempDir, zipName);
-              const zipOutput = import_fs.default.createWriteStream(zipPath);
-              const zipArchive = (0, import_archiver.default)("zip", { zlib: { level: 9 } });
-              await new Promise((resolve, reject) => {
-                zipArchive.on("error", reject);
-                zipOutput.on("close", resolve);
-                zipArchive.pipe(zipOutput);
-                zipArchive.file(filePath, { name: import_path.default.basename(filePath) });
-                for (const af of attachmentFiles) {
-                  zipArchive.file(af.diskPath, { name: af.entryName });
-                }
-                zipArchive.finalize();
-              });
-              try {
-                import_fs.default.unlinkSync(filePath);
-              } catch {
+          if (attachmentFiles.length > 0) {
+            const zipName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.zip", "");
+            const zipPath = import_path.default.join(tempDir, zipName);
+            const zipOutput = import_fs.default.createWriteStream(zipPath);
+            const zipArchive = (0, import_archiver.default)("zip", { zlib: { level: 9 } });
+            await new Promise((resolve, reject) => {
+              zipArchive.on("error", reject);
+              zipOutput.on("close", resolve);
+              zipArchive.pipe(zipOutput);
+              zipArchive.file(filePath, { name: import_path.default.basename(filePath) });
+              for (const af of attachmentFiles) {
+                zipArchive.file(af.diskPath, { name: af.entryName });
               }
-              outputFiles[outputFiles.indexOf(filePath)] = zipPath;
+              zipArchive.finalize();
+            });
+            try {
+              import_fs.default.unlinkSync(filePath);
+            } catch {
             }
-          } catch {
+            outputFiles[outputFiles.indexOf(filePath)] = zipPath;
           }
+        } catch {
         }
       }
       await repo.update({
@@ -512,42 +543,4 @@ async function getProgress(ctx, next) {
   }
   ctx.body = {
     progress: task.progress,
-    status: task.status,
-    exportFileId: task.exportFileId
-  };
-  await next();
-}
-async function downloadExport(ctx, next) {
-  const { taskId } = ctx.action.params;
-  const repo = ctx.db.getRepository("sjgl02_tasks");
-  const task = await repo.findOne({ filter: { id: taskId } });
-  if (!task) {
-    ctx.throw(404, "Task not found");
-  }
-  if (!task.exportFileId) {
-    ctx.throw(404, "Export file not found");
-  }
-  const attachRepo = ctx.db.getRepository("attachments");
-  const attachment = await attachRepo.findOne({ filter: { id: task.exportFileId } });
-  if (!attachment) {
-    ctx.throw(404, "Attachment record not found");
-  }
-  const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
-  const filePath = import_path.default.join(storageDir, attachment.path || attachment.filename);
-  if (!import_fs.default.existsSync(filePath)) {
-    ctx.throw(404, "File not found on disk");
-  }
-  const fileName = attachment.title || attachment.filename || "export.xlsx";
-  ctx.attachment(encodeURIComponent(fileName));
-  ctx.set("Content-Type", attachment.mimetype || "application/octet-stream");
-  ctx.body = import_fs.default.createReadStream(filePath);
-  await next();
-}
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  downloadExport,
-  executeExport,
-  getExportTableFields,
-  getProgress,
-  previewCount
-});
+    statu

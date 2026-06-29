@@ -5,6 +5,11 @@ import path from 'path';
 
 export async function getTableFields(ctx: Context, next: Next) {
   const { tableName } = ctx.action.params;
+  if (!tableName || tableName === '__all__') {
+    ctx.body = [];
+    await next();
+    return;
+  }
   const coll: any = ctx.db.getCollection(tableName);
   if (!coll) {
     ctx.throw(404, `Table ${tableName} not found`);
@@ -210,6 +215,26 @@ export async function executeImport(ctx: Context, next: Next) {
     const errorLogs: any[] = [];
     let processedRows = 0;
 
+    const normalizeDateValue = (val: string): string => {
+      if (!val || !val.trim()) return val;
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(val)) return val;
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+      return val;
+    };
+
+    const dateFieldNames: string[] = [];
+    try {
+      for (const f of Array.from(coll.fields?.values() || [])) {
+        if (['date', 'datetime', 'datetimeTz', 'unixTimestamp'].includes((f as any).type)) {
+          dateFieldNames.push((f as any).name);
+        }
+      }
+    } catch {}
+
     const makeRecord = (row: any[]): Record<string, any> => {
       const record: Record<string, any> = {};
       for (const [tableField, excelCol] of Object.entries(mapping)) {
@@ -265,6 +290,10 @@ export async function executeImport(ctx: Context, next: Next) {
       const rowIndex = i + 1;
       try {
         const record = makeRecord(dataRows[i]);
+        for (const fn of dateFieldNames) {
+          const v = record[fn];
+          if (typeof v === 'string') record[fn] = normalizeDateValue(v);
+        }
         if ((importMode === 'update' || importMode === 'upsert') && uniqueFields.length > 0) {
           const allFilled = uniqueFields.every(uf => record[uf] !== undefined && record[uf] !== '');
           if (allFilled) {
@@ -346,47 +375,4 @@ export async function executeImport(ctx: Context, next: Next) {
           excelRow: (headerRow || 1) + rowIndex - 1,
           reason: rowErr.message || String(rowErr),
           snapshot: buildSnapshot(dataRows[i]),
-        });
-      }
-    }
-
-    if (errorLogs.length > 0) {
-      await transaction.rollback();
-      await repo.update({
-        filterByTk: task.id,
-        values: {
-          status: 'failed',
-          progress: 0,
-          processedRows: 0,
-          errorLogs,
-          errorMessage: `${errorLogs.length} 行数据失败，事务已回滚 (${errorLogs.length} row(s) failed, transaction rolled back)`,
-          completedAt: new Date(),
-        },
-      });
-    } else {
-      await transaction.commit();
-      await repo.update({
-        filterByTk: task.id,
-        values: {
-          status: 'completed',
-          progress: 100,
-          processedRows,
-          completedAt: new Date(),
-        },
-      });
-    }
-  } catch (err: any) {
-    await transaction.rollback();
-    await repo.update({
-      filterByTk: task.id,
-      values: {
-        status: 'failed',
-        errorMessage: err.message || String(err),
-        completedAt: new Date(),
-      },
-    });
-  }
-
-  ctx.body = { taskId: task.id };
-  await next();
-}
+   

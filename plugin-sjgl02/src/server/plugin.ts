@@ -93,7 +93,7 @@ export class PluginSjgl02Server extends Plugin {
     if (existing === 0) {
       await settingRepo.create({
         values: {
-          taskViewScope: 'own',
+          taskViewScope: 'all',
           maxFileSize: 50,
           batchSize: 1000,
         },
@@ -105,32 +105,23 @@ export class PluginSjgl02Server extends Plugin {
     if (permCount === 0) {
       const roleRepo = this.db.getRepository('roles');
       const adminRole = await roleRepo.findOne({ filter: { name: 'admin' } });
-      const roleId = adminRole ? String(adminRole.name) : 'admin';
+      const rootRole = await roleRepo.findOne({ filter: { name: 'root' } });
+      const roleIds: string[] = [];
+      if (adminRole) roleIds.push(adminRole.name);
+      if (rootRole) roleIds.push(rootRole.name);
+      if (roleIds.length === 0) return;
       const tables = this.db.collections;
       const tablePermissions: any[] = [];
       for (const [name] of tables) {
         if (name.startsWith('sjgl02_')) continue;
-        tablePermissions.push({
-          targetType: 'role',
-          targetId: roleId,
-          targetName: '管理员',
-          tableName: name,
+        for (const roleId of roleIds) {
+          tablePermissions.push({
+            targetType: 'role',
+            targetId: roleId,
+            targetName: roleId === 'admin' ? '管理员' : '超级管理员',
+            tableName: name,
           canImport: true,
           canExport: true,
-          importMode: 'insert',
+          importMode: ['insert', 'update', 'upsert'],
           uniqueFields: [],
-          requiredFields: [],
-          importFields: [],
-          exportFields: [],
-        });
-      }
-      if (tablePermissions.length > 0) {
-        for (const perm of tablePermissions) {
-          await permRepo.create({ values: perm });
-        }
-      }
-    }
-  }
-}
-
-export default PluginSjgl02Server;
+          re

@@ -48,6 +48,11 @@ var import_path = __toESM(require("path"));
 async function getTableFields(ctx, next) {
   var _a;
   const { tableName } = ctx.action.params;
+  if (!tableName || tableName === "__all__") {
+    ctx.body = [];
+    await next();
+    return;
+  }
   const coll = ctx.db.getCollection(tableName);
   if (!coll) {
     ctx.throw(404, `Table ${tableName} not found`);
@@ -187,7 +192,7 @@ async function preview(ctx, next) {
   await next();
 }
 async function executeImport(ctx, next) {
-  var _a;
+  var _a, _b;
   const params = ctx.action.params.values || ctx.action.params;
   const { tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields } = params;
   if (!tableName || !fileId) {
@@ -250,6 +255,25 @@ async function executeImport(ctx, next) {
     const targetRepo = ctx.db.getRepository(tableName);
     const errorLogs = [];
     let processedRows = 0;
+    const normalizeDateValue = (val) => {
+      if (!val || !val.trim()) return val;
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(val)) return val;
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+      return val;
+    };
+    const dateFieldNames = [];
+    try {
+      for (const f of Array.from(((_b = coll.fields) == null ? void 0 : _b.values()) || [])) {
+        if (["date", "datetime", "datetimeTz", "unixTimestamp"].includes(f.type)) {
+          dateFieldNames.push(f.name);
+        }
+      }
+    } catch {
+    }
     const makeRecord = (row) => {
       const record = {};
       for (const [tableField, excelCol] of Object.entries(mapping)) {
@@ -282,14 +306,14 @@ async function executeImport(ctx, next) {
       return JSON.stringify(snap).substring(0, 500);
     };
     const applyBelongsToFK = (record) => {
-      var _a2, _b;
+      var _a2, _b2;
       const belonegs = [];
       try {
         belonegs.push(...Array.from(((_a2 = coll.fields) == null ? void 0 : _a2.values()) || []).filter((f) => f.type === "belongsTo" && f.name !== "createdBy" && f.name !== "updatedBy"));
       } catch {
       }
       for (const bf of belonegs) {
-        const fk = ((_b = bf.options) == null ? void 0 : _b.foreignKey) || bf.name + "Id";
+        const fk = ((_b2 = bf.options) == null ? void 0 : _b2.foreignKey) || bf.name + "Id";
         const mappedVal = mapping[bf.name];
         if (mappedVal && mappedVal !== "__ignore__") {
           const colIdx = headers.indexOf(mappedVal);
@@ -305,6 +329,10 @@ async function executeImport(ctx, next) {
       const rowIndex = i2 + 1;
       try {
         const record = makeRecord(dataRows[i2]);
+        for (const fn of dateFieldNames) {
+          const v = record[fn];
+          if (typeof v === "string") record[fn] = normalizeDateValue(v);
+        }
         if ((importMode === "update" || importMode === "upsert") && uniqueFields.length > 0) {
           const allFilled = uniqueFields.every((uf) => record[uf] !== void 0 && record[uf] !== "");
           if (allFilled) {
@@ -396,42 +424,4 @@ async function executeImport(ctx, next) {
         values: {
           status: "failed",
           progress: 0,
-          processedRows: 0,
-          errorLogs,
-          errorMessage: `${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u4E8B\u52A1\u5DF2\u56DE\u6EDA (${errorLogs.length} row(s) failed, transaction rolled back)`,
-          completedAt: /* @__PURE__ */ new Date()
-        }
-      });
-    } else {
-      await transaction.commit();
-      await repo.update({
-        filterByTk: task.id,
-        values: {
-          status: "completed",
-          progress: 100,
-          processedRows,
-          completedAt: /* @__PURE__ */ new Date()
-        }
-      });
-    }
-  } catch (err) {
-    await transaction.rollback();
-    await repo.update({
-      filterByTk: task.id,
-      values: {
-        status: "failed",
-        errorMessage: err.message || String(err),
-        completedAt: /* @__PURE__ */ new Date()
-      }
-    });
-  }
-  ctx.body = { taskId: task.id };
-  await next();
-}
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  executeImport,
-  getTableFields,
-  preview,
-  uploadParse
-});
+          proces

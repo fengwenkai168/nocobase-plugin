@@ -1,11 +1,11 @@
 import { Plugin, useAPIClient } from '@nocobase/client';
 import React from 'react';
-import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, message, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload } from 'antd';
+import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, message, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload, Pagination } from 'antd';
 import { InboxOutlined, TableOutlined } from '@ant-design/icons';
 
 const { Dragger } = Upload;
 
-const VERSION = 'v1.0.27';
+const VERSION = 'v1.0.42';
 
 // ====== API 工具 ======
 function apiRequest(client: any, url: string, opts: any = {}) {
@@ -53,6 +53,7 @@ function ImportPanel() {
   const [step, setStep] = React.useState(0);
   const [selectedTable, setSelectedTable] = React.useState<any>(null);
   const [importMode, setImportMode] = React.useState('insert');
+  const [allowedModes, setAllowedModes] = React.useState<string[]>(['insert', 'update', 'upsert']);
   const [uploadedFileId, setUploadedFileId] = React.useState<number | null>(null);
   const [uploadedFileName, setUploadedFileName] = React.useState('');
   const [tableFields, setTableFields] = React.useState<any[]>([]);
@@ -69,6 +70,9 @@ function ImportPanel() {
 
   const doParse = () => {
     if (!uploadedFileId) return;
+    setFieldMapping({});
+    setCustomValues({});
+    setUniqueFields([]);
     client.request({ url: 'sjgl02Import:uploadParse', method: 'post', data: { fileId: uploadedFileId, sheetName, headerRow } })
       .then((pr: any) => {
         const pd = pr?.data?.data;
@@ -99,6 +103,29 @@ function ImportPanel() {
           setTableFields(Array.isArray(fields) ? fields : []);
         })
         .catch(() => {});
+    }
+  }, [selectedTable?.name]);
+
+  React.useEffect(() => {
+    if (selectedTable?.name) {
+      apiRequest(client, 'sjgl02Permissions:userRoleList').then((data: any) => {
+        if (!data) return;
+        const roles = (data.roles || []);
+        const users = (data.users || []);
+        const promises = [...roles.map((r: any) => apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: 'role', targetId: r.id } })),
+          ...users.map((u: any) => apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: 'user', targetId: u.id } }))];
+        Promise.all(promises).then((results: any[]) => {
+          for (const r of results) {
+            if (!Array.isArray(r)) continue;
+            const perm = r.find((p: any) => p.tableName === selectedTable.name && p.canImport);
+            if (perm?.importMode) {
+              setAllowedModes(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode]);
+              return;
+            }
+          }
+          setAllowedModes(['insert', 'update', 'upsert']);
+        }).catch(() => setAllowedModes(['insert', 'update', 'upsert']));
+      }).catch(() => setAllowedModes(['insert', 'update', 'upsert']));
     }
   }, [selectedTable?.name]);
 
@@ -253,6 +280,11 @@ function ImportPanel() {
                    <Button size="small" icon={<TableOutlined />}
                      disabled={!previewMeta?.previewRows?.length}
                      onClick={() => setPreviewModal(true)}>预览表头</Button>
+                   {previewMeta && (
+                     <span style={{ color: '#999', fontSize: 12 }}>
+                       共 {previewMeta.headerColumns?.length || 0} 列 / {previewMeta.totalRows || 0} 行数据
+                     </span>
+                   )}
                  </Space>
               </Card>
               <Card size="small" style={{ marginBottom: 12 }}>
@@ -263,7 +295,7 @@ function ImportPanel() {
                       { value: 'insert', label: '新增 (insert)' },
                       { value: 'update', label: '更新 (update)' },
                       { value: 'upsert', label: '新增+更新 (upsert)' },
-                    ]} />
+                    ].filter(o => allowedModes.includes(o.value))} />
                 </Space>
               </Card>
               {(importMode === 'update' || importMode === 'upsert') && (
@@ -283,22 +315,27 @@ function ImportPanel() {
                         title: 'Excel列 / 自定义值',
                         width: 220,
                         render: (record: any) => {
+                          const isUpdatedAt = record.field?.interface === 'updatedAt';
                           const val = fieldMapping[record.field.name];
                           const isCustom = val === '__custom__';
                           const used = Object.values(fieldMapping).filter(v => v && v !== '__ignore__' && v !== '__custom__');
                           return (
                             <div>
-                              <Select style={{ width: '100%' }} placeholder="忽略" value={val || undefined}
-                                onChange={v => setFieldMapping(prev => ({ ...prev, [record.field.name]: v }))} allowClear>
-                                <Select.Option value="__ignore__">🚫 忽略</Select.Option>
-                                <Select.Option value="__custom__">✏️ 自定义固定值</Select.Option>
-                                {excelHeaders.map((h: string) => (
-                                  <Select.Option key={h} value={h} disabled={used.includes(h) && val !== h}>
-                                    {h}{used.includes(h) && val !== h ? ' (已用)' : ''}
-                                  </Select.Option>
-                                ))}
-                              </Select>
-                              {isCustom && (
+                              {isUpdatedAt ? (
+                                <span style={{ color: '#999', lineHeight: '32px' }}>—</span>
+                              ) : (
+                                <Select style={{ width: '100%' }} placeholder="忽略" value={val || undefined}
+                                  onChange={v => setFieldMapping(prev => ({ ...prev, [record.field.name]: v }))} allowClear>
+                                  <Select.Option value="__ignore__">🚫 忽略</Select.Option>
+                                  <Select.Option value="__custom__">✏️ 自定义固定值</Select.Option>
+                                  {excelHeaders.map((h: string) => (
+                                    <Select.Option key={h} value={h} disabled={used.includes(h) && val !== h}>
+                                      {h}{used.includes(h) && val !== h ? ' (已用)' : ''}
+                                    </Select.Option>
+                                  ))}
+                                </Select>
+                              )}
+                              {isCustom && !isUpdatedAt && (
                                 <Input size="small" style={{ marginTop: 4 }} placeholder="输入固定值"
                                   value={customValues[record.field.name] || ''}
                                   onChange={e => setCustomValues(prev => ({ ...prev, [record.field.name]: e.target.value }))} />
@@ -312,6 +349,7 @@ function ImportPanel() {
                         title: '映射方式',
                         width: 80,
                         render: (record: any) => {
+                          if (record.field?.interface === 'updatedAt') return <Tag color="orange">🔒 只读</Tag>;
                           const val = fieldMapping[record.field.name];
                           if (!val || val === '__ignore__') return <Tag>忽略</Tag>;
                           if (val === '__custom__') return <Tag color="green">固定值</Tag>;
@@ -689,7 +727,7 @@ function TaskPanel() {
           t._fileName = att?.data?.data?.filename || att?.data?.data?.title || '';
         } catch { t._fileName = ''; }
       }
-      if (t.tableName) {
+      if (t.tableName && t.tableName !== '__all__') {
         try {
           const fd = await client.request({ url: 'sjgl02Import:tableFields', method: 'get', params: { tableName: t.tableName } });
           const fields = fd?.data?.data || [];
@@ -697,6 +735,8 @@ function TaskPanel() {
           (Array.isArray(fields) ? fields : []).forEach((f: any) => { map[f.name] = f.uiSchema?.title || f.name; });
           t._fieldTitles = map;
         } catch { t._fieldTitles = {}; }
+      } else {
+        t._fieldTitles = {};
       }
       setDrawer(t);
     } catch { setDrawer(task); }
@@ -749,7 +789,7 @@ function TaskPanel() {
             <Descriptions title="任务摘要" column={2} size="small" bordered>
               <Descriptions.Item label="任务ID">#{drawer.id}</Descriptions.Item>
               <Descriptions.Item label="类型"><Tag color={drawer.taskType === 'import' ? 'blue' : 'green'}>{drawer.taskType === 'import' ? '导入' : '导出'}</Tag></Descriptions.Item>
-              <Descriptions.Item label="目标表">{(tableTitles[drawer.tableName] || drawer.tableName) + '(' + drawer.tableName + ')'}</Descriptions.Item>
+              <Descriptions.Item label="目标表">{drawer.tableName === '__all__' ? '全部数据表' : (tableTitles[drawer.tableName] || drawer.tableName) + '(' + drawer.tableName + ')'}</Descriptions.Item>
               <Descriptions.Item label="状态"><Tag color={statusColors[drawer.status]}>{statusLabels[drawer.status]}</Tag></Descriptions.Item>
               <Descriptions.Item label="创建人">{drawer.createdBy?.nickname || '—'}</Descriptions.Item>
               <Descriptions.Item label="数据量">{drawer.processedRows || 0}/{drawer.totalRows || 0}</Descriptions.Item>
@@ -846,17 +886,22 @@ function PermissionPanel() {
   const [targets, setTargets] = React.useState<any[]>([]);
   const [selTarget, setSelTarget] = React.useState<any>(null);
   const [perms, setPerms] = React.useState<any[]>([]);
-  const [viewScope, setViewScope] = React.useState('own');
+  const [viewScope, setViewScope] = React.useState('all');
   const [modal, setModal] = React.useState<any>({ open: false });
   const [form] = Form.useForm();
   const [tables, setTables] = React.useState<any[]>([]);
-  const [modalFields, setModalFields] = React.useState<string[]>([]);
-
+  const [modalFields, setModalFields] = React.useState<{ name: string; label: string }[]>([]);
+  const [targetSearch, setTargetSearch] = React.useState('');
+  const [permSearch, setPermSearch] = React.useState('');
+  const [permPage, setPermPage] = React.useState(1);
+  const [formCanImport, setFormCanImport] = React.useState(true);
+  const [formCanExport, setFormCanExport] = React.useState(true);
+  const [formMode, setFormMode] = React.useState<string[]>(['insert']);
   React.useEffect(() => {
     apiRequest(client, 'sjgl02Permissions:userRoleList').then((data) => {
       if (data) {
         const users = (data.users || []).map((u: any) => ({ ...u, type: 'user' }));
-        const roles = (data.roles || []).map((r: any) => ({ id: r.id, nickname: r.title || r.name, name: r.name, type: 'role' }));
+        const roles = (data.roles || []).map((r: any) => ({ id: String(r.id || ''), nickname: r.title || r.name, name: r.name, type: 'role' })).filter((r: any) => r.id);
         setTargets([...users, ...roles]);
       }
     }).catch(() => {});
@@ -864,6 +909,9 @@ function PermissionPanel() {
       if (Array.isArray(data)) {
         setTables(data.map((t: any) => ({ name: t.name, title: t.title || t.name })));
       }
+    }).catch(() => {});
+    apiRequest(client, 'sjgl02Permissions:settings').then((data) => {
+      if (data?.taskViewScope) setViewScope(data.taskViewScope);
     }).catch(() => {});
   }, []);
 
@@ -882,24 +930,43 @@ function PermissionPanel() {
   };
   const deletePerm = (tableName: string) => setPerms(p => p.filter(x => x.tableName !== tableName));
   const savePermsRef = React.useRef(false);
+  const savingRef = React.useRef(false);
   React.useEffect(() => {
+    if (savingRef.current) return;
     if (!savePermsRef.current) { savePermsRef.current = true; return; }
     client.request({ url: 'sjgl02Permissions:save', method: 'post', data: { permissions: perms } }).catch(() => {});
   }, [perms]);
   const savePerms = async () => {
+    savingRef.current = true;
     try {
-      await client.request({ url: 'sjgl02Permissions:save', method: 'post', data: { permissions: perms } });
+      const values = await form.validateFields();
+      let updated = [...perms];
+      if (modal.perm) {
+        updated = updated.map(p => p.tableName === modal.perm.tableName ? { ...p, ...values } : p);
+      } else {
+        updated.push({
+          targetType: selTarget.type,
+          targetId: selTarget.id,
+          targetName: selTarget.nickname || selTarget.name || '',
+          ...values,
+        });
+      }
+      setPerms(updated);
+      await client.request({ url: 'sjgl02Permissions:save', method: 'post', data: { permissions: updated } });
       message.success('保存成功'); setModal({ open: false });
     } catch { message.error('保存失败'); }
+    finally { savingRef.current = false; }
   };
 
-  const userTargets = targets.filter(t => t.type === 'user');
-  const roleTargets = targets.filter(t => t.type === 'role');
+  const userTargets = targets.filter(t => t.type === 'user' && (!targetSearch || (t.nickname || t.name || '').toLowerCase().includes(targetSearch.toLowerCase())));
+  const roleTargets = targets.filter(t => t.type === 'role' && (!targetSearch || (t.nickname || t.name || '').toLowerCase().includes(targetSearch.toLowerCase())));
 
   return (
     <Row gutter={20}>
       <Col span={6}>
         <Card size="small" style={{ maxHeight: 500, overflow: 'auto' }}>
+          <Input.Search placeholder="搜索用户/角色" allowClear size="small" style={{ marginBottom: 8 }}
+            value={targetSearch} onChange={v => setTargetSearch(v.target.value)} />
           {[{ label: '👤 用户', items: userTargets, color: '#1677ff' }, { label: '👥 角色', items: roleTargets, color: '#52c41a' }].map(group => (
             <div key={group.label}>
               <div style={{ fontSize: 11, color: '#999', padding: '8px 8px 4px', fontWeight: 600 }}>{group.label} ({group.items.length})</div>
@@ -939,109 +1006,33 @@ function PermissionPanel() {
                     <Radio.Button value="own">仅查看自己的</Radio.Button>
                     <Radio.Button value="all">查看全部</Radio.Button>
                   </Radio.Group>
-                  <Button type="primary" size="small" onClick={() => { form.resetFields(); setModal({ open: true }); }}>+ 添加权限</Button>
+                  <Button type="primary" size="small" onClick={() => { form.resetFields(); form.setFieldsValue({ canImport: true, canExport: true, importMode: ['insert'] }); setModal({ open: true }); setFormCanImport(true); setFormCanExport(true); setFormMode(['insert']); }}>+ 添加权限</Button>
                 </Space>
               </Space>
             </Card>
-            {perms.length === 0 ? <Empty description="暂无权限配置" /> : perms.map(p => (
-              <Card key={p.tableName} size="small" style={{ marginBottom: 8 }}>
+            <Input.Search placeholder="搜索表名或表标识" allowClear size="small" style={{ marginBottom: 8 }}
+              value={permSearch} onChange={v => { setPermSearch(v.target.value); setPermPage(1); }} />
+            {(() => {
+              const filteredPerms = perms.filter((p: any) => {
+                if (!permSearch) return true;
+                const t = tables.find((x: any) => x.name === p.tableName);
+                return p.tableName.toLowerCase().includes(permSearch.toLowerCase()) ||
+                  (t?.title || '').toLowerCase().includes(permSearch.toLowerCase());
+              });
+              const totalPages = Math.ceil(filteredPerms.length / 20);
+              const pagedPerms = filteredPerms.slice((permPage - 1) * 20, permPage * 20);
+              return filteredPerms.length === 0 ? <Empty description="暂无权限配置" /> : (
+                <>
+                  {pagedPerms.map(p => (
+                <Card key={p.tableName} size="small" style={{ marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                   <Space>
-                    <strong>{p.tableName}</strong>
+                    <strong>{(tables.find((t: any) => t.name === p.tableName)?.title || p.tableName) + '(' + p.tableName + ')'}</strong>
                     <Switch checkedChildren="导入" unCheckedChildren="导入" checked={p.canImport} onChange={() => togglePerm(p.tableName, 'canImport')} />
                     <Switch checkedChildren="导出" unCheckedChildren="导出" checked={p.canExport} onChange={() => togglePerm(p.tableName, 'canExport')} />
                   </Space>
                   <Space>
                     <Button size="small" onClick={() => {
                       form.setFieldsValue(p);
-                      setModal({ open: true, perm: p });
-                      client.request({ url: 'sjgl02Import:tableFields', method: 'get', params: { tableName: p.tableName } })
-                        .then((res: any) => {
-                          const fields = res?.data?.data || [];
-                          setModalFields(Array.isArray(fields) ? fields.map((f: any) => f.name) : []);
-          }).catch(() => { setModalFields([]); });
-                    }}>编辑</Button>
-                    <Button size="small" danger onClick={() => deletePerm(p.tableName)}>删除</Button>
-                  </Space>
-                </div>
-                <Space wrap>
-                  <Tag color={p.canImport ? 'blue' : 'default'}>导入: {p.canImport ? '是' : '否'}</Tag>
-                  <Tag color={p.canExport ? 'green' : 'default'}>导出: {p.canExport ? '是' : '否'}</Tag>
-                  <Tag color="orange">模式: {p.importMode || 'insert'}</Tag>
-                  {p.uniqueFields?.length > 0 && <Tag color="orange">唯一值: {p.uniqueFields.join(',')}</Tag>}
-                  {p.requiredFields?.length > 0 && <Tag color="red">必填: {p.requiredFields.join(',')}</Tag>}
-                </Space>
-              </Card>
-            ))}
-          </div>
-        )}
-      </Col>
-      <Modal title={modal.perm ? '编辑权限' : '添加权限'} open={modal.open} onCancel={() => setModal({ open: false })} onOk={savePerms} width={720}>
-        <Form form={form} layout="vertical">
-          <Form.Item label="选择数据表" name="tableName" rules={[{ required: true }]}>
-            <Select showSearch options={tables.map((t: any) => ({ value: t.name, label: `${t.title} (${t.name})` }))}
-              onChange={(val: string) => {
-                if (val) {
-                  client.request({ url: 'sjgl02Import:tableFields', method: 'get', params: { tableName: val } })
-                    .then((res: any) => {
-                      const fields = res?.data?.data || [];
-                      setModalFields(Array.isArray(fields) ? fields.map((f: any) => f.name) : []);
-                    }).catch(() => setModalFields([]));
-                } else setModalFields([]);
-              }} />
-          </Form.Item>
-          <Space style={{ marginBottom: 12 }}>
-            <Form.Item label="允许导入" name="canImport" valuePropName="checked"><Switch /></Form.Item>
-            <Form.Item label="允许导出" name="canExport" valuePropName="checked"><Switch /></Form.Item>
-          </Space>
-          <Form.Item label="导入模式" name="importMode">
-            <Select options={[{ value: 'insert', label: '新增 (insert)' }, { value: 'update', label: '更新 (update)' }, { value: 'upsert', label: '新增+更新 (upsert)' }]} />
-          </Form.Item>
-          <Form.Item label="唯一值字段" name="uniqueFields">
-            <Select mode="multiple" placeholder="选择唯一值字段" options={modalFields.map(v => ({ value: v, label: v }))} />
-          </Form.Item>
-          <Form.Item label="必填字段" name="requiredFields">
-            <Select mode="multiple" placeholder="选择必填字段" options={modalFields.map(v => ({ value: v, label: v }))} />
-          </Form.Item>
-          <Form.Item label="可导入字段" name="importFields">
-            <Select mode="multiple" placeholder="空=全部允许" options={modalFields.map(v => ({ value: v, label: v }))} />
-          </Form.Item>
-          <Form.Item label="可导出字段" name="exportFields">
-            <Select mode="multiple" placeholder="空=全部允许" options={modalFields.map(v => ({ value: v, label: v }))} />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </Row>
-  );
-}
-
-// ====== 区块组件 ======
-function Sjgl02Block() {
-  return (
-    <div style={{ padding: 16 }}>
-      <div style={{ background: 'linear-gradient(135deg,#1677ff,#0958d9)', borderRadius: 10, padding: '10px 20px', color: '#fff', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ fontWeight: 600, fontSize: 16 }}>📊 数据管理</div>
-        <div style={{ opacity: 0.7, fontSize: 11 }}>@my-project/plugin-sjgl02 {VERSION}</div>
-      </div>
-      <Tabs destroyInactiveTabPane items={[
-        { key: 'import', label: '⬇ 导入', children: <ImportPanel /> },
-        { key: 'export', label: '⬆ 导出', children: <ExportPanel /> },
-        { key: 'tasks', label: '☰ 任务管理', children: <TaskPanel /> },
-      ]} />
-    </div>
-  );
-}
-
-export class PluginSjgl02Client extends Plugin {
-  async load() {
-    this.pluginSettingsManager.add('sjgl02', {
-      title: '数据管理',
-      icon: 'DatabaseOutlined',
-      Component: Sjgl02SettingsPageV1,
-    });
-
-    this.app.addComponents({ SjglBlock: Sjgl02Block });
-    this.app.schemaInitializerManager.addItem('page:addBlock', 'sjgl02.block', { title: '数据管理', Component: 'SjglBlock' });
-    this.app.schemaInitializerManager.addItem('popup:common:addBlock', 'sjgl02.block', { title: '数据管理', Component: 'SjglBlock' });
-  }
-}
+                      setFormCanImport(p.canImport !== false);
+                      setFormCanExport(p.canExport !== fa

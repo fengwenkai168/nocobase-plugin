@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Row, Col, Select, Tag, Button, Space, Switch,
-  Modal, Form, Input, message, Empty, Radio, Spin,
+  Modal, Form, Input, message, Empty, Radio, Spin, Pagination,
 } from 'antd';
 import { useRequest } from 'ahooks';
 import { useTranslation } from 'react-i18next';
@@ -36,7 +36,7 @@ export default function PermissionTab() {
   const api = useAPIClient();
   const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const [selectedTarget, setSelectedTarget] = useState<Target | null>(null);
-  const [viewScope, setViewScope] = useState('own');
+  const [viewScope, setViewScope] = useState('all');
 
   useEffect(() => {
     api.request({ url: 'sjgl02Permissions:settings', method: 'get' })
@@ -55,8 +55,13 @@ export default function PermissionTab() {
   const [form] = Form.useForm();
   const [tableList, setTableList] = useState<Array<{ name: string; title: string }>>([]);
   const [searchText, setSearchText] = useState('');
-  const [modalTableFields, setModalTableFields] = useState<string[]>([]);
+  const [permSearch, setPermSearch] = useState('');
+  const [permPage, setPermPage] = useState(1);
+  const [modalTableFields, setModalTableFields] = useState<Array<{ name: string; label: string }>>([]);
   const [modalLoadingFields, setModalLoadingFields] = useState(false);
+  const [formCanImport, setFormCanImport] = useState(true);
+  const [formCanExport, setFormCanExport] = useState(true);
+  const [formMode, setFormMode] = useState<string[]>(['insert']);
 
   useEffect(() => {
     api.request({ url: 'sjgl02Permissions:tables', method: 'get' })
@@ -112,7 +117,7 @@ export default function PermissionTab() {
     api.request({ url: 'sjgl02Import:tableFields', method: 'get', params: { tableName } })
       .then((res: any) => {
         const fields = res?.data?.data || [];
-        setModalTableFields((Array.isArray(fields) ? fields : []).map((f: any) => f.name));
+        setModalTableFields((Array.isArray(fields) ? fields : []).map((f: any) => ({ name: f.name, label: (f.uiSchema?.title || f.name) + '(' + f.name + ')' })));
       }).catch(() => setModalTableFields([]))
       .finally(() => setModalLoadingFields(false));
   };
@@ -149,7 +154,7 @@ export default function PermissionTab() {
     ...((userRoleData as any)?.data?.data?.users || []).map((u: any) => ({ ...u, type: 'user' as const })),
     ...((userRoleData as any)?.data?.data?.roles || []).map((r: any) => ({
       id: r.id, nickname: r.title || r.name, type: 'role' as const,
-    })),
+    })).filter((r: any) => r.id),
   ];
 
   const filteredTargets = targetList.filter(t =>
@@ -203,30 +208,42 @@ export default function PermissionTab() {
                     <Radio.Button value="own">{t('View own only')}</Radio.Button>
                     <Radio.Button value="all">{t('View all')}</Radio.Button>
                   </Radio.Group>
-                  <Button type="primary" size="small" onClick={() => { form.resetFields(); setEditModal({ open: true }); }}>+ {t('Add permission')}</Button>
+                  <Button type="primary" size="small" onClick={() => { form.resetFields(); form.setFieldsValue({ canImport: true, canExport: true, importMode: ['insert'] }); setEditModal({ open: true }); setFormCanImport(true); setFormCanExport(true); setFormMode(['insert']); }}>+ {t('Add permission')}</Button>
                 </Space>
               </Space>
             </Card>
+            <Input.Search placeholder="搜索表名或表标识" allowClear size="small" style={{ marginBottom: 8 }}
+              value={permSearch} onChange={v => { setPermSearch(v.target.value); setPermPage(1); }} />
             {loadingPerms ? <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>
-              : perms.length === 0 ? <Card><Empty description={t('No permission configured')} /></Card>
-              : perms.map((perm) => (
+              : (() => {
+              const filteredPerms = perms.filter((p: any) => {
+                if (!permSearch) return true;
+                const t = tableList.find((x: any) => x.name === p.tableName);
+                return p.tableName.toLowerCase().includes(permSearch.toLowerCase()) ||
+                  (t?.title || '').toLowerCase().includes(permSearch.toLowerCase());
+              });
+              const totalPages = Math.ceil(filteredPerms.length / 20);
+              const pagedPerms = filteredPerms.slice((permPage - 1) * 20, permPage * 20);
+              return filteredPerms.length === 0 ? <Card><Empty description={t('No permission configured')} /></Card> : (
+                <>
+                  {pagedPerms.map((perm) => (
                 <Card key={perm.tableName} size="small" style={{ marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div><strong>{perm.tableName}</strong>
+                    <div><strong>{(tableList.find((t: any) => t.name === perm.tableName)?.title || perm.tableName) + '(' + perm.tableName + ')'}</strong>
                       <Space style={{ marginLeft: 12 }}>
                         <Switch checkedChildren="导入" unCheckedChildren="关" checked={perm.canImport} onChange={() => handleTogglePermission(perm.tableName, 'canImport')} />
                         <Switch checkedChildren="导出" unCheckedChildren="关" checked={perm.canExport} onChange={() => handleTogglePermission(perm.tableName, 'canExport')} />
                       </Space>
                     </div>
                     <Space>
-                      <Button size="small" type="link" onClick={() => { form.setFieldsValue(perm); handleLoadTableFields(perm.tableName); setEditModal({ open: true, perm }); }}>编辑</Button>
+                      <Button size="small" type="link" onClick={() => { form.setFieldsValue(perm); handleLoadTableFields(perm.tableName); setFormCanImport(perm.canImport !== false); setFormCanExport(perm.canExport !== false); setFormMode(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode || 'insert']); setEditModal({ open: true, perm }); }}>编辑</Button>
                       <Button size="small" type="link" danger onClick={() => handleDeletePermission(perm.tableName)}>删除</Button>
                     </Space>
                   </div>
                   <Space wrap>
                     <Tag color={perm.canImport ? 'blue' : 'default'}>导入: {perm.canImport ? '是' : '否'}</Tag>
                     <Tag color={perm.canExport ? 'green' : 'default'}>导出: {perm.canExport ? '是' : '否'}</Tag>
-                    <Tag color="orange">导入模式: {perm.importMode}</Tag>
+                    <Tag color="orange">导入模式: {(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode || 'insert']).map((m: string) => ({ insert: '新增', update: '更新', upsert: '新增+更新' })[m] || m).join(' / ')}</Tag>
                     {perm.uniqueFields?.length > 0 && <Tag color="orange">唯一值: {perm.uniqueFields.join(',')}</Tag>}
                     {perm.requiredFields?.length > 0 && <Tag color="red">必填: {perm.requiredFields.join(',')}</Tag>}
                     <Tag color="cyan">可导入: {perm.importFields?.length === 0 ? '全部' : perm.importFields?.join(',')}</Tag>
@@ -234,36 +251,12 @@ export default function PermissionTab() {
                   </Space>
                 </Card>
               ))}
+                  {totalPages > 1 && <div style={{ textAlign: 'center', marginTop: 8 }}><Pagination size="small" current={permPage} total={filteredPerms.length} pageSize={20} onChange={setPermPage} /></div>}
+                </>
+              );
+            })()}
           </div>
         )}
       </Col>
       <Modal title={editModal.perm ? '编辑权限' : t('Add permission')} open={editModal.open}
-        onCancel={() => setEditModal({ open: false })} onOk={handleSavePermission} width={720}>
-        <Form form={form} layout="vertical">
-          <Form.Item label={t('Select table')} name="tableName" rules={[{ required: true }]}>
-            <Select showSearch placeholder="选择数据表" onChange={val => handleLoadTableFields(val)}
-              options={tableList.map(item => ({ value: item.name, label: `${item.title} (${item.name})` }))} />
-          </Form.Item>
-          <Space style={{ marginBottom: 12 }}>
-            <Form.Item label={t('Allow import')} name="canImport" valuePropName="checked" noStyle><Switch /></Form.Item>
-            <Form.Item label={t('Allow export')} name="canExport" valuePropName="checked" noStyle><Switch /></Form.Item>
-          </Space>
-          <Form.Item label={t('Import mode')} name="importMode">
-            <Select options={[{ value: 'insert', label: '新增 (insert)' }, { value: 'update', label: '更新 (update)' }, { value: 'upsert', label: '新增+更新 (upsert)' }]} /></Form.Item>
-          <Form.Item label="唯一值字段" name="uniqueFields">
-            <Select mode="multiple" placeholder="选择唯一值字段" loading={modalLoadingFields}
-              options={modalTableFields.map(v => ({ value: v, label: v }))} /></Form.Item>
-          <Form.Item label="必填字段" name="requiredFields">
-            <Select mode="multiple" placeholder="选择必填字段" loading={modalLoadingFields}
-              options={modalTableFields.map(v => ({ value: v, label: v }))} /></Form.Item>
-          <Form.Item label={t('Importable fields')} name="importFields">
-            <Select mode="multiple" placeholder="空=全部允许" loading={modalLoadingFields}
-              options={modalTableFields.map(v => ({ value: v, label: v }))} /></Form.Item>
-          <Form.Item label={t('Exportable fields')} name="exportFields">
-            <Select mode="multiple" placeholder="空=全部允许" loading={modalLoadingFields}
-              options={modalTableFields.map(v => ({ value: v, label: v }))} /></Form.Item>
-        </Form>
-      </Modal>
-    </Row>
-  );
-}
+    
