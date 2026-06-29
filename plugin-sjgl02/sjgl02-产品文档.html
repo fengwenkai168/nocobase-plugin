@@ -45,12 +45,12 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 <div class="container">
 
 <div class="cover">
-  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v3.7</h1>
-  <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · v1.0.25 已实现</div>
+  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v3.9</h1>
+  <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · v1.0.27 已实现</div>
   <div class="meta">
     <span>📅 2026-06-29</span>
-    <span>🏷️ v1.0.25（已实现）</span>
-    <span>📄 状态：终稿 v3.7</span>
+    <span>🏷️ v1.0.27（已实现）</span>
+    <span>📄 状态：终稿 v3.9</span>
     <span>🎯 参考原型：sjgl02-ui.html</span>
   </div>
 </div>
@@ -127,7 +127,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
   <h3>3.2 Step 2：上传文件 &amp; 字段映射</h3>
 
   <h4>3.2.1 上传区</h4>
-  <p><code>FileUploader</code> 拖拽上传组件。校验 .xlsx/.xls/.csv，最大 50MB。上传成功后自动解析并显示 Sheet 列表和表头列名。</p>
+  <p><code>FileUploader</code> 拖拽上传组件。校验 .xlsx/.xls/.csv，最大 50MB。通过标准 <code>attachments:create</code> API 上传文件，成功后自动调用 <code>sjgl02Import:uploadParse</code> 解析并显示 Sheet 列表和表头列名和前 10 行预览数据。</p>
 
   <h4>3.2.2 上传后配置区</h4>
   <table>
@@ -185,7 +185,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <tr><td>关联字段显示模式</td><td>每个关联字段可选「显示值」/「仅ID」</td></tr>
     <tr><td>关联数据 Sheet</td><td>Switch 开关，开启后多选下拉选择关联表</td></tr>
     <tr><td>数据范围</td><td>「全部数据」/「自定义条件」，选自定义条件展开 FilterConditionBuilder（多行 AND 条件，操作符按字段类型动态切换）</td></tr>
-    <tr><td>高级选项</td><td>文件名模板（默认 <code>{表名}_{日期}.xlsx</code>）+ 包含附件文件开关（勾选后生成 ZIP）</td></tr>
+      <tr><td>高级选项</td><td>文件名模板（默认 <code>{表名}_{日期}.xlsx</code>）+ 包含附件文件开关（勾选后，若表中含 attachment 类型字段，将生成 .zip 压缩包，内含 Excel 文件和附件文件夹）</td></tr>
   </table>
 
   <h4>4.2.2 全部数据表模式</h4>
@@ -198,7 +198,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <tr><td>单表</td><td>选择字段数、预计行数、数据范围、关联Sheet</td><td>.xlsx（含附件则 .zip）</td></tr>
     <tr><td>全部表</td><td>导出表数量(8)、预计总行数、导出范围(含系统表)、生成文件(.zip)</td></tr>
   </table>
-  <p><strong>轮询进度</strong>：提交后每 2 秒轮询进度（模拟 0→30→60→90→100%），完成后显示下载按钮。</p>
+  <p><strong>轮询进度</strong>：提交后每 2 秒轮询真实进度（通过 <code>sjgl02Export:progress</code> API），完成后显示下载按钮。</p>
   <p>确认弹窗信息：单表显示「生成 .xlsx 文件」；全部表显示「生成 .zip 压缩包（内含 N 个 .xlsx 文件及附件）」。</p>
 
   <h3>4.4 文件格式规则</h3>
@@ -207,6 +207,16 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <li>单表 + 含附件 → <code>.zip</code>（内含 .xlsx + 附件文件夹）</li>
     <li>全部数据表 → <code>.zip</code>（内含每张表的独立 .xlsx 文件 + 附件）</li>
   </ul>
+
+  <h3>4.5 附件导出（v1.0.26+）</h3>
+  <p>勾选「包含附件文件」后，服务端自动识别表中 <code>type='belongsToMany'</code> 且 <code>interface='attachment'</code> 的字段，将附件文件打包进 ZIP。</p>
+  <table>
+    <tr><th>ZIP 内容</th><th>说明</th></tr>
+    <tr><td><code>{表名}_{日期}.xlsx</code></td><td>数据表 Excel，附件列显示为系统文件名（逗号分隔），如 <code>照片_abc123.jpg, 文档_def456.pdf</code></td></tr>
+    <tr><td><code>{附件字段显示名}/</code></td><td>按字段分文件夹，内含原始附件文件，文件名与 Excel 中显示的一致</td></tr>
+  </table>
+  <div class="alert-info"><strong>对应关系</strong>：Excel 附件列显示的每个文件名，都能在对应字段文件夹中找到同名文件，确保可追溯。</div>
+
 </div>
 
 <!-- ==================== 5. 任务管理 ==================== -->
@@ -298,7 +308,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
   <p>搜索过滤的数据表下拉选择器。支持 <code>filterPermission='import'|'export'</code> 按权限过滤（根据权限配置显示有权限的表）。调用 API <code>sjgl02Permissions:tables</code> 获取表列表。</p>
 
   <h3>7.2 FileUploader</h3>
-  <p>拖拽上传 Excel。校验 .xlsx/.xls/.csv，最大 50MB。请求 <code>POST sjgl02Import:upload</code>。</p>
+  <p>拖拽上传 Excel。校验 .xlsx/.xls/.csv，最大 50MB。通过 <code>POST attachments:create</code> 上传文件，获取 fileId 后调用 <code>POST sjgl02Import:uploadParse</code> 解析。</p>
 
   <h3>7.3 FieldCheckboxGroup</h3>
   <p>按类型分组展示字段复选框（常规/关联/附件），支持全选。</p>
@@ -316,9 +326,8 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <tr><th>端点</th><th>方法</th><th>参数</th></tr>
     <tr><td><code>sjgl02Import:tableFields</code></td><td>GET</td><td><code>tableName</code></td></tr>
     <tr><td><code>sjgl02Import:uploadParse</code></td><td>POST</td><td><code>{ fileId, sheetName?, headerRow? }</code> → <code>{ sheets, headerColumns, fileId, fileName, previewRows, totalRows }</code>（需先通过 attachments:create 上传文件。支持指定 sheetName 和 headerRow 解析不同 Sheet/表头行；previewRows 返回前 10 行数据用于预览弹框）</td></tr>
-    <tr><td><code>sjgl02Import:preview</code></td><td>GET</td><td><code>fileId, sheetName, headerRow</code> → 预览 N 行</td></tr>
-    <tr><td><code>sjgl02Import:execute</code></td><td>POST</td><td><code>{ tableName, fileId, sheetName, headerRow, fieldMapping, importMode }</code> → <code>{ taskId }</code></td></tr>
-    <tr><td><code>sjgl02Import:progress</code></td><td>GET</td><td><code>taskId</code> → 进度</td></tr>
+    <tr><td><code>sjgl02Import:preview</code></td><td>GET</td><td><code>fileId, sheetName, headerRow</code> → 前 10 行预览数据</td></tr>
+    <tr><td><code>sjgl02Import:execute</code></td><td>POST</td><td><code>{ tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields }</code> → <code>{ taskId }</code></td></tr>
   </table>
 
   <h3>8.2 导出</h3>
@@ -326,7 +335,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <tr><th>端点</th><th>方法</th><th>参数</th></tr>
     <tr><td><code>sjgl02Export:tableFields</code></td><td>GET</td><td><code>tableName</code></td></tr>
     <tr><td><code>sjgl02Export:previewCount</code></td><td>POST</td><td><code>{ tableName, filter }</code> → 预估行数</td></tr>
-    <tr><td><code>sjgl02Export:execute</code></td><td>POST</td><td><code>{ tableName, selectedFields, associationDisplayMode, includeAssociationSheet, associationSheetTables, filter, fileNameTemplate }</code> → <code>{ taskId }</code></td></tr>
+    <tr><td><code>sjgl02Export:execute</code></td><td>POST</td><td><code>{ tableName, selectedFields, associationDisplayMode, includeAssociationSheet, associationSheetTables, filter, fileNameTemplate, includeAttachments }</code> → <code>{ taskId }</code>；includeAttachments=true 时自动将附件文件打包进 ZIP</td></tr>
     <tr><td><code>sjgl02Export:progress</code></td><td>GET</td><td><code>taskId</code> → 进度 + exportFileId</td></tr>
     <tr><td><code>sjgl02Export:download</code></td><td>GET</td><td><code>taskId</code> → 文件流</td></tr>
   </table>
@@ -334,10 +343,9 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
   <h3>8.3 任务管理</h3>
   <table>
     <tr><th>端点</th><th>方法</th><th>参数</th></tr>
-    <tr><td><code>sjgl02Tasks:list</code></td><td>GET</td><td>分页 + 筛选</td></tr>
-    <tr><td><code>sjgl02Tasks:detail</code></td><td>GET</td><td><code>taskId</code></td></tr>
-    <tr><td><code>sjgl02Tasks:logs</code></td><td>GET</td><td><code>taskId</code> → errorLogs + fieldMapping</td></tr>
-    <tr><td><code>sjgl02Tasks:cancel</code></td><td>POST</td><td><code>{ taskId }</code></td></tr>
+    <tr><td><code>sjgl02Tasks:list</code></td><td>GET</td><td><code>{ page, pageSize, taskType?, status? }</code> → <code>{ items, total }</code>（支持 taskViewScope 权限过滤）</td></tr>
+    <tr><td><code>sjgl02Tasks:detail</code></td><td>GET</td><td><code>taskId</code> → 任务详情（含 createdBy、fieldMapping、errorLogs）</td></tr>
+    <tr><td><code>sjgl02Tasks:cancel</code></td><td>POST</td><td><code>{ taskId }</code>（仅 pending/processing 可取消）</td></tr>
   </table>
 
   <h3>8.4 权限管理</h3>
@@ -364,6 +372,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <tr><td>tableName</td><td>string</td><td>目标表名</td></tr>
     <tr><td>status</td><td>select</td><td>pending / processing / completed / failed / cancelled</td></tr>
     <tr><td>fieldMapping</td><td>json</td><td>字段映射配置</td></tr>
+    <tr><td>customValues</td><td>json</td><td>自定义固定值</td></tr>
     <tr><td>selectedFields</td><td>json</td><td>导出选中字段</td></tr>
     <tr><td>exportFilter</td><td>json</td><td>导出筛选条件</td></tr>
     <tr><td>errorLogs</td><td>json</td><td>错误日志数组</td></tr>
@@ -373,10 +382,12 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <tr><td>importMode</td><td>string</td><td>insert / update / upsert</td></tr>
     <tr><td>sheetName</td><td>string</td><td>Sheet 名称</td></tr>
     <tr><td>headerRow</td><td>integer</td><td>表头行号，默认1</td></tr>
+    <tr><td>uniqueFields</td><td>json</td><td>唯一值字段列表</td></tr>
     <tr><td>importFileId</td><td>integer</td><td>导入源文件附件ID</td></tr>
     <tr><td>exportFileId</td><td>integer</td><td>导出文件附件ID</td></tr>
     <tr><td>errorMessage</td><td>text</td><td>失败错误信息</td></tr>
     <tr><td>includeAssociationSheet</td><td>boolean</td><td></td></tr>
+    <tr><td>includeAttachments</td><td>boolean</td><td>是否含附件文件，默认 false</td></tr>
     <tr><td>associationSheetTables</td><td>json</td><td></td></tr>
     <tr><td>associationDisplayMode</td><td>json</td><td></td></tr>
     <tr><td>completedAt</td><td>datetime</td><td>完成时间</td></tr>
@@ -389,7 +400,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <tr><th>字段</th><th>类型</th><th>说明</th></tr>
     <tr><td>id</td><td>integer PK</td><td></td></tr>
     <tr><td>targetType</td><td>select</td><td>user / role</td></tr>
-    <tr><td>targetId</td><td>integer</td><td></td></tr>
+    <tr><td>targetId</td><td>string</td><td>（角色以 name 为主键，用户以 String(id)）</td></tr>
     <tr><td>targetName</td><td>string</td><td>冗余</td></tr>
     <tr><td>tableName</td><td>string</td><td></td></tr>
     <tr><td>canImport</td><td>boolean</td><td>默认 false</td></tr>
@@ -455,14 +466,14 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 
 <!-- ==================== 11. 实现说明 ==================== -->
 <div class="section" id="changelog">
-  <h2>11. 实现说明 <span class="badge">v1.0.25 最终版</span></h2>
+  <h2>11. 实现说明 <span class="badge">v1.0.27 最终版</span></h2>
 
   <h3>11.1 客户端架构</h3>
   <table>
     <tr><th>模块</th><th>文件</th><th>说明</th></tr>
     <tr><td>v2 设置页外壳</td><td><code>src/client-v2/pages/Sjgl02SettingsPage.tsx</code></td><td>LazyTab 按需懒加载 4 个 Tab，切换时重新挂载</td></tr>
     <tr><td>导入向导</td><td><code>src/client-v2/pages/ImportTab.tsx</code></td><td>3 步向导，表列表从 API 动态加载，文件校验 + 字段映射 + Sheet 切换自动刷新 + 预览表头弹框</td></tr>
-    <tr><td>导出向导</td><td><code>src/client-v2/pages/ExportTab.tsx</code></td><td>3 步向导，字段从 API 加载自动分组，文件名模板可编辑，进度轮询</td></tr>
+    <tr><td>导出向导</td><td><code>src/client-v2/pages/ExportTab.tsx</code></td><td>3 步向导，字段从 API 加载自动分组，文件名模板可编辑，真实进度轮询</td></tr>
     <tr><td>任务管理</td><td><code>src/client-v2/pages/TaskTab.tsx</code></td><td>筛选 + 表格 + 日志抽屉</td></tr>
     <tr><td>权限管理</td><td><code>src/client-v2/pages/PermissionTab.tsx</code></td><td>左用户/角色列表 + 右权限卡片 + 编辑弹窗</td></tr>
     <tr><td>v1 设置页</td><td><code>src/client/plugin.tsx</code></td><td>完整设置页（API 动态加载 + 4 Tab） + SjglBlock 区块组件 + schemaInitializer 注册；使用 <code>this.app.apiClient</code> 认证</td></tr>
@@ -472,9 +483,9 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
   <h3>11.2 服务端</h3>
   <table>
     <tr><th>模块</th><th>文件</th><th>端点</th></tr>
-    <tr><td>导入</td><td><code>src/server/actions/import.ts</code></td><td>tableFields / upload / preview / execute</td></tr>
+    <tr><td>导入</td><td><code>src/server/actions/import.ts</code></td><td>tableFields / uploadParse / preview / execute</td></tr>
     <tr><td>导出</td><td><code>src/server/actions/export.ts</code></td><td>tableFields / previewCount / execute / progress / download</td></tr>
-    <tr><td>任务</td><td><code>src/server/actions/tasks.ts</code></td><td>list / detail / logs / cancel</td></tr>
+    <tr><td>任务</td><td><code>src/server/actions/tasks.ts</code></td><td>list / detail / cancel</td></tr>
     <tr><td>权限</td><td><code>src/server/actions/permissions.ts</code></td><td>userRoleList / tables / get / save / settings / saveSettings</td></tr>
     <tr><td>数据表</td><td><code>src/server/collections/</code></td><td>sjgl02_tasks / sjgl02_table_permissions / sjgl02_settings</td></tr>
   </table>
@@ -492,12 +503,13 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <li><strong>无硬编码</strong>：所有表列表、字段列表、用户/角色列表均从 API 动态获取，无任何 mock 数据</li>
     <li><strong>Sheet 切换联动</strong>：切换 Sheet 名称或修改表头行号时，自动调用 uploadParse 重新解析并更新表头列表、字段映射和预览元数据</li>
     <li><strong>预览表头弹框</strong>：点击📋按钮弹出 Modal，展示当前 Sheet 的完整表头列名 + 前 10 行表格预览，顶部概览 Sheet 名称、表头行号和数据总行数</li>
+    <li><strong>附件导出</strong>：识别 attachment 类型字段（belongsToMany + interface='attachment'），查询时 appends 加载关联附件数据；Excel 中附件列显示系统文件名（逗号分隔）；用 archiver 将 .xlsx 与附件文件打包为 ZIP，附件按字段名分文件夹存放，文件名与 Excel 列一致</li>
   </ul>
 </div>
 
 <hr style="margin:40px 0">
 <div style="text-align:center;font-size:13px;color:#9ca3af;padding-bottom:40px">
-  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v3.7（v1.0.25 实现版）—
+  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v3.9（v1.0.27 实现版）—
 </div>
 
 </div>

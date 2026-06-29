@@ -182,6 +182,7 @@ export async function executeExport(ctx: Context, next: Next) {
       associationDisplayMode: associationDisplayMode || {},
       includeAssociationSheet: includeAssociationSheet || false,
       associationSheetTables: associationSheetTables || [],
+      includeAttachments: includeAttachments || false,
       totalRows: 0,
       progress: 0,
       createdById: ctx.state.currentUser?.id,
@@ -219,9 +220,17 @@ export async function executeExport(ctx: Context, next: Next) {
       let records: any[] = [];
       let collectionTotal = 0;
       const appendFields: string[] = [];
+      const attachmentFieldNames: string[] = [];
       try {
         for (const f of Array.from(coll.fields?.values() || coll.fields || [])) {
           if ((f as any).type === 'belongsTo') appendFields.push((f as any).name);
+          if (includeAttachments && ((f as any).type === 'belongsToMany')) {
+            const interfaceName = (f as any).options?.interface;
+            if (interfaceName === 'attachment' && !appendFields.includes((f as any).name)) {
+              appendFields.push((f as any).name);
+              attachmentFieldNames.push((f as any).name);
+            }
+          }
         }
       } catch {}
       const queryOpts: any = { filter: exportFilter || {}, limit: 20000 };
@@ -262,7 +271,13 @@ export async function executeExport(ctx: Context, next: Next) {
         const row: Record<string, any> = {};
         for (const f of fieldNames) {
           let val = record[f];
-          if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
+          if (attachmentFieldNames.includes(f)) {
+            if (Array.isArray(val) && val.length > 0) {
+              val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
+            } else {
+              val = '';
+            }
+          } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
             const targetTitleField = coll.options?.titleField || 'id';
             val = val[targetTitleField] || val.id || JSON.stringify(val);
           }
@@ -326,6 +341,58 @@ export async function executeExport(ctx: Context, next: Next) {
       const filePath = path.join(tempDir, xlsxName);
       await workbook.xlsx.writeFile(filePath);
       outputFiles.push(filePath);
+
+      if (includeAttachments && attachmentFieldNames.length > 0) {
+        const attachedIds = new Set<number>();
+        const attachFileMap = new Map<number, string>();
+        for (const record of records) {
+          for (const afName of attachmentFieldNames) {
+            const av = record[afName];
+            if (Array.isArray(av)) {
+              for (const a of av) {
+                if (a?.id && !attachedIds.has(a.id)) {
+                  attachedIds.add(a.id);
+                  attachFileMap.set(a.id, afName);
+                }
+              }
+            }
+          }
+        }
+        if (attachedIds.size > 0) {
+          try {
+            const attachRepo = ctx.db.getRepository('attachments');
+            const attachRecords = await attachRepo.find({ filter: { id: Array.from(attachedIds) } });
+            const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
+            const attachmentFiles: Array<{ entryName: string; diskPath: string }> = [];
+            for (const at of attachRecords) {
+              if (!at.filename) continue;
+              const diskPath = path.join(storageDir, at.path || '', at.filename);
+              if (!fs.existsSync(diskPath)) continue;
+              const afName = attachFileMap.get(at.id) || '附件';
+              const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName));
+              attachmentFiles.push({ entryName: `${folderName}/${at.filename}`, diskPath });
+            }
+            if (attachmentFiles.length > 0) {
+              const zipName = collDisplay + '-' + formatFileName('{日期}.zip', '');
+              const zipPath = path.join(tempDir, zipName);
+              const zipOutput = fs.createWriteStream(zipPath);
+              const zipArchive = archiver('zip', { zlib: { level: 9 } });
+              await new Promise<void>((resolve, reject) => {
+                zipArchive.on('error', reject);
+                zipOutput.on('close', resolve);
+                zipArchive.pipe(zipOutput);
+                zipArchive.file(filePath, { name: path.basename(filePath) });
+                for (const af of attachmentFiles) {
+                  zipArchive.file(af.diskPath, { name: af.entryName });
+                }
+                zipArchive.finalize();
+              });
+              try { fs.unlinkSync(filePath); } catch {}
+              outputFiles[outputFiles.indexOf(filePath)] = zipPath;
+            }
+          } catch {}
+        }
+      }
 
       await repo.update({
         filterByTk: task.id,

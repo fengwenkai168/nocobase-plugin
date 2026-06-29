@@ -5,7 +5,7 @@ import { InboxOutlined, TableOutlined } from '@ant-design/icons';
 
 const { Dragger } = Upload;
 
-const VERSION = 'v1.0.24';
+const VERSION = 'v1.0.27';
 
 // ====== API 工具 ======
 function apiRequest(client: any, url: string, opts: any = {}) {
@@ -453,6 +453,7 @@ function ExportPanel() {
   const [taskId, setTaskId] = React.useState<number | null>(null);
   const [includeAssocSheet, setIncludeAssocSheet] = React.useState(false);
   const [selectedAssocTables, setSelectedAssocTables] = React.useState<string[]>([]);
+  const [includeAttachments, setIncludeAttachments] = React.useState(false);
   const [estimatedRows, setEstimatedRows] = React.useState<number | null>(null);
 
   React.useEffect(() => {
@@ -491,7 +492,7 @@ function ExportPanel() {
   const handleExport = () => {
     Modal.confirm({
       title: '确认导出',
-      content: isAllTables ? '将导出全部数据表，任务在后台异步执行' : '将生成 .xlsx 文件，任务在后台异步执行',
+      content: isAllTables ? '将导出全部数据表，任务在后台异步执行' : includeAttachments ? '将生成 .zip 压缩包（含附件文件），任务在后台异步执行' : '将生成 .xlsx 文件，任务在后台异步执行',
       onOk: async () => {
         try {
           await client.request({
@@ -503,6 +504,7 @@ function ExportPanel() {
               fileNameTemplate: fileName,
               includeAssociationSheet: includeAssocSheet,
               associationSheetTables: selectedAssocTables,
+              includeAttachments,
             },
           });
           message.success('导出任务已提交，请在任务管理中查看进度和下载');
@@ -613,6 +615,10 @@ function ExportPanel() {
               <Input style={{ width: 280 }} value={fileName} onChange={e => setFileName(e.target.value)} />
             </Space>
             <div style={{ fontSize: 11, color: '#999' }}>支持 {`{表名}`} {`{日期}`} 占位符</div>
+            <Space style={{ marginTop: 8 }}>
+              <Switch checked={includeAttachments} onChange={setIncludeAttachments} />
+              <span>包含附件文件</span>
+            </Space>
           </Card>
           <div style={{ textAlign: 'right', marginTop: 12 }}>
             <Button onClick={() => setStep(0)} style={{ marginRight: 8 }}>← 上一步</Button>
@@ -626,7 +632,7 @@ function ExportPanel() {
             <Col span={6}><Card size="small"><Statistic title="选择字段" value={isAllTables ? '全部' : selFields.length} /></Card></Col>
             <Col span={6}><Card size="small"><Statistic title="预计行数" value={estimatedRows ?? '...'} /></Card></Col>
             <Col span={6}><Card size="small"><Statistic title="文件命名" value={fileName} /></Card></Col>
-            <Col span={6}><Card size="small"><Statistic title="格式" value={isAllTables ? '.zip' : '.xlsx'} /></Card></Col>
+            <Col span={6}><Card size="small"><Statistic title="格式" value={isAllTables ? '.zip' : (includeAttachments ? '.zip' : '.xlsx')} /></Card></Col>
           </Row>
           <div style={{ textAlign: 'right' }}>
             <Button onClick={() => setStep(1)} style={{ marginRight: 8 }}>← 上一步</Button>

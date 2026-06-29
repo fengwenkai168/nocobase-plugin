@@ -53,6 +53,7 @@ export default defineCollection({
     { type: 'boolean', name: 'includeAssociationSheet', defaultValue: false },
     { type: 'json', name: 'associationSheetTables' },
     { type: 'json', name: 'associationDisplayMode' },
+    { type: 'boolean', name: 'includeAttachments', defaultValue: false },
     { type: 'date', name: 'completedAt' },
     { type: 'belongsTo', name: 'createdBy', target: 'users', foreignKey: 'createdById' },
   ],

@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 1.0.27 (2026-06-29)
+
+### 文档修正
+- README.md：API 端点恢复准确（移除不存在的 upload/logs 端点、修正 preview 方法、更正数据模型字段和类型）、翻译键计数 92→115
+- 产品文档.html：v3.8→v3.9，移除不存在的 API 端点（upload/logs/progress），修正所有数据模型字段和类型，修正实现说明
+- CHANGELOG.md：补全 1.0.20~1.0.26 版本条目
+- 修正 v1/v2 客户端版本号显示（v1.0.24 → v1.0.27）
+
+## 1.0.26 (2026-06-29)
+
+### 新增
+- 导出附件功能：勾选「包含附件文件」后，服务端识别 attachment 类型字段，将附件文件与 Excel 一起打包为 ZIP
+- Excel 中附件列显示为系统文件名（逗号分隔），ZIP 中附件按字段名分文件夹存放，文件名一致可对应
+- v1 导出面板新增"包含附件"开关和格式提示
+
+### 变更
+- `executeExport` 新增附件字段识别（belongsToMany + interface='attachment'）
+- 查询记录时自动 appends 附件关联数据
+- `sjgl02_tasks` 表新增 `includeAttachments` 字段
+
 ## 1.0.25 (2026-06-29)
 
 ### 新增
