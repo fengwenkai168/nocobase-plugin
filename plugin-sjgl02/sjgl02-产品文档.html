@@ -45,12 +45,12 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 <div class="container">
 
 <div class="cover">
-  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v3.9</h1>
-  <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · v1.0.27 已实现</div>
+  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v3.11</h1>
+  <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · v1.0.29 已实现</div>
   <div class="meta">
     <span>📅 2026-06-29</span>
-    <span>🏷️ v1.0.27（已实现）</span>
-    <span>📄 状态：终稿 v3.9</span>
+    <span>🏷️ v1.0.29（已实现）</span>
+    <span>📄 状态：终稿 v3.11</span>
     <span>🎯 参考原型：sjgl02-ui.html</span>
   </div>
 </div>
@@ -208,7 +208,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <li>全部数据表 → <code>.zip</code>（内含每张表的独立 .xlsx 文件 + 附件）</li>
   </ul>
 
-  <h3>4.5 附件导出（v1.0.26+）</h3>
+  <h3>4.5 附件导出（v1.0.29+）</h3>
   <p>勾选「包含附件文件」后，服务端自动识别表中 <code>type='belongsToMany'</code> 且 <code>interface='attachment'</code> 的字段，将附件文件打包进 ZIP。</p>
   <table>
     <tr><th>ZIP 内容</th><th>说明</th></tr>
@@ -466,7 +466,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 
 <!-- ==================== 11. 实现说明 ==================== -->
 <div class="section" id="changelog">
-  <h2>11. 实现说明 <span class="badge">v1.0.27 最终版</span></h2>
+  <h2>11. 实现说明 <span class="badge">v1.0.29 最终版</span></h2>
 
   <h3>11.1 客户端架构</h3>
   <table>
@@ -504,12 +504,14 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <li><strong>Sheet 切换联动</strong>：切换 Sheet 名称或修改表头行号时，自动调用 uploadParse 重新解析并更新表头列表、字段映射和预览元数据</li>
     <li><strong>预览表头弹框</strong>：点击📋按钮弹出 Modal，展示当前 Sheet 的完整表头列名 + 前 10 行表格预览，顶部概览 Sheet 名称、表头行号和数据总行数</li>
     <li><strong>附件导出</strong>：识别 attachment 类型字段（belongsToMany + interface='attachment'），查询时 appends 加载关联附件数据；Excel 中附件列显示系统文件名（逗号分隔）；用 archiver 将 .xlsx 与附件文件打包为 ZIP，附件按字段名分文件夹存放，文件名与 Excel 列一致</li>
+    <li><strong>日期格式统一</strong>：导出时 date/datetime/datetimeTz/unixTimestamp 四类字段统一为本地时区 <code>YYYY-MM-DD HH:mm:ss</code>；导入时自动将 ISO 格式转为标准日期格式；datetimeNoTz/dateOnly/time 三类字段本身兼容，不改动</li>
+    <li><strong>updatedAt 只读</strong>：导入字段映射表中，<code>interface='updatedAt'</code> 的字段显示 🔒 只读标签，不渲染 Excel 列选择器，避免用户映射后值被系统覆盖</li>
   </ul>
 </div>
 
 <hr style="margin:40px 0">
 <div style="text-align:center;font-size:13px;color:#9ca3af;padding-bottom:40px">
-  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v3.9（v1.0.27 实现版）—
+  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v3.11（v1.0.29 实现版）—
 </div>
 
 </div>
