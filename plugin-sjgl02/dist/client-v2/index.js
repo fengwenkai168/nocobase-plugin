@@ -106,7 +106,8 @@ function ImportTab() {
           }
         }).catch(() => {
           setExcelHeaders([]);
-          setAvailSheets(["Sheet1"]);
+          setAvailSheets([]);
+          setSheetName("");
         });
       } else {
         import_antd.message.error("\u4E0A\u4F20\u54CD\u5E94\u4E2D\u672A\u627E\u5230\u6587\u4EF6ID");
@@ -140,7 +141,11 @@ function ImportTab() {
     if (v === "__custom__") return "custom";
     return "excel";
   };
-  const canGoStep2 = !!uploadedFileId;
+  const canGoStep2 = !!uploadedFileId && (() => {
+    if (importMode === "insert") return true;
+    if (uniqueFields.length === 0) return false;
+    return !uniqueFields.some((uf) => !fieldMapping[uf] || fieldMapping[uf] === "__ignore__" || fieldMapping[uf] === "__custom__");
+  })();
   const handleAutoMatch = () => {
     const mapping = {};
     tableFields.forEach((f) => {
@@ -169,18 +174,10 @@ function ImportTab() {
   const handleExecuteImport = () => {
     import_antd.Modal.confirm({
       title: t("Confirm operation"),
-      content: "\u5BFC\u5165\u5728\u5355\u4E00\u4E8B\u52A1\u4E2D\u6267\u884C\uFF0C\u4EFB\u4E00\u6570\u636E\u884C\u5931\u8D25\u5219\u6574\u6279\u56DE\u6EDA\u3002",
+      content: "\u5BFC\u5165\u5728\u4E8B\u52A1\u4E2D\u6267\u884C\uFF0C\u4EFB\u4E00\u884C\u5931\u8D25\u5219\u6574\u6279\u56DE\u6EDA\u3002\u5173\u8054\u5B57\u6BB5\u901A\u8FC7\u4E3B\u952EID\u5339\u914D\uFF0C\u5339\u914D\u5931\u8D25\u5219\u6574\u6279\u56DE\u6EDA\u3002",
       onOk: async () => {
         setExecuting(true);
         try {
-          const mapped = {};
-          for (const [k, v] of Object.entries(fieldMapping)) {
-            if (v === "__custom__") {
-              mapped[k] = customValues[k] ?? "";
-            } else {
-              mapped[k] = v;
-            }
-          }
           await api.request({
             url: "sjgl02Import:execute",
             method: "post",
@@ -189,21 +186,20 @@ function ImportTab() {
               fileId: uploadedFileId,
               sheetName,
               headerRow,
-              fieldMapping: mapped,
+              fieldMapping,
+              customValues,
               importMode,
               uniqueFields
             }
           });
           import_antd.message.success(t("Saved successfully"));
-          setTimeout(() => {
-            setCurrentStep(0);
-            setSelectedTable(null);
-            setUploadedFileId(null);
-            setUploadFileName("");
-            setFieldMapping({});
-            setPreviewData(null);
-            setCustomValues({});
-          }, 1500);
+          setCurrentStep(0);
+          setSelectedTable(null);
+          setUploadedFileId(null);
+          setUploadFileName("");
+          setFieldMapping({});
+          setPreviewData(null);
+          setCustomValues({});
         } catch {
           import_antd.message.error(t("Save failed"));
         } finally {
@@ -281,7 +277,7 @@ function ImportTab() {
       onChange: setUniqueFields,
       style: { width: "100%" },
       placeholder: "\u9009\u62E9\u552F\u4E00\u503C\u5B57\u6BB5",
-      options: tableFields.map((f) => ({ value: f.name, label: f.name }))
+      options: tableFields.map((f) => ({ value: f.name, label: (f.uiSchema?.title || f.name) + "(" + f.name + ")" }))
     }
   ))), /* @__PURE__ */ import_react.default.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 14 } }, "\u{1F4CA} \u5B57\u6BB5\u6620\u5C04", /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#999", fontWeight: 400, fontSize: 12, marginLeft: 8 } }, "\uFF08\u5171", tableFields.length, "\u5B57\u6BB5/\u5DF2\u6620\u5C04", mappedCount, "/\u5FFD\u7565", ignoredCount, "\uFF1BExcel\u5217\u5171", excelHeaders.length, "/\u5DF2\u7528", usedCount, "/\u5269\u4F59", excelHeaders.length - usedCount, "\uFF09")), /* @__PURE__ */ import_react.default.createElement(import_antd.Button, { size: "small", onClick: handleAutoMatch }, "\u26A1 \u81EA\u52A8\u5339\u914D")), loading ? /* @__PURE__ */ import_react.default.createElement("div", { style: { textAlign: "center", padding: 20 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Spin, null)) : /* @__PURE__ */ import_react.default.createElement(
     import_antd.Table,
@@ -344,7 +340,7 @@ function ImportTab() {
         { title: "\u2192", width: 30, render: () => /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#999" } }, "\u2192") },
         {
           title: /* @__PURE__ */ import_react.default.createElement("span", null, "\u5DE5\u4F5C\u8868\u5B57\u6BB5 ", /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "green", style: { fontSize: 10 } }, "\u76EE\u6807\u5B57\u6BB5")),
-          render: (record) => /* @__PURE__ */ import_react.default.createElement("span", null, record.field.isRequired && /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#ff4d4f" } }, "* "), record.field.uiSchema?.title || record.field.name, "(", record.field.name, ")", ["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(record.field.type) && /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "purple", style: { fontSize: 10, marginLeft: 4 } }, "\u5173\u8054"))
+          render: (record) => /* @__PURE__ */ import_react.default.createElement("span", null, record.field.isRequired && /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#ff4d4f" } }, "* "), record.field.uiSchema?.title || record.field.name, "(", record.field.name, ")", ["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(record.field.type) && /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "purple", style: { fontSize: 10, marginLeft: 4 } }, "\u5173\u8054"), uniqueFields.includes(record.field.name) && /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "orange", style: { fontSize: 10, marginLeft: 4 } }, "\u{1F511} \u552F\u4E00\u503C"))
         }
       ],
       pagination: false,
@@ -353,11 +349,38 @@ function ImportTab() {
   )), /* @__PURE__ */ import_react.default.createElement("div", { style: { textAlign: "right", marginTop: 12 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Button, { onClick: () => setCurrentStep(0), style: { marginRight: 8 } }, "\u2190 \u4E0A\u4E00\u6B65"), /* @__PURE__ */ import_react.default.createElement(import_antd.Button, { type: "primary", onClick: async () => {
     await handlePreview();
     setCurrentStep(2);
-  }, disabled: !canGoStep2 }, "\u4E0B\u4E00\u6B65 \u2192"))), currentStep === 2 && /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 16 } }, "\u9884\u89C8\u786E\u8BA4 \u2014 ", selectedTable?.title), /* @__PURE__ */ import_react.default.createElement(import_antd.Row, { gutter: 16, style: { marginBottom: 16 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u9884\u8BA1\u5BFC\u5165\u884C\u6570", value: previewData?.totalRows || 0 }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u9519\u8BEF\u884C\u6570", value: 0, valueStyle: { color: previewData?.totalRows ? "#52c41a" : void 0 } }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u5BFC\u5165\u6A21\u5F0F", value: IMPORT_MODES.find((m) => m.value === importMode)?.label || importMode }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "Sheet\u540D\u79F0", value: sheetName })))), (importMode === "update" || importMode === "upsert") && uniqueFields.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_antd.Alert, { type: "info", showIcon: true, message: /* @__PURE__ */ import_react.default.createElement("span", null, "\u552F\u4E00\u503C\u5339\u914D\u5B57\u6BB5\uFF1A", /* @__PURE__ */ import_react.default.createElement("strong", null, uniqueFields.join(", "))), style: { marginBottom: 16 } }), /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 13, marginBottom: 8 } }, "\u{1F441}\uFE0F \u9884\u89C8\u6570\u636E\uFF08\u524D10\u884C\uFF09"), previewData?.preview ? /* @__PURE__ */ import_react.default.createElement(
+  }, disabled: !canGoStep2 }, "\u4E0B\u4E00\u6B65 \u2192"))), currentStep === 2 && /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 16 } }, "\u9884\u89C8\u786E\u8BA4 \u2014 ", selectedTable?.title), /* @__PURE__ */ import_react.default.createElement(import_antd.Row, { gutter: 16, style: { marginBottom: 16 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u9884\u8BA1\u5BFC\u5165\u884C\u6570", value: previewData?.totalRows || 0 }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u9519\u8BEF\u884C\u6570", value: 0, valueStyle: { color: previewData?.totalRows ? "#52c41a" : void 0 } }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u5BFC\u5165\u6A21\u5F0F", value: IMPORT_MODES.find((m) => m.value === importMode)?.label || importMode }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "Sheet\u540D\u79F0", value: sheetName })))), (importMode === "update" || importMode === "upsert") && uniqueFields.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_antd.Alert, { type: "info", showIcon: true, message: /* @__PURE__ */ import_react.default.createElement("span", null, "\u552F\u4E00\u503C\u5339\u914D\u5B57\u6BB5\uFF1A", /* @__PURE__ */ import_react.default.createElement("strong", null, uniqueFields.join(", "))), style: { marginBottom: 16 } }), /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small", style: { marginBottom: 16 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Row, { gutter: 12 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 12 }, /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#666" } }, "\u{1F4C4} \u4E0A\u4F20\u6587\u4EF6\uFF1A"), /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "blue" }, uploadFileName)), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 12 }, /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#666" } }, "\u{1F4CB} \u8868\u5934\u884C\uFF1A"), /* @__PURE__ */ import_react.default.createElement("span", null, headerRow))), /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#666" } }, "\u{1F4CA} \u76EE\u6807\u5DE5\u4F5C\u8868\uFF1A"), /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "blue" }, selectedTable?.title || selectedTable?.name, " (", selectedTable?.name, ")")), Object.values(customValues).some((v) => v) && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#666" } }, "\u270F\uFE0F \u81EA\u5B9A\u4E49\u56FA\u5B9A\u503C\uFF1A"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true }, Object.entries(customValues).filter(([, v]) => v).map(([k, v]) => /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { key: k, color: "green" }, k, ": ", v))))), /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 13, marginBottom: 8 } }, "\u{1F441}\uFE0F \u9884\u89C8\u6570\u636E\uFF08\u524D10\u884C\uFF09"), previewData?.preview ? /* @__PURE__ */ import_react.default.createElement(
     import_antd.Table,
     {
-      dataSource: previewData.preview.map((r, i) => ({ ...r, key: i })),
-      columns: (previewData.columns || []).map((c) => ({ title: c, dataIndex: c, key: c })),
+      dataSource: previewData.preview.map((r, i) => {
+        const row = { key: i };
+        Object.entries(fieldMapping).forEach(([fieldName, excelCol]) => {
+          if (excelCol === "__custom__") {
+            row[fieldName] = customValues[fieldName] || "";
+          } else if (excelCol && excelCol !== "__ignore__") {
+            row[excelCol] = r[excelCol] !== void 0 ? r[excelCol] : "";
+          }
+        });
+        return row;
+      }),
+      columns: (() => {
+        const cols = [];
+        const seen = /* @__PURE__ */ new Set();
+        const titles = {};
+        tableFields.forEach((f) => {
+          titles[f.name] = f.uiSchema?.title || f.name;
+        });
+        Object.entries(fieldMapping).forEach(([fieldName, excelCol]) => {
+          const disp = titles[fieldName] || fieldName;
+          if (excelCol === "__custom__") {
+            cols.push({ title: "\u81EA\u5B9A\u4E49-" + disp + "(" + fieldName + ")", dataIndex: fieldName, key: fieldName });
+          } else if (excelCol && excelCol !== "__ignore__" && !seen.has(excelCol)) {
+            seen.add(excelCol);
+            cols.push({ title: excelCol + "-" + disp + "(" + fieldName + ")", dataIndex: excelCol, key: excelCol });
+          }
+        });
+        return cols;
+      })(),
       pagination: false,
       size: "small"
     }
@@ -456,9 +479,10 @@ function ExportTab() {
       });
     }
   }, [selectedTable?.name, api, t]);
-  const regularFields = exportFields.filter((f) => !["belongsTo", "hasOne", "hasMany", "belongsToMany", "attachment"].includes(f.type));
+  const regularFields = exportFields.filter((f) => !["belongsTo", "hasOne", "hasMany", "belongsToMany", "attachment"].includes(f.type) && !f.isForeignKey);
   const associationFields = exportFields.filter((f) => ["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(f.type));
   const attachmentFields = exportFields.filter((f) => f.type === "attachment");
+  const fkFields = exportFields.filter((f) => f.isForeignKey);
   const totalFieldCount = exportFields.length;
   const handleTableSelect = (value) => {
     setIsAllTables(value === "__all__");
@@ -587,7 +611,7 @@ function ExportTab() {
     t("Select all"),
     " ",
     /* @__PURE__ */ import_react2.default.createElement("span", { style: { color: "#999", fontSize: 12 } }, t("Selected"), ": ", selectedFields.length, "/", totalFieldCount)
-  ), regularFields.length > 0 && /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, marginTop: 12, marginBottom: 6 } }, "\u{1F4C4} ", t("Regular fields"), " (", regularFields.length, ")"), /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { wrap: true, style: { marginBottom: 12 } }, regularFields.map((f) => /* @__PURE__ */ import_react2.default.createElement(import_antd2.Checkbox, { key: f.name, checked: isFieldSelected(f.displayName), onChange: () => toggleField(f.displayName) }, f.displayName)))), associationFields.length > 0 && /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, color: "#7c3aed", marginBottom: 6 } }, "\u{1F517} ", t("Association fields"), " (", associationFields.length, ")"), /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { wrap: true, style: { marginBottom: 12 } }, associationFields.map((f) => /* @__PURE__ */ import_react2.default.createElement(import_antd2.Checkbox, { key: f.name, checked: isFieldSelected(f.displayName), onChange: () => toggleField(f.displayName) }, f.displayName)))), attachmentFields.length > 0 && /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, color: "#0891b2", marginBottom: 6 } }, "\u{1F4CE} ", t("Attachment fields"), " (", attachmentFields.length, ")"), /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { wrap: true }, attachmentFields.map((f) => /* @__PURE__ */ import_react2.default.createElement(import_antd2.Checkbox, { key: f.name, checked: isFieldSelected(f.displayName), onChange: () => toggleField(f.displayName) }, f.displayName))))), associationFields.length > 0 && /* @__PURE__ */ import_react2.default.createElement(import_antd2.Card, { title: "\u{1F517} \u5173\u8054\u5B57\u6BB5\u663E\u793A\u6A21\u5F0F", size: "small", style: { marginBottom: 12 } }, /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { wrap: true }, associationFields.filter((f) => isFieldSelected(f.displayName)).map((f) => /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { key: f.name }, /* @__PURE__ */ import_react2.default.createElement("span", null, f.displayName), /* @__PURE__ */ import_react2.default.createElement(
+  ), regularFields.length > 0 && /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, marginTop: 12, marginBottom: 6 } }, "\u{1F4C4} ", t("Regular fields"), " (", regularFields.length, ")"), /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { wrap: true, style: { marginBottom: 12 } }, regularFields.map((f) => /* @__PURE__ */ import_react2.default.createElement(import_antd2.Checkbox, { key: f.name, checked: isFieldSelected(f.displayName), onChange: () => toggleField(f.displayName) }, (f.uiSchema?.title || f.name) + "(" + f.name + ")")))), associationFields.length > 0 && /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, color: "#7c3aed", marginBottom: 6 } }, "\u{1F517} ", t("Association fields"), " (", associationFields.length, ")"), /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { wrap: true, style: { marginBottom: 12 } }, associationFields.map((f) => /* @__PURE__ */ import_react2.default.createElement(import_antd2.Checkbox, { key: f.name, checked: isFieldSelected(f.displayName), onChange: () => toggleField(f.displayName) }, (f.uiSchema?.title || f.name) + "(" + f.name + ")")))), attachmentFields.length > 0 && /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, color: "#0891b2", marginBottom: 6 } }, "\u{1F4CE} ", t("Attachment fields"), " (", attachmentFields.length, ")"), /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { wrap: true }, attachmentFields.map((f) => /* @__PURE__ */ import_react2.default.createElement(import_antd2.Checkbox, { key: f.name, checked: isFieldSelected(f.displayName), onChange: () => toggleField(f.displayName) }, (f.uiSchema?.title || f.name) + "(" + f.name + ")")))), fkFields.length > 0 && /* @__PURE__ */ import_react2.default.createElement(import_react2.default.Fragment, null, /* @__PURE__ */ import_react2.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, color: "#d97706", marginBottom: 6 } }, "\u{1F511} \u5173\u8054\u4E3B\u952E (", fkFields.length, ")"), /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { wrap: true }, fkFields.map((f) => /* @__PURE__ */ import_react2.default.createElement(import_antd2.Checkbox, { key: f.name, checked: isFieldSelected(f.displayName), onChange: () => toggleField(f.displayName) }, (f.uiSchema?.title || f.name) + "(" + f.name + ")"))))), associationFields.length > 0 && /* @__PURE__ */ import_react2.default.createElement(import_antd2.Card, { title: "\u{1F517} \u5173\u8054\u5B57\u6BB5\u663E\u793A\u6A21\u5F0F", size: "small", style: { marginBottom: 12 } }, /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { wrap: true }, associationFields.filter((f) => isFieldSelected(f.displayName)).map((f) => /* @__PURE__ */ import_react2.default.createElement(import_antd2.Space, { key: f.name }, /* @__PURE__ */ import_react2.default.createElement("span", null, f.displayName), /* @__PURE__ */ import_react2.default.createElement(
     import_antd2.Select,
     {
       value: assocDisplayMode[f.name] || "\u663E\u793A\u503C",
@@ -649,6 +673,22 @@ function TaskTab() {
   const [status, setStatus] = (0, import_react3.useState)("all");
   const [searchName, setSearchName] = (0, import_react3.useState)("");
   const [logDrawer, setLogDrawer] = (0, import_react3.useState)({ open: false, task: null });
+  const [tableTitles, setTableTitles] = (0, import_react3.useState)({});
+  const { data: tblData } = (0, import_ahooks3.useRequest)(
+    () => api.request({ url: "sjgl02Permissions:tables", method: "get" }),
+    {
+      onSuccess: (res) => {
+        const tables = res?.data?.data || [];
+        if (Array.isArray(tables)) {
+          const map = {};
+          tables.forEach((t2) => {
+            map[t2.name] = t2.title || t2.name;
+          });
+          setTableTitles(map);
+        }
+      }
+    }
+  );
   const { data, loading, refresh } = (0, import_ahooks3.useRequest)(
     () => api.request({
       url: "sjgl02Tasks:list",
@@ -711,7 +751,7 @@ function TaskTab() {
   const columns = [
     { title: t("Task ID"), dataIndex: "id", key: "id", render: (id) => `#${id}` },
     { title: t("Type"), dataIndex: "taskType", key: "taskType", render: (type) => /* @__PURE__ */ import_react3.default.createElement(import_antd3.Tag, { color: type === "import" ? "blue" : "green" }, type === "import" ? t("Import task") : t("Export task")) },
-    { title: t("Target table"), dataIndex: "tableName", key: "tableName" },
+    { title: t("Target table"), dataIndex: "tableName", key: "tableName", render: (v) => (tableTitles[v] || v) + "(" + v + ")" },
     { title: t("Status"), dataIndex: "status", key: "status", render: (s) => {
       const cfg = STATUS_CONFIG[s] || { color: "default", label: s };
       return /* @__PURE__ */ import_react3.default.createElement(import_antd3.Tag, { color: cfg.color }, cfg.label);
@@ -755,7 +795,7 @@ function TaskTab() {
       onChange: (e) => setSearchName(e.target.value),
       onSearch: setSearchName
     }
-  ), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Button, { onClick: refresh }, "\u{1F504} \u5237\u65B0"))), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Table, { columns, dataSource: tasks, loading, rowKey: "id", pagination: { pageSize: 20 }, size: "small" }), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Drawer, { title: t("Task log"), open: logDrawer.open, onClose: () => setLogDrawer({ open: false, task: null }), width: 680 }, logDrawer.task && /* @__PURE__ */ import_react3.default.createElement("div", null, /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions, { title: t("Task summary"), column: 2, size: "small", bordered: true }, /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Task ID") }, "#", logDrawer.task.id), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Type") }, /* @__PURE__ */ import_react3.default.createElement(import_antd3.Tag, { color: logDrawer.task.taskType === "import" ? "blue" : "green" }, logDrawer.task.taskType === "import" ? t("Import task") : t("Export task"))), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Target table") }, logDrawer.task.tableName), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Status") }, /* @__PURE__ */ import_react3.default.createElement(import_antd3.Tag, { color: STATUS_CONFIG[logDrawer.task.status]?.color }, STATUS_CONFIG[logDrawer.task.status]?.label || logDrawer.task.status)), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Creator") }, logDrawer.task.createdBy?.nickname || "\u2014"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Created at") }, logDrawer.task.createdAt ? new Date(logDrawer.task.createdAt).toLocaleString() : "\u2014"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Completed at") }, logDrawer.task.completedAt ? new Date(logDrawer.task.completedAt).toLocaleString() : "\u2014"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Data count") }, logDrawer.task.processedRows || 0, "/", logDrawer.task.totalRows || 0), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: "Sheet\u540D\u79F0" }, logDrawer.task.sheetName || "\u2014"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: "\u6587\u4EF6\u540D" }, logDrawer.task.importFileId ? `\u9644\u4EF6 #${logDrawer.task.importFileId}` : logDrawer.task.exportFileId ? `\u9644\u4EF6 #${logDrawer.task.exportFileId}` : "\u2014")), logDrawer.task.status === "completed" && /* @__PURE__ */ import_react3.default.createElement(import_antd3.Alert, { type: "success", showIcon: true, message: /* @__PURE__ */ import_react3.default.createElement(import_antd3.Space, null, /* @__PURE__ */ import_react3.default.createElement("span", null, logDrawer.task.taskType === "import" ? "\u2705 \u5BFC\u5165\u5B8C\u6210" : t("File ready for download")), logDrawer.task.taskType === "export" && /* @__PURE__ */ import_react3.default.createElement(import_antd3.Button, { type: "primary", size: "small", onClick: () => handleDownloadExport(logDrawer.task.id) }, "\u2B07 ", t("Download")), logDrawer.task.taskType === "import" && logDrawer.task.importFileId && /* @__PURE__ */ import_react3.default.createElement(import_antd3.Button, { type: "primary", size: "small", onClick: () => handleDownloadImport(logDrawer.task.importFileId) }, "\u2B07 \u4E0B\u8F7D\u5BFC\u5165\u6E90\u6587\u4EF6")), style: { margin: "16px 0" } }), /* @__PURE__ */ import_react3.default.createElement("div", { style: { fontWeight: 600, marginTop: 16, marginBottom: 8 } }, "\u{1F4CA} ", t("Field mapping details")), logDrawer.task.fieldMapping ? /* @__PURE__ */ import_react3.default.createElement(
+  ), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Button, { onClick: refresh }, "\u{1F504} \u5237\u65B0"))), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Table, { columns, dataSource: tasks, loading, rowKey: "id", pagination: { pageSize: 20 }, size: "small" }), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Drawer, { title: t("Task log"), open: logDrawer.open, onClose: () => setLogDrawer({ open: false, task: null }), width: 680 }, logDrawer.task && /* @__PURE__ */ import_react3.default.createElement("div", null, /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions, { title: t("Task summary"), column: 2, size: "small", bordered: true }, /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Task ID") }, "#", logDrawer.task.id), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Type") }, /* @__PURE__ */ import_react3.default.createElement(import_antd3.Tag, { color: logDrawer.task.taskType === "import" ? "blue" : "green" }, logDrawer.task.taskType === "import" ? t("Import task") : t("Export task"))), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Target table") }, (tableTitles[logDrawer.task.tableName] || logDrawer.task.tableName) + "(" + logDrawer.task.tableName + ")"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Status") }, /* @__PURE__ */ import_react3.default.createElement(import_antd3.Tag, { color: STATUS_CONFIG[logDrawer.task.status]?.color }, STATUS_CONFIG[logDrawer.task.status]?.label || logDrawer.task.status)), logDrawer.task.taskType === "import" && /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: "\u5BFC\u5165\u6A21\u5F0F" }, logDrawer.task.importMode || "\u2014"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Creator") }, logDrawer.task.createdBy?.nickname || "\u2014"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Created at") }, logDrawer.task.createdAt ? new Date(logDrawer.task.createdAt).toLocaleString() : "\u2014"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Completed at") }, logDrawer.task.completedAt ? new Date(logDrawer.task.completedAt).toLocaleString() : "\u2014"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: t("Data count") }, logDrawer.task.processedRows || 0, "/", logDrawer.task.totalRows || 0), logDrawer.task.taskType === "import" && /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: "Sheet\u540D\u79F0" }, logDrawer.task.sheetName || "\u2014"), /* @__PURE__ */ import_react3.default.createElement(import_antd3.Descriptions.Item, { label: "\u6587\u4EF6\u540D" }, logDrawer.task.importFileId ? `\u9644\u4EF6 #${logDrawer.task.importFileId}` : logDrawer.task.exportFileId ? `\u9644\u4EF6 #${logDrawer.task.exportFileId}` : "\u2014")), logDrawer.task.status === "completed" && /* @__PURE__ */ import_react3.default.createElement(import_antd3.Alert, { type: "success", showIcon: true, message: /* @__PURE__ */ import_react3.default.createElement(import_antd3.Space, null, /* @__PURE__ */ import_react3.default.createElement("span", null, logDrawer.task.taskType === "import" ? `\u2705 \u5BFC\u5165\u6210\u529F\uFF1A\u5171 ${logDrawer.task.totalRows} \u884C\uFF0C\u6210\u529F\u5BFC\u5165 ${logDrawer.task.processedRows} \u884C` : t("File ready for download")), logDrawer.task.taskType === "export" && /* @__PURE__ */ import_react3.default.createElement(import_antd3.Button, { type: "primary", size: "small", onClick: () => handleDownloadExport(logDrawer.task.id) }, "\u2B07 ", t("Download")), logDrawer.task.taskType === "import" && logDrawer.task.importFileId && /* @__PURE__ */ import_react3.default.createElement(import_antd3.Button, { type: "primary", size: "small", onClick: () => handleDownloadImport(logDrawer.task.importFileId) }, "\u2B07 \u4E0B\u8F7D\u5BFC\u5165\u6E90\u6587\u4EF6")), style: { margin: "16px 0" } }), /* @__PURE__ */ import_react3.default.createElement("div", { style: { fontWeight: 600, marginTop: 16, marginBottom: 8 } }, "\u{1F4CA} ", t("Field mapping details")), logDrawer.task.fieldMapping ? /* @__PURE__ */ import_react3.default.createElement(
     import_antd3.Table,
     {
       dataSource: Object.entries(logDrawer.task.fieldMapping || {}).filter(([, v]) => v && v !== "__ignore__").map(([tableField, excelCol], i) => ({ key: i, tableField, excelCol })),
@@ -767,7 +807,7 @@ function TaskTab() {
     import_antd3.Table,
     {
       dataSource: logDrawer.task.errorLogs.map((log, i) => ({ key: i, ...log })),
-      columns: [{ title: t("Row number"), dataIndex: "row" }, { title: t("Error reason"), dataIndex: "reason" }, { title: t("Field value snapshot"), dataIndex: "snapshot" }],
+      columns: [{ title: t("Row number"), dataIndex: "row", width: 60 }, { title: "Excel\u884C", dataIndex: "excelRow", width: 60 }, { title: t("Error reason"), dataIndex: "reason" }, { title: t("Field value snapshot"), dataIndex: "snapshot" }],
       pagination: false,
       size: "small"
     }

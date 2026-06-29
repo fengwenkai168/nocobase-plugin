@@ -96,4 +96,23 @@ export async function getSettings(ctx: Context, next: Next) {
   const repo = ctx.db.getRepository('sjgl02_settings');
   let settings = await repo.findOne();
   if (!settings) {
-    settings = await repo
+    settings = await repo.create({
+      values: { taskViewScope: 'own', maxFileSize: 50, batchSize: 1000 },
+    });
+  }
+  ctx.body = settings;
+  await next();
+}
+
+export async function saveSettings(ctx: Context, next: Next) {
+  const values = ctx.action.params.values || ctx.action.params;
+  const repo = ctx.db.getRepository('sjgl02_settings');
+  let settings = await repo.findOne();
+  if (settings) {
+    await repo.update({ filterByTk: settings.id, values });
+  } else {
+    await repo.create({ values });
+  }
+  ctx.body = { success: true };
+  await next();
+}

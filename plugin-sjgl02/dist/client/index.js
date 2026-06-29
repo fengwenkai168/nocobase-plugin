@@ -72,7 +72,7 @@ function ImportPanel() {
   const [fieldMapping, setFieldMapping] = import_react.default.useState({});
   const [customValues, setCustomValues] = import_react.default.useState({});
   const [excelHeaders, setExcelHeaders2] = import_react.default.useState([]);
-  const [sheetName, setSheetName] = import_react.default.useState("Sheet1");
+  const [sheetName, setSheetName2] = import_react.default.useState("Sheet1");
   const [headerRow, setHeaderRow] = import_react.default.useState(1);
   const [availSheets, setAvailSheets2] = import_react.default.useState(["Sheet1"]);
   const [tables, setTables] = import_react.default.useState([]);
@@ -106,7 +106,7 @@ function ImportPanel() {
           if (pd?.headerColumns) setExcelHeaders2(pd.headerColumns);
           if (pd?.sheets) {
             setAvailSheets2(pd.sheets);
-            if (pd.sheets[0]) setSheetName(pd.sheets[0]);
+            if (pd.sheets[0]) setSheetName2(pd.sheets[0]);
           }
         }).catch(() => {
           setExcelHeaders2([]);
@@ -127,7 +127,10 @@ function ImportPanel() {
       params: { fileId: uploadedFileId, sheetName, headerRow }
     }).then((res) => {
       setPreviewData(res?.data?.data || null);
-    }).catch(() => import_antd.message.error("\u9884\u89C8\u5931\u8D25"));
+    }).catch((err) => {
+      const msg = err?.response?.data?.errors?.[0]?.message || err?.message || "\u9884\u89C8\u5931\u8D25";
+      import_antd.message.error(msg);
+    });
   };
   const handleAutoMatch = () => {
     const mapping = {};
@@ -143,16 +146,8 @@ function ImportPanel() {
   const handleExecute = () => {
     import_antd.Modal.confirm({
       title: "\u786E\u8BA4\u5BFC\u5165",
-      content: "\u5BFC\u5165\u5728\u4E8B\u52A1\u4E2D\u6267\u884C\uFF0C\u4EFB\u4E00\u884C\u5931\u8D25\u5219\u6574\u6279\u56DE\u6EDA\u3002",
+      content: "\u5BFC\u5165\u5728\u4E8B\u52A1\u4E2D\u6267\u884C\uFF0C\u4EFB\u4E00\u884C\u5931\u8D25\u5219\u6574\u6279\u56DE\u6EDA\u3002\u5173\u8054\u5B57\u6BB5\u901A\u8FC7\u4E3B\u952EID\u5339\u914D\uFF0C\u5339\u914D\u5931\u8D25\u5219\u6574\u6279\u56DE\u6EDA\u3002",
       onOk: () => {
-        const mapped = {};
-        for (const [k, v] of Object.entries(fieldMapping)) {
-          if (v === "__custom__") {
-            mapped[k] = customValues[k] ?? "";
-          } else {
-            mapped[k] = v;
-          }
-        }
         client.request({
           url: "sjgl02Import:execute",
           method: "post",
@@ -161,12 +156,22 @@ function ImportPanel() {
             fileId: uploadedFileId,
             sheetName,
             headerRow,
-            fieldMapping: mapped,
+            fieldMapping,
+            customValues,
             importMode,
             uniqueFields
           }
         }).then(() => {
-          import_antd.message.success("\u5BFC\u5165\u4EFB\u52A1\u5DF2\u63D0\u4EA4");
+          import_antd.message.success("\u5BFC\u5165\u4EFB\u52A1\u5DF2\u63D0\u4EA4\uFF0C\u53EF\u5728\u4EFB\u52A1\u7BA1\u7406\u4E2D\u67E5\u770B\u8FDB\u5EA6");
+          setStep(0);
+          setSelectedTable(null);
+          setUploadedFileId(null);
+          setUploadedFileName("");
+          setFieldMapping({});
+          setPreviewData(null);
+          setCustomValues({});
+          setExcelHeaders2([]);
+          setAvailSheets2(["Sheet1"]);
         }).catch(() => import_antd.message.error("\u63D0\u4EA4\u5931\u8D25"));
       }
     });
@@ -232,7 +237,7 @@ function ImportPanel() {
     import_antd.Select,
     {
       value: sheetName,
-      onChange: setSheetName,
+      onChange: setSheetName2,
       style: { width: 120 },
       options: availSheets.map((s) => ({ value: s, label: s }))
     }
@@ -256,7 +261,7 @@ function ImportPanel() {
       onChange: setUniqueFields,
       style: { width: "100%" },
       placeholder: "\u9009\u62E9\u552F\u4E00\u503C\u5B57\u6BB5",
-      options: tableFields.map((f) => ({ value: f.name, label: f.name }))
+      options: tableFields.map((f) => ({ value: f.name, label: (f.uiSchema?.title || f.name) + "(" + f.name + ")" }))
     }
   )), excelHeaders.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small", title: /* @__PURE__ */ import_react.default.createElement("span", null, "\u{1F4CA} \u5B57\u6BB5\u6620\u5C04\uFF08", tableFields.length, "\u5B57\u6BB5/\u5DF2\u6620\u5C04", Object.values(fieldMapping).filter((v) => v && v !== "__ignore__").length, "\uFF09", /* @__PURE__ */ import_react.default.createElement(import_antd.Button, { size: "small", style: { marginLeft: 12 }, onClick: handleAutoMatch }, "\u26A1 \u81EA\u52A8\u5339\u914D")), style: { marginBottom: 12 } }, /* @__PURE__ */ import_react.default.createElement(
     import_antd.Table,
@@ -309,7 +314,7 @@ function ImportPanel() {
         {
           title: "\u5DE5\u4F5C\u8868\u5B57\u6BB5",
           width: 150,
-          render: (record) => /* @__PURE__ */ import_react.default.createElement("span", null, record.field.isRequired && /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#ff4d4f" } }, "* "), record.field.uiSchema?.title || record.field.name, "(", record.field.name, ")")
+          render: (record) => /* @__PURE__ */ import_react.default.createElement("span", null, record.field.isRequired && /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#ff4d4f" } }, "* "), record.field.uiSchema?.title || record.field.name, "(", record.field.name, ")", uniqueFields.includes(record.field.name) && /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "orange", style: { marginLeft: 4, fontSize: 10 } }, "\u{1F511} \u552F\u4E00\u503C"))
         }
       ],
       pagination: false,
@@ -319,18 +324,51 @@ function ImportPanel() {
     import_antd.Button,
     {
       type: "primary",
-      disabled: !uploadedFileId,
+      disabled: (() => {
+        if (!uploadedFileId) return true;
+        if (importMode === "insert") return false;
+        if (uniqueFields.length === 0) return true;
+        if (uniqueFields.some((uf) => !fieldMapping[uf] || fieldMapping[uf] === "__ignore__" || fieldMapping[uf] === "__custom__")) return true;
+        return false;
+      })(),
       onClick: async () => {
         await handlePreview();
         setStep(2);
       }
     },
     "\u4E0B\u4E00\u6B65 \u2192"
-  ))), step === 2 && /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement(import_antd.Row, { gutter: 12, style: { marginBottom: 16 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u9884\u8BA1\u5BFC\u5165\u884C\u6570", value: previewData?.totalRows || 0 }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u9519\u8BEF\u884C\u6570", value: 0, valueStyle: { color: "#52c41a" } }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u5BFC\u5165\u6A21\u5F0F", value: importMode }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "Sheet\u540D\u79F0", value: sheetName })))), /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, marginBottom: 8 } }, "\u{1F441}\uFE0F \u9884\u89C8\u6570\u636E\uFF08\u524D10\u884C\uFF09"), previewData?.preview ? /* @__PURE__ */ import_react.default.createElement(
+  ))), step === 2 && /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 14, marginBottom: 16 } }, "\u9884\u89C8\u786E\u8BA4 \u2014 ", selectedTable?.title || selectedTable?.name), /* @__PURE__ */ import_react.default.createElement(import_antd.Row, { gutter: 12, style: { marginBottom: 16 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u9884\u8BA1\u5BFC\u5165\u884C\u6570", value: previewData?.totalRows || 0 }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u9519\u8BEF\u884C\u6570", value: 0, valueStyle: { color: "#52c41a" } }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "\u5BFC\u5165\u6A21\u5F0F", value: importMode === "insert" ? "\u65B0\u589E" : importMode === "update" ? "\u66F4\u65B0" : importMode === "upsert" ? "\u65B0\u589E+\u66F4\u65B0" : importMode }))), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 6 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Statistic, { title: "Sheet\u540D\u79F0", value: sheetName })))), /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { size: "small", style: { marginBottom: 16 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Row, { gutter: 12 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 12 }, /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#666" } }, "\u{1F4C4} \u4E0A\u4F20\u6587\u4EF6\uFF1A"), /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "blue" }, uploadedFileName)), /* @__PURE__ */ import_react.default.createElement(import_antd.Col, { span: 12 }, /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#666" } }, "\u{1F4CB} \u8868\u5934\u884C\uFF1A"), /* @__PURE__ */ import_react.default.createElement("span", null, headerRow))), /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#666" } }, "\u{1F4CA} \u76EE\u6807\u5DE5\u4F5C\u8868\uFF1A"), /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "blue" }, selectedTable?.title || selectedTable?.name, " (", selectedTable?.name, ")")), uniqueFields.length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#666" } }, "\u{1F511} \u552F\u4E00\u503C\u5B57\u6BB5\uFF1A"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true }, uniqueFields.map((f) => /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { key: f, color: "orange" }, f)))), Object.values(customValues).some((v) => v) && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#666" } }, "\u270F\uFE0F \u81EA\u5B9A\u4E49\u56FA\u5B9A\u503C\uFF1A"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true }, Object.entries(customValues).filter(([, v]) => v).map(([k, v]) => /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { key: k, color: "green" }, k, ": ", v))))), /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, marginBottom: 8 } }, "\u{1F441}\uFE0F \u9884\u89C8\u6570\u636E\uFF08\u524D10\u884C\uFF09"), previewData?.preview ? /* @__PURE__ */ import_react.default.createElement(
     import_antd.Table,
     {
-      dataSource: previewData.preview.map((r, i) => ({ ...r, key: i })),
-      columns: previewData.columns?.map((c) => ({ title: c, dataIndex: c })) || [],
+      dataSource: previewData.preview.map((r, i) => {
+        const row = { key: i };
+        Object.entries(fieldMapping).forEach(([fieldName, excelCol]) => {
+          if (excelCol === "__custom__") {
+            row[fieldName] = customValues[fieldName] || "";
+          } else if (excelCol && excelCol !== "__ignore__") {
+            row[excelCol] = r[excelCol] !== void 0 ? r[excelCol] : "";
+          }
+        });
+        return row;
+      }),
+      columns: (() => {
+        const cols = [];
+        const seen = /* @__PURE__ */ new Set();
+        const titles = {};
+        tableFields.forEach((f) => {
+          titles[f.name] = f.uiSchema?.title || f.name;
+        });
+        Object.entries(fieldMapping).forEach(([fieldName, excelCol]) => {
+          const disp = titles[fieldName] || fieldName;
+          if (excelCol === "__custom__") {
+            cols.push({ title: "\u81EA\u5B9A\u4E49-" + disp + "(" + fieldName + ")", dataIndex: fieldName });
+          } else if (excelCol && excelCol !== "__ignore__" && !seen.has(excelCol)) {
+            seen.add(excelCol);
+            cols.push({ title: excelCol + "-" + disp + "(" + fieldName + ")", dataIndex: excelCol });
+          }
+        });
+        return cols;
+      })(),
       pagination: false,
       size: "small"
     }
@@ -385,8 +423,9 @@ function ExportPanel() {
     }
   }, [selTable]);
   const toggleField = (name) => setSelFields((p) => p.includes(name) ? p.filter((f) => f !== name) : [...p, name]);
-  const regular = fields.filter((f) => !["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(f.type));
+  const regular = fields.filter((f) => !["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(f.type) && !f.isForeignKey);
   const assoc = fields.filter((f) => ["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(f.type));
+  const fkFields = fields.filter((f) => f.isForeignKey);
   const handleExport = () => {
     import_antd.Modal.confirm({
       title: "\u786E\u8BA4\u5BFC\u51FA",
@@ -439,7 +478,7 @@ function ExportPanel() {
     },
     "\u5168\u9009 ",
     /* @__PURE__ */ import_react.default.createElement("span", { style: { color: "#999", fontSize: 12 } }, "\u5DF2\u9009: ", selFields.length, "/", fields.length)
-  )), regular.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, marginBottom: 6 } }, "\u{1F4C4} \u5E38\u89C4\u5B57\u6BB5 (", regular.length, ")"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true, style: { marginBottom: 12 } }, regular.map((f) => /* @__PURE__ */ import_react.default.createElement(import_antd.Checkbox, { key: f.name, checked: selFields.includes(f.name), onChange: () => toggleField(f.name) }, f.name)))), assoc.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, color: "#7c3aed", marginBottom: 6 } }, "\u{1F517} \u5173\u8054\u5B57\u6BB5 (", assoc.length, ")"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true }, assoc.map((f) => /* @__PURE__ */ import_react.default.createElement(import_antd.Checkbox, { key: f.name, checked: selFields.includes(f.name), onChange: () => toggleField(f.name) }, f.name))))), assoc.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { title: "\u{1F4D1} \u5173\u8054\u6570\u636E Sheet", size: "small", style: { marginBottom: 12 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Space, null, /* @__PURE__ */ import_react.default.createElement(import_antd.Switch, { checked: includeAssocSheet, onChange: setIncludeAssocSheet }), /* @__PURE__ */ import_react.default.createElement("span", null, "\u5305\u542B\u5173\u8054\u6570\u636E Sheet")), includeAssocSheet && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react.default.createElement(
+  )), regular.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, marginBottom: 6 } }, "\u{1F4C4} \u5E38\u89C4\u5B57\u6BB5 (", regular.length, ")"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true, style: { marginBottom: 12 } }, regular.map((f) => /* @__PURE__ */ import_react.default.createElement(import_antd.Checkbox, { key: f.name, checked: selFields.includes(f.name), onChange: () => toggleField(f.name) }, (f.uiSchema?.title || f.name) + "(" + f.name + ")")))), assoc.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, color: "#7c3aed", marginBottom: 6 } }, "\u{1F517} \u5173\u8054\u5B57\u6BB5 (", assoc.length, ")"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true }, assoc.map((f) => /* @__PURE__ */ import_react.default.createElement(import_antd.Checkbox, { key: f.name, checked: selFields.includes(f.name), onChange: () => toggleField(f.name) }, (f.uiSchema?.title || f.name) + "(" + f.name + ")")))), fkFields.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_react.default.Fragment, null, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 12, color: "#d97706", marginBottom: 6 } }, "\u{1F511} \u5173\u8054\u4E3B\u952E (", fkFields.length, ")"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true }, fkFields.map((f) => /* @__PURE__ */ import_react.default.createElement(import_antd.Checkbox, { key: f.name, checked: selFields.includes(f.name), onChange: () => toggleField(f.name) }, (f.uiSchema?.title || f.name) + "(" + f.name + ")"))))), assoc.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_antd.Card, { title: "\u{1F4D1} \u5173\u8054\u6570\u636E Sheet", size: "small", style: { marginBottom: 12 } }, /* @__PURE__ */ import_react.default.createElement(import_antd.Space, null, /* @__PURE__ */ import_react.default.createElement(import_antd.Switch, { checked: includeAssocSheet, onChange: setIncludeAssocSheet }), /* @__PURE__ */ import_react.default.createElement("span", null, "\u5305\u542B\u5173\u8054\u6570\u636E Sheet")), includeAssocSheet && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 8 } }, /* @__PURE__ */ import_react.default.createElement(
     import_antd.Select,
     {
       mode: "multiple",
@@ -458,6 +497,19 @@ function TaskPanel() {
   const [taskType, setTaskType] = import_react.default.useState("all");
   const [status, setStatus] = import_react.default.useState("all");
   const [drawer, setDrawer] = import_react.default.useState(null);
+  const [tableTitles, setTableTitles] = import_react.default.useState({});
+  import_react.default.useEffect(() => {
+    apiRequest(client, "sjgl02Permissions:tables").then((data) => {
+      if (Array.isArray(data)) {
+        const map = {};
+        data.forEach((t) => {
+          map[t.name] = t.title || t.name;
+        });
+        setTableTitles(map);
+      }
+    }).catch(() => {
+    });
+  }, []);
   const loadTasks = () => {
     setLoading(true);
     apiRequest(client, "sjgl02Tasks:list", { params: { taskType, status } }).then((data) => {
@@ -477,8 +529,31 @@ function TaskPanel() {
   }, [taskType, status]);
   const handleView = async (task) => {
     try {
-      const data = await client.request({ url: "sjgl02Tasks:detail", method: "get", params: { taskId: task.id } });
-      setDrawer(data?.data?.data || task);
+      const res = await client.request({ url: "sjgl02Tasks:detail", method: "get", params: { taskId: task.id } });
+      const t = res?.data?.data || task;
+      const fileId = t.exportFileId || t.importFileId;
+      if (fileId) {
+        try {
+          const att = await client.request({ url: "attachments:get", method: "get", params: { filterByTk: fileId } });
+          t._fileName = att?.data?.data?.filename || att?.data?.data?.title || "";
+        } catch {
+          t._fileName = "";
+        }
+      }
+      if (t.tableName) {
+        try {
+          const fd = await client.request({ url: "sjgl02Import:tableFields", method: "get", params: { tableName: t.tableName } });
+          const fields = fd?.data?.data || [];
+          const map = {};
+          (Array.isArray(fields) ? fields : []).forEach((f) => {
+            map[f.name] = f.uiSchema?.title || f.name;
+          });
+          t._fieldTitles = map;
+        } catch {
+          t._fieldTitles = {};
+        }
+      }
+      setDrawer(t);
     } catch {
       setDrawer(task);
     }
@@ -518,7 +593,7 @@ function TaskPanel() {
       columns: [
         { title: "\u4EFB\u52A1ID", dataIndex: "id", render: (v) => `#${v}` },
         { title: "\u7C7B\u578B", dataIndex: "taskType", render: (v) => /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: v === "import" ? "blue" : "green" }, v === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") },
-        { title: "\u76EE\u6807\u8868", dataIndex: "tableName" },
+        { title: "\u76EE\u6807\u8868", dataIndex: "tableName", render: (v) => (tableTitles[v] || v) + "(" + v + ")" },
         { title: "\u72B6\u6001", dataIndex: "status", render: (v) => /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: statusColors[v] }, statusLabels[v] || v) },
         { title: "\u8FDB\u5EA6", dataIndex: "progress", render: (v) => /* @__PURE__ */ import_react.default.createElement(import_antd.Progress, { percent: v || 0, size: "small", style: { minWidth: 80 } }) },
         { title: "\u6570\u636E\u91CF", render: (_, r) => `${r.processedRows || 0}/${r.totalRows || 0}` },
@@ -527,28 +602,49 @@ function TaskPanel() {
         { title: "\u64CD\u4F5C", render: (_, r) => /* @__PURE__ */ import_react.default.createElement(import_antd.Space, null, /* @__PURE__ */ import_react.default.createElement(import_antd.Button, { type: "link", size: "small", onClick: () => handleView(r) }, "\u{1F441} \u67E5\u770B"), ["pending", "processing"].includes(r.status) && /* @__PURE__ */ import_react.default.createElement(import_antd.Button, { type: "link", size: "small", danger: true, onClick: () => handleCancel(r) }, "\u23F9 \u53D6\u6D88")) }
       ]
     }
-  ), /* @__PURE__ */ import_react.default.createElement(import_antd.Drawer, { title: "\u4EFB\u52A1\u65E5\u5FD7", open: !!drawer, onClose: () => setDrawer(null), width: 680 }, drawer && /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions, { title: "\u4EFB\u52A1\u6458\u8981", column: 2, size: "small", bordered: true }, /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u4EFB\u52A1ID" }, "#", drawer.id), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u7C7B\u578B" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: drawer.taskType === "import" ? "blue" : "green" }, drawer.taskType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA")), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u76EE\u6807\u8868" }, drawer.tableName), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u72B6\u6001" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: statusColors[drawer.status] }, statusLabels[drawer.status])), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u521B\u5EFA\u4EBA" }, drawer.createdBy?.nickname || "\u2014"), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u6570\u636E\u91CF" }, drawer.processedRows || 0, "/", drawer.totalRows || 0)), drawer.status === "completed" && drawer.exportFileId && /* @__PURE__ */ import_react.default.createElement("div", { style: { background: "#f6ffed", border: "1px solid #b7eb8f", padding: "12px 16px", borderRadius: 6, margin: "16px 0" } }, "\u2705 \u6587\u4EF6\u5DF2\u51C6\u5907\u597D ", /* @__PURE__ */ import_react.default.createElement(
-    import_antd.Button,
-    {
-      type: "primary",
-      size: "small",
-      style: { marginLeft: 8 },
-      onClick: () => {
-        client.request({ url: "sjgl02Export:download", method: "get", params: { taskId: drawer.id }, responseType: "blob" }).then((res) => {
-          const disp = res.headers?.["content-disposition"] || "";
-          const m = disp.match(/filename\*=UTF-8''(.+)|filename="?([^";]+)/);
-          const name = m ? decodeURIComponent(m[1] || m[2] || "export.xlsx") : "export.xlsx";
-          const url = URL.createObjectURL(res.data);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = name;
-          a.click();
-          URL.revokeObjectURL(url);
-        }).catch(() => import_antd.message.error("\u4E0B\u8F7D\u5931\u8D25"));
+  ), /* @__PURE__ */ import_react.default.createElement(import_antd.Drawer, { title: "\u4EFB\u52A1\u65E5\u5FD7", open: !!drawer, onClose: () => setDrawer(null), width: 680 }, drawer && (() => {
+    const modeLabel = drawer.importMode === "insert" ? "\u65B0\u589E" : drawer.importMode === "update" ? "\u66F4\u65B0" : drawer.importMode === "upsert" ? "\u65B0\u589E+\u66F4\u65B0" : drawer.importMode;
+    const fieldTitles = drawer._fieldTitles || {};
+    return /* @__PURE__ */ import_react.default.createElement("div", null, /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions, { title: "\u4EFB\u52A1\u6458\u8981", column: 2, size: "small", bordered: true }, /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u4EFB\u52A1ID" }, "#", drawer.id), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u7C7B\u578B" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: drawer.taskType === "import" ? "blue" : "green" }, drawer.taskType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA")), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u76EE\u6807\u8868" }, (tableTitles[drawer.tableName] || drawer.tableName) + "(" + drawer.tableName + ")"), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u72B6\u6001" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: statusColors[drawer.status] }, statusLabels[drawer.status])), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u521B\u5EFA\u4EBA" }, drawer.createdBy?.nickname || "\u2014"), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u6570\u636E\u91CF" }, drawer.processedRows || 0, "/", drawer.totalRows || 0), drawer.taskType === "import" && /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "Sheet\u540D\u79F0" }, drawer.sheetName || "\u2014"), drawer.taskType === "import" && /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u5BFC\u5165\u6A21\u5F0F" }, modeLabel), drawer.taskType === "import" && /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u552F\u4E00\u503C\u5B57\u6BB5" }, drawer.uniqueFields?.length > 0 ? drawer.uniqueFields.join(", ") : "\u2014"), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u521B\u5EFA\u65F6\u95F4" }, drawer.createdAt ? new Date(drawer.createdAt).toLocaleString() : "\u2014"), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u5B8C\u6210\u65F6\u95F4" }, drawer.completedAt ? new Date(drawer.completedAt).toLocaleString() : "\u2014"), /* @__PURE__ */ import_react.default.createElement(import_antd.Descriptions.Item, { label: "\u6587\u4EF6\u540D" }, drawer._fileName ? /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { size: 4 }, /* @__PURE__ */ import_react.default.createElement("span", null, drawer._fileName), drawer.importFileId && /* @__PURE__ */ import_react.default.createElement(import_antd.Button, { type: "link", size: "small", onClick: () => window.open("/api/attachments:download/" + drawer.importFileId) }, "\u2B07 \u4E0B\u8F7D\u5BFC\u5165\u6E90\u6587\u4EF6"), drawer.exportFileId && /* @__PURE__ */ import_react.default.createElement(import_antd.Button, { type: "link", size: "small", onClick: () => {
+      client.request({ url: "sjgl02Export:download", method: "get", params: { taskId: drawer.id }, responseType: "blob" }).then((res) => {
+        const disp = res.headers?.["content-disposition"] || "";
+        const m = disp.match(/filename\*=UTF-8''(.+)|filename="?([^";]+)/);
+        const name = m ? decodeURIComponent(m[1] || m[2] || "export.xlsx") : "export.xlsx";
+        const url = URL.createObjectURL(res.data);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(url);
+      }).catch(() => import_antd.message.error("\u4E0B\u8F7D\u5931\u8D25"));
+    } }, "\u2B07 \u4E0B\u8F7D\u5BFC\u51FA\u6587\u4EF6")) : "\u2014")), drawer.errorMessage && /* @__PURE__ */ import_react.default.createElement("div", { style: { background: "#fff2f0", border: "1px solid #ffccc7", padding: "12px 16px", borderRadius: 6, margin: "16px 0" } }, "\u274C \u9519\u8BEF\u4FE1\u606F\uFF1A", drawer.errorMessage), drawer.status === "completed" && drawer.taskType === "import" && /* @__PURE__ */ import_react.default.createElement("div", { style: { background: "#f6ffed", border: "1px solid #b7eb8f", padding: "12px 16px", borderRadius: 6, margin: "16px 0" } }, "\u2705 \u5BFC\u5165\u6210\u529F\uFF1A\u5171 ", drawer.totalRows, " \u884C\uFF0C\u6210\u529F\u5BFC\u5165 ", drawer.processedRows, " \u884C"), drawer.fieldMapping && Object.keys(drawer.fieldMapping).length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, marginBottom: 8 } }, "\u{1F4CA} \u5B57\u6BB5\u6620\u5C04"), /* @__PURE__ */ import_react.default.createElement(
+      import_antd.Table,
+      {
+        dataSource: Object.entries(drawer.fieldMapping).filter(([, v]) => v && v !== "__ignore__").map(([k, v], i) => ({
+          key: i,
+          field: (fieldTitles[k] || k) + "(" + k + ")",
+          type: v === "__custom__" ? "\u56FA\u5B9A\u503C\u5199\u5165" : "Excel\u5217",
+          value: v === "__custom__" ? "\uFF08\u672A\u5B58\u50A8\uFF09" : v
+        })),
+        columns: [
+          { title: "\u5DE5\u4F5C\u8868\u5B57\u6BB5", dataIndex: "field" },
+          { title: "\u6620\u5C04\u65B9\u5F0F", width: 90, render: (_, r) => r.type === "\u56FA\u5B9A\u503C\u5199\u5165" ? /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "green" }, "\u56FA\u5B9A\u503C\u5199\u5165") : /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "blue" }, "Excel\u5217") },
+          { title: "\u2192", width: 30 },
+          { title: "Excel\u5217/\u56FA\u5B9A\u503C", dataIndex: "value" }
+        ],
+        pagination: false,
+        size: "small"
       }
-    },
-    "\u2B07 \u4E0B\u8F7D"
-  )))));
+    )), drawer.taskType === "export" && drawer.tableName === "__all__" && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, marginBottom: 8 } }, "\u{1F4E6} \u5168\u90E8\u6570\u636E\u8868\u5BFC\u51FA"), /* @__PURE__ */ import_react.default.createElement("div", { style: { color: "#666", fontSize: 13 } }, "\u5171 ", drawer.totalRows || 0, " \u5F20\u8868\uFF0C\u5BFC\u51FA ", drawer.processedRows || 0, " \u884C\u6570\u636E")), drawer.taskType === "export" && drawer.tableName !== "__all__" && drawer.selectedFields && drawer.selectedFields.length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, marginBottom: 8 } }, "\u{1F4CB} \u5BFC\u51FA\u5B57\u6BB5\u9009\u62E9"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true }, drawer.selectedFields.map((f) => /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { key: f, color: "blue" }, (fieldTitles[f] || f) + "(" + f + ")")))), drawer.taskType === "export" && drawer.includeAssociationSheet && drawer.associationSheetTables && drawer.associationSheetTables.length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, marginBottom: 8 } }, "\u{1F4D1} \u5173\u8054\u6570\u636E Sheet\uFF08", drawer.associationSheetTables.length, "\u4E2A\uFF09"), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true }, drawer.associationSheetTables.map((f) => /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { key: f, color: "purple" }, (fieldTitles[f] || f) + "(" + f + ")")))), drawer.errorLogs?.length > 0 && /* @__PURE__ */ import_react.default.createElement("div", { style: { marginTop: 16 } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, marginBottom: 8 } }, "\u274C \u9519\u8BEF\u65E5\u5FD7 (", drawer.errorLogs.length, "\u6761)"), /* @__PURE__ */ import_react.default.createElement(
+      import_antd.Table,
+      {
+        dataSource: drawer.errorLogs.map((l, i) => ({ ...l, key: i })),
+        columns: [{ title: "\u884C\u53F7", dataIndex: "row", width: 60 }, { title: "Excel\u884C", dataIndex: "excelRow", width: 60 }, { title: "\u539F\u56E0", dataIndex: "reason" }, { title: "\u5FEB\u7167", dataIndex: "snapshot", render: (v) => v ? String(v).substring(0, 200) : "\u2014" }],
+        pagination: false,
+        size: "small"
+      }
+    )), !drawer.errorMessage && (!drawer.fieldMapping || Object.keys(drawer.fieldMapping).length === 0) && (!drawer.selectedFields || drawer.selectedFields.length === 0) && (!drawer.errorLogs || drawer.errorLogs.length === 0) && /* @__PURE__ */ import_react.default.createElement(import_antd.Empty, { description: "\u6682\u65E0\u8BE6\u7EC6\u65E5\u5FD7", style: { marginTop: 16 } }));
+  })()));
 }
 function PermissionPanel() {
   const client = (0, import_client.useAPIClient)();
@@ -653,7 +749,8 @@ function PermissionPanel() {
       setModalFields(Array.isArray(fields) ? fields.map((f) => f.name) : []);
     }).catch(() => {
       setExcelHeaders([]);
-      setAvailSheets(["Sheet1"]);
+      setAvailSheets([]);
+      setSheetName("");
     });
   } }, "\u7F16\u8F91"), /* @__PURE__ */ import_react.default.createElement(import_antd.Button, { size: "small", danger: true, onClick: () => deletePerm(p.tableName) }, "\u5220\u9664"))), /* @__PURE__ */ import_react.default.createElement(import_antd.Space, { wrap: true }, /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: p.canImport ? "blue" : "default" }, "\u5BFC\u5165: ", p.canImport ? "\u662F" : "\u5426"), /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: p.canExport ? "green" : "default" }, "\u5BFC\u51FA: ", p.canExport ? "\u662F" : "\u5426"), /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "orange" }, "\u6A21\u5F0F: ", p.importMode || "insert"), p.uniqueFields?.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "orange" }, "\u552F\u4E00\u503C: ", p.uniqueFields.join(",")), p.requiredFields?.length > 0 && /* @__PURE__ */ import_react.default.createElement(import_antd.Tag, { color: "red" }, "\u5FC5\u586B: ", p.requiredFields.join(","))))))), /* @__PURE__ */ import_react.default.createElement(import_antd.Modal, { title: modal.perm ? "\u7F16\u8F91\u6743\u9650" : "\u6DFB\u52A0\u6743\u9650", open: modal.open, onCancel: () => setModal({ open: false }), onOk: savePerms, width: 720 }, /* @__PURE__ */ import_react.default.createElement(import_antd.Form, { form, layout: "vertical" }, /* @__PURE__ */ import_react.default.createElement(import_antd.Form.Item, { label: "\u9009\u62E9\u6570\u636E\u8868", name: "tableName", rules: [{ required: true }] }, /* @__PURE__ */ import_react.default.createElement(
     import_antd.Select,
@@ -675,22 +772,4 @@ function Sjgl02Block() {
   return /* @__PURE__ */ import_react.default.createElement("div", { style: { padding: 16 } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { background: "linear-gradient(135deg,#1677ff,#0958d9)", borderRadius: 10, padding: "10px 20px", color: "#fff", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ import_react.default.createElement("div", { style: { fontWeight: 600, fontSize: 16 } }, "\u{1F4CA} \u6570\u636E\u7BA1\u7406"), /* @__PURE__ */ import_react.default.createElement("div", { style: { opacity: 0.7, fontSize: 11 } }, "@my-project/plugin-sjgl02 ", VERSION)), /* @__PURE__ */ import_react.default.createElement(import_antd.Tabs, { destroyInactiveTabPane: true, items: [
     { key: "import", label: "\u2B07 \u5BFC\u5165", children: /* @__PURE__ */ import_react.default.createElement(ImportPanel, null) },
     { key: "export", label: "\u2B06 \u5BFC\u51FA", children: /* @__PURE__ */ import_react.default.createElement(ExportPanel, null) },
-    { key: "tasks", label: "\u2630 \u4EFB\u52A1\u7BA1\u7406", children: /* @__PURE__ */ import_react.default.createElement(TaskPanel, null) }
-  ] }));
-}
-var PluginSjgl02Client = class extends import_client.Plugin {
-  async load() {
-    this.pluginSettingsManager.add("sjgl02", {
-      title: "\u6570\u636E\u7BA1\u7406",
-      icon: "DatabaseOutlined",
-      Component: Sjgl02SettingsPageV1
-    });
-    this.app.addComponents({ SjglBlock: Sjgl02Block });
-    this.app.schemaInitializerManager.addItem("page:addBlock", "sjgl02.block", { title: "\u6570\u636E\u7BA1\u7406", Component: "SjglBlock" });
-    this.app.schemaInitializerManager.addItem("popup:common:addBlock", "sjgl02.block", { title: "\u6570\u636E\u7BA1\u7406", Component: "SjglBlock" });
-  }
-};
-
-// src/client/index.ts
-var index_default = PluginSjgl02Client;
-                                                                                                                                                                                                                
+    { key: "ta

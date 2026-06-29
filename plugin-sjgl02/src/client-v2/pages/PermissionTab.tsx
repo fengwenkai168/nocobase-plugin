@@ -263,3 +263,7 @@ export default function PermissionTab() {
             <Select mode="multiple" placeholder="空=全部允许" loading={modalLoadingFields}
               options={modalTableFields.map(v => ({ value: v, label: v }))} /></Form.Item>
         </Form>
+      </Modal>
+    </Row>
+  );
+}

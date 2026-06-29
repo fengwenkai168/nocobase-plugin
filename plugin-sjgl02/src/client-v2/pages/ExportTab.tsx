@@ -73,9 +73,10 @@ export default function ExportTab() {
     }
   }, [selectedTable?.name, api, t]);
 
-  const regularFields = exportFields.filter((f) => !['belongsTo', 'hasOne', 'hasMany', 'belongsToMany', 'attachment'].includes(f.type));
+  const regularFields = exportFields.filter((f) => !['belongsTo', 'hasOne', 'hasMany', 'belongsToMany', 'attachment'].includes(f.type) && !f.isForeignKey);
   const associationFields = exportFields.filter((f) => ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(f.type));
   const attachmentFields = exportFields.filter((f) => f.type === 'attachment');
+  const fkFields = exportFields.filter((f) => f.isForeignKey);
   const totalFieldCount = exportFields.length;
 
   const handleTableSelect = (value: string) => {
@@ -201,11 +202,13 @@ export default function ExportTab() {
                   {t('Select all')} <span style={{ color: '#999', fontSize: 12 }}>{t('Selected')}: {selectedFields.length}/{totalFieldCount}</span>
                 </Checkbox>
                 {regularFields.length > 0 && <><div style={{ fontWeight: 600, fontSize: 12, marginTop: 12, marginBottom: 6 }}>📄 {t('Regular fields')} ({regularFields.length})</div>
-                  <Space wrap style={{ marginBottom: 12 }}>{regularFields.map(f => <Checkbox key={f.name} checked={isFieldSelected(f.displayName)} onChange={() => toggleField(f.displayName)}>{f.displayName}</Checkbox>)}</Space></>}
+                  <Space wrap style={{ marginBottom: 12 }}>{regularFields.map(f => <Checkbox key={f.name} checked={isFieldSelected(f.displayName)} onChange={() => toggleField(f.displayName)}>{(f.uiSchema?.title || f.name) + '(' + f.name + ')'}</Checkbox>)}</Space></>}
                 {associationFields.length > 0 && <><div style={{ fontWeight: 600, fontSize: 12, color: '#7c3aed', marginBottom: 6 }}>🔗 {t('Association fields')} ({associationFields.length})</div>
-                  <Space wrap style={{ marginBottom: 12 }}>{associationFields.map(f => <Checkbox key={f.name} checked={isFieldSelected(f.displayName)} onChange={() => toggleField(f.displayName)}>{f.displayName}</Checkbox>)}</Space></>}
+                  <Space wrap style={{ marginBottom: 12 }}>{associationFields.map(f => <Checkbox key={f.name} checked={isFieldSelected(f.displayName)} onChange={() => toggleField(f.displayName)}>{(f.uiSchema?.title || f.name) + '(' + f.name + ')'}</Checkbox>)}</Space></>}
                 {attachmentFields.length > 0 && <><div style={{ fontWeight: 600, fontSize: 12, color: '#0891b2', marginBottom: 6 }}>📎 {t('Attachment fields')} ({attachmentFields.length})</div>
-                  <Space wrap>{attachmentFields.map(f => <Checkbox key={f.name} checked={isFieldSelected(f.displayName)} onChange={() => toggleField(f.displayName)}>{f.displayName}</Checkbox>)}</Space></>}
+                  <Space wrap>{attachmentFields.map(f => <Checkbox key={f.name} checked={isFieldSelected(f.displayName)} onChange={() => toggleField(f.displayName)}>{(f.uiSchema?.title || f.name) + '(' + f.name + ')'}</Checkbox>)}</Space></>}
+                {fkFields.length > 0 && <><div style={{ fontWeight: 600, fontSize: 12, color: '#d97706', marginBottom: 6 }}>🔑 关联主键 ({fkFields.length})</div>
+                  <Space wrap>{fkFields.map(f => <Checkbox key={f.name} checked={isFieldSelected(f.displayName)} onChange={() => toggleField(f.displayName)}>{(f.uiSchema?.title || f.name) + '(' + f.name + ')'}</Checkbox>)}</Space></>}
               </Card>
               {associationFields.length > 0 && (
                 <Card title="🔗 关联字段显示模式" size="small" style={{ marginBottom: 12 }}>
@@ -287,4 +290,3 @@ export default function ExportTab() {
     </div>
   );
 }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          

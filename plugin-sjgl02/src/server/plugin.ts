@@ -101,4 +101,36 @@ export class PluginSjgl02Server extends Plugin {
     }
 
     const permRepo = this.db.getRepository('sjgl02_table_permissions');
-    const permCou
+    const permCount = await permRepo.count();
+    if (permCount === 0) {
+      const roleRepo = this.db.getRepository('roles');
+      const adminRole = await roleRepo.findOne({ filter: { name: 'admin' } });
+      const roleId = adminRole ? String(adminRole.name) : 'admin';
+      const tables = this.db.collections;
+      const tablePermissions: any[] = [];
+      for (const [name] of tables) {
+        if (name.startsWith('sjgl02_')) continue;
+        tablePermissions.push({
+          targetType: 'role',
+          targetId: roleId,
+          targetName: '管理员',
+          tableName: name,
+          canImport: true,
+          canExport: true,
+          importMode: 'insert',
+          uniqueFields: [],
+          requiredFields: [],
+          importFields: [],
+          exportFields: [],
+        });
+      }
+      if (tablePermissions.length > 0) {
+        for (const perm of tablePermissions) {
+          await permRepo.create({ values: perm });
+        }
+      }
+    }
+  }
+}
+
+export default PluginSjgl02Server;

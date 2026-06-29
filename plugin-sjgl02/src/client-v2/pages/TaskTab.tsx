@@ -38,6 +38,20 @@ export default function TaskTab() {
   const [status, setStatus] = useState('all');
   const [searchName, setSearchName] = useState('');
   const [logDrawer, setLogDrawer] = useState<{ open: boolean; task: any }>({ open: false, task: null });
+  const [tableTitles, setTableTitles] = useState<Record<string, string>>({});
+
+  const { data: tblData } = useRequest(
+    () => api.request({ url: 'sjgl02Permissions:tables', method: 'get' }),
+    { onSuccess: (res: any) => {
+        const tables = res?.data?.data || [];
+        if (Array.isArray(tables)) {
+          const map: Record<string, string> = {};
+          tables.forEach((t: any) => { map[t.name] = t.title || t.name; });
+          setTableTitles(map);
+        }
+      }
+    },
+  );
 
   const { data, loading, refresh } = useRequest(
     () => api.request({
@@ -95,7 +109,7 @@ export default function TaskTab() {
   const columns = [
     { title: t('Task ID'), dataIndex: 'id', key: 'id', render: (id: number) => `#${id}` },
     { title: t('Type'), dataIndex: 'taskType', key: 'taskType', render: (type: string) => <Tag color={type === 'import' ? 'blue' : 'green'}>{type === 'import' ? t('Import task') : t('Export task')}</Tag> },
-    { title: t('Target table'), dataIndex: 'tableName', key: 'tableName' },
+    { title: t('Target table'), dataIndex: 'tableName', key: 'tableName', render: (v: string) => (tableTitles[v] || v) + '(' + v + ')' },
     { title: t('Status'), dataIndex: 'status', key: 'status', render: (s: string) => { const cfg = STATUS_CONFIG[s] || { color: 'default', label: s }; return <Tag color={cfg.color}>{cfg.label}</Tag>; } },
     { title: t('Progress'), dataIndex: 'progress', key: 'progress', render: (p: number, r: any) => <Progress percent={p} size="small" strokeColor={r.status === 'failed' ? '#ff4d4f' : r.status === 'pending' ? '#d9d9d9' : '#1677ff'} style={{ minWidth: 100 }} /> },
     { title: t('Data count'), key: 'dataCount', render: (_: any, r: any) => `${r.processedRows || 0}/${r.totalRows || 0}` },
@@ -136,19 +150,20 @@ export default function TaskTab() {
             <Descriptions title={t('Task summary')} column={2} size="small" bordered>
               <Descriptions.Item label={t('Task ID')}>#{logDrawer.task.id}</Descriptions.Item>
               <Descriptions.Item label={t('Type')}><Tag color={logDrawer.task.taskType === 'import' ? 'blue' : 'green'}>{logDrawer.task.taskType === 'import' ? t('Import task') : t('Export task')}</Tag></Descriptions.Item>
-              <Descriptions.Item label={t('Target table')}>{logDrawer.task.tableName}</Descriptions.Item>
+              <Descriptions.Item label={t('Target table')}>{(tableTitles[logDrawer.task.tableName] || logDrawer.task.tableName) + '(' + logDrawer.task.tableName + ')'}</Descriptions.Item>
               <Descriptions.Item label={t('Status')}><Tag color={STATUS_CONFIG[logDrawer.task.status]?.color}>{STATUS_CONFIG[logDrawer.task.status]?.label || logDrawer.task.status}</Tag></Descriptions.Item>
+              {logDrawer.task.taskType === 'import' && <Descriptions.Item label="导入模式">{logDrawer.task.importMode || '—'}</Descriptions.Item>}
               <Descriptions.Item label={t('Creator')}>{logDrawer.task.createdBy?.nickname || '—'}</Descriptions.Item>
               <Descriptions.Item label={t('Created at')}>{logDrawer.task.createdAt ? new Date(logDrawer.task.createdAt).toLocaleString() : '—'}</Descriptions.Item>
               <Descriptions.Item label={t('Completed at')}>{logDrawer.task.completedAt ? new Date(logDrawer.task.completedAt).toLocaleString() : '—'}</Descriptions.Item>
               <Descriptions.Item label={t('Data count')}>{logDrawer.task.processedRows || 0}/{logDrawer.task.totalRows || 0}</Descriptions.Item>
-              <Descriptions.Item label="Sheet名称">{logDrawer.task.sheetName || '—'}</Descriptions.Item>
+              {logDrawer.task.taskType === 'import' && <Descriptions.Item label="Sheet名称">{logDrawer.task.sheetName || '—'}</Descriptions.Item>}
               <Descriptions.Item label="文件名">{logDrawer.task.importFileId ? `附件 #${logDrawer.task.importFileId}` : logDrawer.task.exportFileId ? `附件 #${logDrawer.task.exportFileId}` : '—'}</Descriptions.Item>
             </Descriptions>
             {logDrawer.task.status === 'completed' && (
               <Alert type="success" showIcon message={
                 <Space>
-                  <span>{logDrawer.task.taskType === 'import' ? '✅ 导入完成' : t('File ready for download')}</span>
+                  <span>{logDrawer.task.taskType === 'import' ? `✅ 导入成功：共 ${logDrawer.task.totalRows} 行，成功导入 ${logDrawer.task.processedRows} 行` : t('File ready for download')}</span>
                   {logDrawer.task.taskType === 'export' && (
                     <Button type="primary" size="small" onClick={() => handleDownloadExport(logDrawer.task.id)}>⬇ {t('Download')}</Button>
                   )}
@@ -168,4 +183,7 @@ export default function TaskTab() {
               <Space wrap>{(logDrawer.task.selectedFields as string[]).map((f: string) => <Tag key={f} color="blue">{f}</Tag>)}</Space>
             ) : <Empty description="暂无映射数据" />}
             <div style={{ fontWeight: 600, marginTop: 16, marginBottom: 8 }}>❌ {t('Error log')}</div>
-            {logDrawer.task.errorLog
+            {logDrawer.task.errorLogs && logDrawer.task.errorLogs.length > 0 ? (
+              <Table dataSource={logDrawer.task.errorLogs.map((log: any, i: number) => ({ key: i, ...log }))}
+                columns={[{ title: t('Row number'), dataIndex: 'row', width: 60 }, { title: 'Excel行', dataIndex: 'excelRow', width: 60 }, { title: t('Error reason'), dataIndex: 'reason' }, { title: t('Field value snapshot'), dataIndex: 'snapshot' }]}
+            

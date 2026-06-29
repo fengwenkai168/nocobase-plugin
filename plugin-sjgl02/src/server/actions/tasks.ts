@@ -65,4 +65,10 @@ export async function cancelTask(ctx: Context, next: Next) {
 
 async function getTaskViewScope(ctx: Context): Promise<string> {
   try {
-    const settingRepo = ctx.db.getRe
+    const settingRepo = ctx.db.getRepository('sjgl02_settings');
+    const settings = await settingRepo.findOne();
+    return settings?.taskViewScope || 'own';
+  } catch {
+    return 'own';
+  }
+}

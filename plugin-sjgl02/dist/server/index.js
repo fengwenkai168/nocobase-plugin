@@ -53,6 +53,12 @@ async function getTableFields(ctx, next) {
     rawFields = [];
   }
   const autoFields = ["id", "createdAt", "updatedAt", "createdBy", "updatedBy", "createdById", "updatedById"];
+  const fkSet = /* @__PURE__ */ new Set();
+  rawFields.forEach((f) => {
+    if (f.type === "belongsTo" && f.options?.foreignKey) {
+      fkSet.add(f.options.foreignKey);
+    }
+  });
   const fields = rawFields.map((f) => {
     let title = f.options?.uiSchema?.title || null;
     if (title && /^\{\{/.test(title)) title = null;
@@ -62,7 +68,8 @@ async function getTableFields(ctx, next) {
       uiSchema: { ...f.options?.uiSchema || {}, title },
       interface: f.options?.interface || null,
       isRequired: autoFields.includes(f.name) ? false : f.options?.allowNull === false,
-      isRelation: ["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(f.type)
+      isRelation: ["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(f.type),
+      isForeignKey: fkSet.has(f.name)
     };
   });
   ctx.body = fields;
@@ -108,8 +115,10 @@ async function uploadParse(ctx, next) {
   await next();
 }
 async function preview(ctx, next) {
-  const params = ctx.action.params.values || ctx.action.params;
-  const { fileId, sheetName, headerRow } = params;
+  const p = ctx.action.params;
+  const fileId = p.fileId || ctx.request.query?.fileId || ctx.query?.fileId;
+  const sheetName = p.sheetName || ctx.request.query?.sheetName;
+  const headerRow = p.headerRow || ctx.request.query?.headerRow;
   if (!fileId) {
     ctx.throw(400, "fileId is required");
   }
@@ -138,8 +147,8 @@ async function preview(ctx, next) {
     const dataRows = allRows.slice(hRow + 1).filter((r) => r.some((c) => c !== ""));
     const previewRows = dataRows.slice(0, 10).map((row) => {
       const obj = {};
-      headers.forEach((h, i) => {
-        obj[h] = row[i] !== void 0 ? row[i] : "";
+      headers.forEach((h, i2) => {
+        obj[h] = row[i2] !== void 0 ? row[i2] : "";
       });
       return obj;
     });
@@ -156,7 +165,7 @@ async function preview(ctx, next) {
 }
 async function executeImport(ctx, next) {
   const params = ctx.action.params.values || ctx.action.params;
-  const { tableName, fileId, sheetName, headerRow, fieldMapping, importMode, uniqueFields } = params;
+  const { tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields } = params;
   if (!tableName || !fileId) {
     ctx.throw(400, "tableName and fileId are required");
   }
@@ -180,10 +189,12 @@ async function executeImport(ctx, next) {
       tableName,
       status: "pending",
       fieldMapping: fieldMapping || {},
+      customValues: customValues || {},
       importMode: importMode || "insert",
       sheetName: sheetName || "Sheet1",
       headerRow: headerRow || 1,
       importFileId: fileId,
+      uniqueFields: uniqueFields || [],
       totalRows: 0,
       progress: 0,
       createdById: ctx.state.currentUser?.id
@@ -209,6 +220,7 @@ async function executeImport(ctx, next) {
     const headers = (allRows[hRow] || []).map((h) => String(h));
     const dataRows = allRows.slice(hRow + 1).filter((r) => r.some((c) => c !== ""));
     const mapping = fieldMapping || {};
+    const custVals = customValues || {};
     const totalRows = dataRows.length;
     await repo.update({ filterByTk: task.id, values: { totalRows }, transaction });
     const targetRepo = ctx.db.getRepository(tableName);
@@ -218,27 +230,81 @@ async function executeImport(ctx, next) {
       const record = {};
       for (const [tableField, excelCol] of Object.entries(mapping)) {
         if (!excelCol || excelCol === "__ignore__") continue;
+        if (excelCol === "__custom__") {
+          record[tableField] = String(custVals[tableField] ?? "");
+          continue;
+        }
         const colIndex = headers.indexOf(excelCol);
         if (colIndex >= 0 && colIndex < row.length) {
-          record[tableField] = row[colIndex];
+          record[tableField] = String(row[colIndex] !== void 0 && row[colIndex] !== null ? row[colIndex] : "");
         } else {
           record[tableField] = String(excelCol);
         }
       }
       return record;
     };
-    for (let i = 0; i < dataRows.length; i++) {
-      const rowIndex = i + 1;
+    const buildSnapshot = (row) => {
+      const snap = {};
+      Object.entries(mapping).forEach(([fieldName, excelCol]) => {
+        if (excelCol && excelCol !== "__ignore__") {
+          if (excelCol === "__custom__") {
+            snap[fieldName + "=(\u81EA\u5B9A\u4E49)"] = custVals[fieldName] || "";
+          } else {
+            const idx = headers.indexOf(excelCol);
+            if (idx >= 0 && idx < row.length) snap[excelCol + "\u2192" + fieldName] = String(row[idx] ?? "");
+          }
+        }
+      });
+      return JSON.stringify(snap).substring(0, 500);
+    };
+    const applyBelongsToFK = (record) => {
+      const belonegs = [];
       try {
-        const record = makeRecord(dataRows[i]);
+        belonegs.push(...Array.from(coll.fields?.values() || []).filter((f) => f.type === "belongsTo" && f.name !== "createdBy" && f.name !== "updatedBy"));
+      } catch {
+      }
+      for (const bf of belonegs) {
+        const fk = bf.options?.foreignKey || bf.name + "Id";
+        const mappedVal = mapping[bf.name];
+        if (mappedVal && mappedVal !== "__ignore__") {
+          const colIdx = headers.indexOf(mappedVal);
+          if (colIdx >= 0 && colIdx < dataRows[i].length) {
+            record[fk] = dataRows[i][colIdx];
+          }
+          delete record[bf.name];
+        }
+      }
+    };
+    const processedUniques = /* @__PURE__ */ new Set();
+    for (let i2 = 0; i2 < dataRows.length; i2++) {
+      const rowIndex = i2 + 1;
+      try {
+        const record = makeRecord(dataRows[i2]);
+        if ((importMode === "update" || importMode === "upsert") && uniqueFields.length > 0) {
+          const allFilled = uniqueFields.every((uf) => record[uf] !== void 0 && record[uf] !== "");
+          if (allFilled) {
+            const ufKey = uniqueFields.map((uf) => String(record[uf] || "")).join("||");
+            if (processedUniques.has(ufKey)) {
+              errorLogs.push({
+                row: rowIndex,
+                excelRow: (headerRow || 1) + rowIndex - 1,
+                reason: `\u552F\u4E00\u503C\u5B57\u6BB5\u7EC4\u5408\u91CD\u590D / Duplicate unique fields: ${uniqueFields.join("+")} = ${ufKey}`,
+                snapshot: buildSnapshot(dataRows[i2])
+              });
+              continue;
+            }
+            processedUniques.add(ufKey);
+          }
+        }
         if (importMode === "update" || importMode === "upsert") {
           const uFields = uniqueFields || [];
           if (uFields.length === 0) {
             if (importMode === "update") {
               errorLogs.push({
                 row: rowIndex,
+                excelRow: (headerRow || 1) + rowIndex - 1,
                 reason: "\u66F4\u65B0\u6A21\u5F0F\u672A\u914D\u7F6E\u552F\u4E00\u503C\u5B57\u6BB5\uFF0C\u65E0\u6CD5\u5339\u914D\u5DF2\u6709\u8BB0\u5F55",
-                snapshot: JSON.stringify(dataRows[i]).substring(0, 500)
+                snapshot: buildSnapshot(dataRows[i2])
               });
               continue;
             }
@@ -248,9 +314,19 @@ async function executeImport(ctx, next) {
               if (record[uf] !== void 0) filter[uf] = record[uf];
             }
             if (Object.keys(filter).length > 0) {
-              const existing = await targetRepo.findOne({ filter, transaction });
-              if (existing) {
-                await targetRepo.update({ filterByTk: existing.id, values: record, transaction });
+              const [existingRecords, matchCount] = await targetRepo.findAndCount({ filter, limit: 2, transaction });
+              if (matchCount > 1) {
+                errorLogs.push({
+                  row: rowIndex,
+                  excelRow: (headerRow || 1) + rowIndex - 1,
+                  reason: `\u552F\u4E00\u503C\u5339\u914D\u5230 ${matchCount} \u6761\u8BB0\u5F55\uFF0C\u65E0\u6CD5\u786E\u5B9A\u66F4\u65B0\u76EE\u6807 (Ambiguous: ${matchCount} records matched unique fields)`,
+                  snapshot: buildSnapshot(dataRows[i2])
+                });
+                continue;
+              }
+              if (matchCount === 1) {
+                applyBelongsToFK(record);
+                await targetRepo.update({ filterByTk: existingRecords[0].id, values: record, transaction, context: ctx });
                 processedRows++;
                 continue;
               }
@@ -258,8 +334,9 @@ async function executeImport(ctx, next) {
               if (importMode === "update") {
                 errorLogs.push({
                   row: rowIndex,
+                  excelRow: (headerRow || 1) + rowIndex - 1,
                   reason: "\u552F\u4E00\u503C\u5B57\u6BB5\u5728\u6570\u636E\u884C\u4E2D\u672A\u627E\u5230\u503C\uFF0C\u65E0\u6CD5\u5339\u914D",
-                  snapshot: JSON.stringify(dataRows[i]).substring(0, 500)
+                  snapshot: buildSnapshot(dataRows[i2])
                 });
                 continue;
               }
@@ -267,20 +344,23 @@ async function executeImport(ctx, next) {
           }
         }
         if (importMode === "insert" || importMode === "upsert") {
-          await targetRepo.create({ values: record, transaction });
+          applyBelongsToFK(record);
+          await targetRepo.create({ values: record, transaction, context: ctx });
           processedRows++;
         } else if (importMode === "update") {
           errorLogs.push({
             row: rowIndex,
+            excelRow: (headerRow || 1) + rowIndex - 1,
             reason: "\u672A\u5339\u914D\u5230\u5DF2\u6709\u8BB0\u5F55\uFF08\u66F4\u65B0\u6A21\u5F0F\uFF09",
-            snapshot: JSON.stringify(dataRows[i]).substring(0, 500)
+            snapshot: buildSnapshot(dataRows[i2])
           });
         }
       } catch (rowErr) {
         errorLogs.push({
           row: rowIndex,
+          excelRow: (headerRow || 1) + rowIndex - 1,
           reason: rowErr.message || String(rowErr),
-          snapshot: JSON.stringify(dataRows[i]).substring(0, 500)
+          snapshot: buildSnapshot(dataRows[i2])
         });
       }
     }
@@ -293,7 +373,7 @@ async function executeImport(ctx, next) {
           progress: 0,
           processedRows: 0,
           errorLogs,
-          errorMessage: `${errorLogs.length} row(s) failed, transaction rolled back`,
+          errorMessage: `${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u4E8B\u52A1\u5DF2\u56DE\u6EDA (${errorLogs.length} row(s) failed, transaction rolled back)`,
           completedAt: /* @__PURE__ */ new Date()
         }
       });
@@ -336,8 +416,32 @@ function sanitizeSheetName(name) {
   return name.replace(/[\\\/\*\?\[\]:!@#\$%\^&\(\)]/g, "_").substring(0, 31);
 }
 function formatFileName(template, tableName) {
-  const date = (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
+  const d = /* @__PURE__ */ new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
   return template.replace(/\{表名\}/g, tableName).replace(/\{日期\}/g, date);
+}
+function getFieldDisplayName(coll, fieldName) {
+  try {
+    const f = coll.fields instanceof Map ? coll.fields.get(fieldName) : null;
+    const title = f?.options?.uiSchema?.title;
+    if (title && !/^\{\{/.test(title)) return `${title}(${fieldName})`;
+  } catch {
+  }
+  return fieldName;
+}
+function getCollDisplayName(coll) {
+  const rawName = coll?.name || "";
+  let title = coll?.options?.title || rawName;
+  if (/^\{\{/.test(title)) title = rawName;
+  return title !== rawName ? `${title}(${rawName})` : rawName;
+}
+function ensureUniqueSheetName(workbook, name) {
+  const existing = new Set(workbook.worksheets.map((s) => s.name));
+  if (!existing.has(name)) return name;
+  let i2 = 1;
+  while (existing.has(`${name}_${i2}`)) i2++;
+  return `${name}_${i2}`;
 }
 function formatValue(val) {
   if (val === null || val === void 0) return "";
@@ -395,6 +499,12 @@ async function getExportTableFields(ctx, next) {
     rawFields = [];
   }
   const autoFields = ["id", "createdAt", "updatedAt", "createdBy", "updatedBy", "createdById", "updatedById"];
+  const fkSet = /* @__PURE__ */ new Set();
+  rawFields.forEach((f) => {
+    if (f.type === "belongsTo" && f.options?.foreignKey) {
+      fkSet.add(f.options.foreignKey);
+    }
+  });
   const fields = rawFields.map((f) => {
     let title = f.options?.uiSchema?.title || null;
     if (title && /^\{\{/.test(title)) title = null;
@@ -404,7 +514,8 @@ async function getExportTableFields(ctx, next) {
       uiSchema: { ...f.options?.uiSchema || {}, title },
       interface: f.options?.interface || null,
       isRequired: autoFields.includes(f.name) ? false : f.options?.allowNull === false,
-      isAssociation: ["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(f.type)
+      isAssociation: ["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(f.type),
+      isForeignKey: fkSet.has(f.name)
     };
   });
   ctx.body = fields;
@@ -417,7 +528,6 @@ async function previewCount(ctx, next) {
     let total = 0;
     const collections = ctx.db.collections;
     for (const [name, coll] of collections) {
-      if (name.startsWith("sjgl02_")) continue;
       try {
         const repo2 = ctx.db.getRepository(name);
         if (repo2) total += await repo2.count({ filter: filter || {} });
@@ -484,12 +594,7 @@ async function executeExport(ctx, next) {
     const tableList = isAllTables ? (() => {
       const names = [];
       const collections = ctx.db.collections;
-      for (const [name, coll] of collections) {
-        if (name.startsWith("sjgl02_")) continue;
-        try {
-          if (coll.isThrough && coll.isThrough()) continue;
-        } catch {
-        }
+      for (const [name] of collections) {
         names.push(name);
       }
       return names;
@@ -506,8 +611,17 @@ async function executeExport(ctx, next) {
       if (!targetRepo) continue;
       let records = [];
       let collectionTotal = 0;
+      const appendFields = [];
       try {
-        const [found, count] = await targetRepo.findAndCount({ filter: exportFilter || {}, limit: 2e4 });
+        for (const f of Array.from(coll.fields?.values() || coll.fields || [])) {
+          if (f.type === "belongsTo") appendFields.push(f.name);
+        }
+      } catch {
+      }
+      const queryOpts = { filter: exportFilter || {}, limit: 2e4 };
+      if (appendFields.length > 0) queryOpts.appends = appendFields;
+      try {
+        const [found, count] = await targetRepo.findAndCount(queryOpts);
         records = found;
         collectionTotal = count;
       } catch {
@@ -518,18 +632,18 @@ async function executeExport(ctx, next) {
           continue;
         }
       }
-      if (records.length === 0) continue;
       const fieldNames = selectedFields && selectedFields.length > 0 ? selectedFields : getScalarFields(coll);
       if (fieldNames.length === 0 && records[0]) {
         fieldNames.push(...Object.keys(records[0]).filter((k) => !k.startsWith("_")));
       }
+      if (records.length === 0 && fieldNames.length === 0) continue;
       const workbook = new import_exceljs.default.Workbook();
       workbook.creator = "NocoBase @my-project/plugin-sjgl02";
-      const mainSheet = workbook.addWorksheet(sanitizeSheetName(tblName));
+      const mainSheet = workbook.addWorksheet(ensureUniqueSheetName(workbook, sanitizeSheetName(getCollDisplayName(coll))));
       mainSheet.columns = fieldNames.map((name) => ({
-        header: name,
+        header: getFieldDisplayName(coll, name),
         key: name,
-        width: Math.max(name.length + 4, 20)
+        width: Math.max(getFieldDisplayName(coll, name).length + 4, 20)
       }));
       const headerRow = mainSheet.getRow(1);
       headerRow.font = { bold: true };
@@ -539,7 +653,8 @@ async function executeExport(ctx, next) {
         for (const f of fieldNames) {
           let val = record[f];
           if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
-            val = val.nickname || val.title || val.name || val.id || JSON.stringify(val);
+            const targetTitleField = coll.options?.titleField || "id";
+            val = val[targetTitleField] || val.id || JSON.stringify(val);
           }
           row[f] = formatValue(val);
         }
@@ -566,12 +681,15 @@ async function executeExport(ctx, next) {
           if (assocScalarFields.length === 0 && assocRecords[0]) {
             assocScalarFields.push(...Object.keys(assocRecords[0]).filter((k) => !k.startsWith("_")));
           }
-          const sheetName = sanitizeSheetName(`${tblName}_${af.name}`).substring(0, 31);
+          const assocColl = ctx.db.getCollection(af.target);
+          const fieldDisplay = getFieldDisplayName(coll, af.name);
+          const collDisplay2 = getCollDisplayName(assocColl);
+          const sheetName = ensureUniqueSheetName(workbook, sanitizeSheetName(fieldDisplay + "-" + collDisplay2).substring(0, 31));
           const assocSheet = workbook.addWorksheet(sheetName);
           assocSheet.columns = assocScalarFields.map((n) => ({
-            header: n,
+            header: getFieldDisplayName(assocColl, n),
             key: n,
-            width: Math.max(n.length + 4, 20)
+            width: Math.max(getFieldDisplayName(assocColl, n).length + 4, 20)
           }));
           const ahRow = assocSheet.getRow(1);
           ahRow.font = { bold: true };
@@ -591,8 +709,8 @@ async function executeExport(ctx, next) {
           }
         }
       }
-      const cleanName = sanitizeSheetName(tblName).replace(/\s+/g, "_");
-      const xlsxName = formatFileName(fileNameTemplate || "{\u8868\u540D}_{\u65E5\u671F}.xlsx", cleanName);
+      const collDisplay = sanitizeSheetName(getCollDisplayName(coll)).replace(/\s+/g, "_");
+      const xlsxName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.xlsx", "");
       const filePath = import_path2.default.join(tempDir, xlsxName);
       await workbook.xlsx.writeFile(filePath);
       outputFiles.push(filePath);
@@ -607,7 +725,7 @@ async function executeExport(ctx, next) {
     } else if (outputFiles.length === 1) {
       finalFilePath = outputFiles[0];
     } else {
-      const zipName = formatFileName(fileNameTemplate || "\u5168\u90E8\u6570\u636E\u8868_{\u65E5\u671F}.zip", "all");
+      const zipName = "\u5168\u90E8\u6570\u636E\u8868-" + formatFileName("{\u65E5\u671F}.zip", "");
       finalFilePath = import_path2.default.join(tempDir, zipName);
       const output = import_fs2.default.createWriteStream(finalFilePath);
       const archive = (0, import_archiver.default)("zip", { zlib: { level: 9 } });
@@ -963,4 +1081,32 @@ var PluginSjgl02Server = class extends import_server.Plugin {
     const permCount = await permRepo.count();
     if (permCount === 0) {
       const roleRepo = this.db.getRepository("roles");
-      const adminRole = await 
+      const adminRole = await roleRepo.findOne({ filter: { name: "admin" } });
+      const roleId = adminRole ? String(adminRole.name) : "admin";
+      const tables = this.db.collections;
+      const tablePermissions = [];
+      for (const [name] of tables) {
+        if (name.startsWith("sjgl02_")) continue;
+        tablePermissions.push({
+          targetType: "role",
+          targetId: roleId,
+          targetName: "\u7BA1\u7406\u5458",
+          tableName: name,
+          canImport: true,
+          canExport: true,
+          importMode: "insert",
+          uniqueFields: [],
+          requiredFields: [],
+          importFields: [],
+          exportFields: []
+        });
+      }
+      if (tablePermissions.length > 0) {
+        for (const perm of tablePermissions) {
+          await permRepo.create({ values: perm });
+        }
+      }
+    }
+  }
+};
+var plugin_default = PluginSjgl02Server;

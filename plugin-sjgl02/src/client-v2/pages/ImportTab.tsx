@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Card, Steps, Button, Select, Table, Upload, Tag, Alert, Empty,
+  Card, Steps, Button, Select, Table, Upload, Tag, Alert, Empty, Descriptions,
   Statistic, Row, Col, Space, Modal, message, Spin, InputNumber, Input,
 } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
@@ -40,6 +40,17 @@ export default function ImportTab() {
   const [sheetName, setSheetName] = useState('Sheet1');
   const [availSheets, setAvailSheets] = useState<string[]>(['Sheet1']);
   const [excelHeaders, setExcelHeaders] = useState<string[]>([]);
+  const [previewModal, setPreviewModal] = useState(false);
+  const [previewMeta, setPreviewMeta] = useState<any>(null);
+
+  const doParse = () => {
+    if (!uploadedFileId) return;
+    api.request({ url: 'sjgl02Import:uploadParse', method: 'post', data: { fileId: uploadedFileId, sheetName, headerRow } })
+      .then((res: any) => { const d = res?.data?.data; if (d?.headerColumns) setExcelHeaders(d.headerColumns); if (d?.sheets) { setAvailSheets(d.sheets); } setPreviewMeta(d); })
+      .catch(() => { setExcelHeaders([]); setAvailSheets([]); setPreviewMeta(null); });
+  };
+
+  useEffect(() => { doParse(); }, [sheetName, headerRow]);
 
   const { data: tablesData, loading: tablesLoading } = useRequest(
     () => api.request({ url: 'sjgl02Permissions:tables', method: 'get' }),
@@ -90,8 +101,9 @@ export default function ImportTab() {
             if (d.sheets) setAvailSheets(d.sheets);
             if (d.headerColumns) setExcelHeaders(d.headerColumns);
             if (d.sheets?.[0]) setSheetName(d.sheets[0]);
+            setPreviewMeta(d);
           }
-            }).catch(() => { setExcelHeaders([]); setAvailSheets(['Sheet1']); });
+            }).catch(() => { setExcelHeaders([]); setAvailSheets([]); setSheetName(''); setPreviewMeta(null); });
       } else {
         message.error('上传响应中未找到文件ID');
       }
@@ -106,12 +118,13 @@ export default function ImportTab() {
       const res = await api.request({
         url: 'sjgl02Import:uploadParse',
         method: 'post',
-        data: { fileId: uploadedFileId },
+        data: { fileId: uploadedFileId, sheetName, headerRow },
       });
       const d = res?.data?.data;
       if (d?.headerColumns) {
         setExcelHeaders(d.headerColumns);
         if (d.sheets) setAvailSheets(d.sheets);
+        setPreviewMeta(d);
         message.success('表头已刷新');
       }
     } catch { message.error('刷新失败'); }
@@ -128,7 +141,11 @@ export default function ImportTab() {
     return 'excel';
   };
 
-  const canGoStep2 = !!uploadedFileId;
+  const canGoStep2 = !!uploadedFileId && (() => {
+    if (importMode === 'insert') return true;
+    if (uniqueFields.length === 0) return false;
+    return !uniqueFields.some(uf => !fieldMapping[uf] || fieldMapping[uf] === '__ignore__' || fieldMapping[uf] === '__custom__');
+  })();
 
   const handleAutoMatch = () => {
     const mapping: Record<string, string> = {};
@@ -161,18 +178,10 @@ export default function ImportTab() {
   const handleExecuteImport = () => {
     Modal.confirm({
       title: t('Confirm operation'),
-      content: '导入在单一事务中执行，任一数据行失败则整批回滚。',
+      content: '导入在事务中执行，任一行失败则整批回滚。关联字段通过主键ID匹配，匹配失败则整批回滚。',
       onOk: async () => {
         setExecuting(true);
         try {
-          const mapped: Record<string, string> = {};
-          for (const [k, v] of Object.entries(fieldMapping)) {
-            if (v === '__custom__') {
-              mapped[k] = customValues[k] ?? '';
-            } else {
-              mapped[k] = v;
-            }
-          }
           await api.request({
             url: 'sjgl02Import:execute',
             method: 'post',
@@ -181,17 +190,16 @@ export default function ImportTab() {
               fileId: uploadedFileId,
               sheetName,
               headerRow,
-              fieldMapping: mapped,
+              fieldMapping,
+              customValues,
               importMode,
               uniqueFields,
             },
           });
           message.success(t('Saved successfully'));
-          setTimeout(() => {
-            setCurrentStep(0); setSelectedTable(null); setUploadedFileId(null);
-            setUploadFileName(''); setFieldMapping({}); setPreviewData(null);
-            setCustomValues({});
-          }, 1500);
+          setCurrentStep(0); setSelectedTable(null); setUploadedFileId(null);
+          setUploadFileName(''); setFieldMapping({}); setPreviewData(null);
+          setCustomValues({});
         } catch {
           message.error(t('Save failed'));
         } finally {
@@ -270,6 +278,8 @@ export default function ImportTab() {
                   <span style={{ color: '#999' }}>表头行：</span>
                   <InputNumber min={1} max={100} value={headerRow} onChange={v => setHeaderRow(v || 1)} style={{ width: 80 }} />
                   <Button size="small" onClick={handleRefreshHeaders}>🔄 刷新</Button>
+                  <Button size="small" disabled={!previewMeta?.previewRows?.length}
+                    onClick={() => setPreviewModal(true)}>📋 预览表头</Button>
                 </Space>
               </Card>
               <Card size="small" style={{ marginBottom: 12 }}>
@@ -283,7 +293,7 @@ export default function ImportTab() {
                     <div style={{ fontWeight: 600, color: '#fa8c16', marginBottom: 8 }}>🔑 唯一值字段</div>
                     <Select mode="multiple" value={uniqueFields} onChange={setUniqueFields}
                       style={{ width: '100%' }} placeholder="选择唯一值字段"
-                      options={tableFields.map((f: any) => ({ value: f.name, label: f.name }))} />
+                      options={tableFields.map((f: any) => ({ value: f.name, label: (f.uiSchema?.title || f.name) + '(' + f.name + ')' }))} />
                   </div>
                 )}
               </Card>
@@ -354,6 +364,7 @@ export default function ImportTab() {
                           {record.field.uiSchema?.title || record.field.name}({record.field.name})
                           {['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(record.field.type) && (
                             <Tag color="purple" style={{ fontSize: 10, marginLeft: 4 }}>关联</Tag>)}
+                          {uniqueFields.includes(record.field.name) && <Tag color="orange" style={{ fontSize: 10, marginLeft: 4 }}>🔑 唯一值</Tag>}
                         </span>
                       ),
                     },
@@ -371,4 +382,50 @@ export default function ImportTab() {
 
       {currentStep === 2 && (
         <div>
-          <div style={{ fontWeight: 600, fontSize: 14, margin
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 16 }}>预览确认 — {selectedTable?.title}</div>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col span={6}><Card size="small"><Statistic title="预计导入行数" value={previewData?.totalRows || 0} /></Card></Col>
+            <Col span={6}><Card size="small">
+              <Statistic title="错误行数" value={0} valueStyle={{ color: previewData?.totalRows ? '#52c41a' : undefined }} />
+            </Card></Col>
+            <Col span={6}><Card size="small"><Statistic title="导入模式" value={IMPORT_MODES.find(m => m.value === importMode)?.label || importMode} /></Card></Col>
+            <Col span={6}><Card size="small"><Statistic title="Sheet名称" value={sheetName} /></Card></Col>
+          </Row>
+          {(importMode === 'update' || importMode === 'upsert') && uniqueFields.length > 0 && (
+            <Alert type="info" showIcon message={<span>唯一值匹配字段：<strong>{uniqueFields.join(', ')}</strong></span>} style={{ marginBottom: 16 }} />
+          )}
+          <Card size="small" style={{ marginBottom: 16 }}>
+            <Row gutter={12}>
+              <Col span={12}><span style={{ color: '#666' }}>📄 上传文件：</span><Tag color="blue">{uploadFileName}</Tag></Col>
+              <Col span={12}><span style={{ color: '#666' }}>📋 表头行：</span><span>{headerRow}</span></Col>
+            </Row>
+            <div style={{ marginTop: 8 }}>
+              <span style={{ color: '#666' }}>📊 目标工作表：</span>
+              <Tag color="blue">{selectedTable?.title || selectedTable?.name} ({selectedTable?.name})</Tag>
+            </div>
+            {Object.values(customValues).some(v => v) && (
+              <div style={{ marginTop: 8 }}>
+                <span style={{ color: '#666' }}>✏️ 自定义固定值：</span>
+                <Space wrap>{Object.entries(customValues).filter(([, v]) => v).map(([k, v]) => (<Tag key={k} color="green">{k}: {v}</Tag>))}</Space>
+              </div>
+            )}
+          </Card>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>👁️ 预览数据（前10行）</div>
+          {previewData?.preview ? (
+            <Table dataSource={previewData.preview.map((r: any, i: number) => {
+                const row: any = { key: i };
+                Object.entries(fieldMapping).forEach(([fieldName, excelCol]) => {
+                  if (excelCol === '__custom__') {
+                    row[fieldName] = customValues[fieldName] || '';
+                  } else if (excelCol && excelCol !== '__ignore__') {
+                    row[excelCol] = r[excelCol] !== undefined ? r[excelCol] : '';
+                  }
+                });
+                return row;
+              })}
+              columns={(() => {
+                const cols: any[] = [];
+                const seen = new Set<string>();
+                const titles: Record<string, string> = {};
+                tableFields.forEach((f: any) => { titles[f.name] = f.uiSchema?.title || f.name; });
+                Object.entries(fieldMapping).forEach(([fieldName, excelCol])

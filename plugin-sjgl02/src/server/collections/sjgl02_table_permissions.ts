@@ -27,4 +27,9 @@ export default defineCollection({
       ]},
     },
     { type: 'json', name: 'uniqueFields' },
-    { type: 'json', name: 'required
+    { type: 'json', name: 'requiredFields' },
+    { type: 'json', name: 'importFields' },
+    { type: 'json', name: 'exportFields' },
+    { type: 'json', name: 'exportFilter' },
+  ],
+});
