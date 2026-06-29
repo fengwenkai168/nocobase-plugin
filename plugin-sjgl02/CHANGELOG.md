@@ -8,6 +8,36 @@
 - CHANGELOG.md：补全 1.0.20~1.0.26 版本条目
 - 修正 v1/v2 客户端版本号显示（v1.0.24 → v1.0.27）
 
+## 1.0.34 (2026-06-29)
+
+### 修复
+- 导出附件 FileId 字段（如 exportFileId）Excel 列显示为附件文件名（与 ZIP 中一致），不再显示原始数字
+
+## 1.0.33 (2026-06-29)
+
+### 修复
+- 权限管理 `targetId` 空值防护：getPermissions/savePermissions 增加 targetId 有效性校验，避免 "undefined" 字符串写入数据库
+
+## 1.0.32 (2026-06-29)
+
+### 修复
+- 权限管理角色 ID 改用数字编号（`r.id`），修复 `invalid input syntax for type integer` 错误
+- 角色名显示修复：检测到 i18n 模板 `{{t("Admin")}}` 时改用英文名显示，不再显示乱码
+- 管理员角色自动补齐新增数据表的权限（每次查看权限时自动同步）
+- 兼容旧数据：`targetId` 从角色名自动转为数字 ID
+
+### 变更
+- `getUserRoleList` 返回修正：`title` 去 i18n 模板化
+- `getPermissions` 新增管理员自动同步逻辑
+- `plugin.ts` install 改用 `adminRole.id`
+
+## 1.0.31 (2026-06-29)
+
+### 修复
+- 任务管理中查看全部数据表导出任务时，不再报 "Table __all__ not found" 错误
+- 服务端 `getTableFields` 兼容 `tableName='__all__'`（返回空数组）
+- v1/v2 任务详情抽屉中 `__all__` 表名显示为「全部数据表」
+
 ## 1.0.30 (2026-06-29)
 
 ### 修复
