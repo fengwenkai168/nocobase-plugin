@@ -45,12 +45,12 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 <div class="container">
 
 <div class="cover">
-  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v3.6</h1>
-  <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · v1.0.24 已实现</div>
+  <h1>📦 @my-project/plugin-sjgl02 · 产品需求规格说明书 v3.7</h1>
+  <div class="subtitle">NocoBase 数据导入导出插件 — 完整 UI 交互定义 · v1.0.25 已实现</div>
   <div class="meta">
-    <span>📅 2026-06-23</span>
-    <span>🏷️ v1.0.24（已实现）</span>
-    <span>📄 状态：终稿 v3.6</span>
+    <span>📅 2026-06-29</span>
+    <span>🏷️ v1.0.25（已实现）</span>
+    <span>📄 状态：终稿 v3.7</span>
     <span>🎯 参考原型：sjgl02-ui.html</span>
   </div>
 </div>
@@ -132,8 +132,9 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
   <h4>3.2.2 上传后配置区</h4>
   <table>
     <tr><th>区域</th><th>说明</th></tr>
-    <tr><td>Sheet 选择</td><td>下拉 Select，仅 1 个 Sheet 时禁用</td></tr>
-    <tr><td>表头行号</td><td>InputNumber 1-100，默认 1，可「刷新」重新解析</td></tr>
+    <tr><td>Sheet 选择</td><td>下拉 Select，切换后自动重新解析表头</td></tr>
+    <tr><td>表头行号</td><td>InputNumber 1-100，默认 1，修改后自动刷新；可点击「刷新」按钮手动重新解析</td></tr>
+    <tr><td>预览表头按钮</td><td>📋 按钮，点击弹 Modal 显示当前 Sheet 的表头列及前 10 行数据预览；Modal 顶部显示 Sheet 名称、表头行号、数据总行数</td></tr>
     <tr><td>导入模式</td><td>Select：「新增(insert)」「更新(update)」「新增+更新(upsert)」，默认从权限配置读取</td></tr>
     <tr><td>唯一值字段</td><td>仅在 update/upsert 模式下显示。多选组合字段，已选字段在下拉中灰色禁用标注「已选择」</td></tr>
     <tr><td>字段映射表</td><td>见 3.2.3</td></tr>
@@ -314,7 +315,7 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
   <table>
     <tr><th>端点</th><th>方法</th><th>参数</th></tr>
     <tr><td><code>sjgl02Import:tableFields</code></td><td>GET</td><td><code>tableName</code></td></tr>
-    <tr><td><code>sjgl02Import:uploadParse</code></td><td>POST</td><td><code>{ fileId }</code> → <code>{ sheets, headerColumns, fileId }</code>（需先通过 attachments:create 上传文件）</td></tr>
+    <tr><td><code>sjgl02Import:uploadParse</code></td><td>POST</td><td><code>{ fileId, sheetName?, headerRow? }</code> → <code>{ sheets, headerColumns, fileId, fileName, previewRows, totalRows }</code>（需先通过 attachments:create 上传文件。支持指定 sheetName 和 headerRow 解析不同 Sheet/表头行；previewRows 返回前 10 行数据用于预览弹框）</td></tr>
     <tr><td><code>sjgl02Import:preview</code></td><td>GET</td><td><code>fileId, sheetName, headerRow</code> → 预览 N 行</td></tr>
     <tr><td><code>sjgl02Import:execute</code></td><td>POST</td><td><code>{ tableName, fileId, sheetName, headerRow, fieldMapping, importMode }</code> → <code>{ taskId }</code></td></tr>
     <tr><td><code>sjgl02Import:progress</code></td><td>GET</td><td><code>taskId</code> → 进度</td></tr>
@@ -454,13 +455,13 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
 
 <!-- ==================== 11. 实现说明 ==================== -->
 <div class="section" id="changelog">
-  <h2>11. 实现说明 <span class="badge">v1.0.24 最终版</span></h2>
+  <h2>11. 实现说明 <span class="badge">v1.0.25 最终版</span></h2>
 
   <h3>11.1 客户端架构</h3>
   <table>
     <tr><th>模块</th><th>文件</th><th>说明</th></tr>
     <tr><td>v2 设置页外壳</td><td><code>src/client-v2/pages/Sjgl02SettingsPage.tsx</code></td><td>LazyTab 按需懒加载 4 个 Tab，切换时重新挂载</td></tr>
-    <tr><td>导入向导</td><td><code>src/client-v2/pages/ImportTab.tsx</code></td><td>3 步向导，表列表从 API 动态加载，文件校验 + 字段映射</td></tr>
+    <tr><td>导入向导</td><td><code>src/client-v2/pages/ImportTab.tsx</code></td><td>3 步向导，表列表从 API 动态加载，文件校验 + 字段映射 + Sheet 切换自动刷新 + 预览表头弹框</td></tr>
     <tr><td>导出向导</td><td><code>src/client-v2/pages/ExportTab.tsx</code></td><td>3 步向导，字段从 API 加载自动分组，文件名模板可编辑，进度轮询</td></tr>
     <tr><td>任务管理</td><td><code>src/client-v2/pages/TaskTab.tsx</code></td><td>筛选 + 表格 + 日志抽屉</td></tr>
     <tr><td>权限管理</td><td><code>src/client-v2/pages/PermissionTab.tsx</code></td><td>左用户/角色列表 + 右权限卡片 + 编辑弹窗</td></tr>
@@ -489,12 +490,14 @@ hr { border:none; border-top:1px solid #e5e7eb; margin:24px 0; }
     <li><strong>服务端兼容</strong>：tables / fields API 适配 NocoBase <code>ctx.db.collections</code> Map 结构</li>
     <li><strong>v1 认证</strong>：v1 客户端通过 <code>this.app.apiClient.request()</code> 调用 API，自动注入 JWT token，无需手动管理认证头</li>
     <li><strong>无硬编码</strong>：所有表列表、字段列表、用户/角色列表均从 API 动态获取，无任何 mock 数据</li>
+    <li><strong>Sheet 切换联动</strong>：切换 Sheet 名称或修改表头行号时，自动调用 uploadParse 重新解析并更新表头列表、字段映射和预览元数据</li>
+    <li><strong>预览表头弹框</strong>：点击📋按钮弹出 Modal，展示当前 Sheet 的完整表头列名 + 前 10 行表格预览，顶部概览 Sheet 名称、表头行号和数据总行数</li>
   </ul>
 </div>
 
 <hr style="margin:40px 0">
 <div style="text-align:center;font-size:13px;color:#9ca3af;padding-bottom:40px">
-  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v3.6（v1.0.24 实现版）—
+  — 文档结束 · 与 sjgl02-ui.html 交互原型同步 · v3.7（v1.0.25 实现版）—
 </div>
 
 </div>

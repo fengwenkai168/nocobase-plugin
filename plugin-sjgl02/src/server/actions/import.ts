@@ -298,4 +298,95 @@ export async function executeImport(ctx: Context, next: Next) {
           for (const uf of uFields) {
             if (record[uf] !== undefined) filter[uf] = record[uf];
           }
-          if
+          if (Object.keys(filter).length > 0) {
+            const [existingRecords, matchCount] = await targetRepo.findAndCount({ filter, limit: 2, transaction });
+            if (matchCount > 1) {
+              errorLogs.push({
+                row: rowIndex,
+                excelRow: (headerRow || 1) + rowIndex - 1,
+                reason: `唯一值匹配到 ${matchCount} 条记录，无法确定更新目标 (Ambiguous: ${matchCount} records matched unique fields)`,
+                snapshot: buildSnapshot(dataRows[i]),
+              });
+              continue;
+            }
+            if (matchCount === 1) {
+              applyBelongsToFK(record);
+              await targetRepo.update({ filterByTk: existingRecords[0].id, values: record, transaction, context: ctx });
+              processedRows++;
+              continue;
+            }
+          } else {
+            if (importMode === 'update') {
+              errorLogs.push({
+                row: rowIndex,
+                excelRow: (headerRow || 1) + rowIndex - 1,
+                reason: '唯一值字段在数据行中未找到值，无法匹配',
+                snapshot: buildSnapshot(dataRows[i]),
+              });
+              continue;
+            }
+          }
+          }
+        }
+        if (importMode === 'insert' || importMode === 'upsert') {
+          applyBelongsToFK(record);
+          await targetRepo.create({ values: record, transaction, context: ctx });
+          processedRows++;
+        } else if (importMode === 'update') {
+          errorLogs.push({
+            row: rowIndex,
+            excelRow: (headerRow || 1) + rowIndex - 1,
+            reason: '未匹配到已有记录（更新模式）',
+            snapshot: buildSnapshot(dataRows[i]),
+          });
+        }
+      } catch (rowErr: any) {
+        errorLogs.push({
+          row: rowIndex,
+          excelRow: (headerRow || 1) + rowIndex - 1,
+          reason: rowErr.message || String(rowErr),
+          snapshot: buildSnapshot(dataRows[i]),
+        });
+      }
+    }
+
+    if (errorLogs.length > 0) {
+      await transaction.rollback();
+      await repo.update({
+        filterByTk: task.id,
+        values: {
+          status: 'failed',
+          progress: 0,
+          processedRows: 0,
+          errorLogs,
+          errorMessage: `${errorLogs.length} 行数据失败，事务已回滚 (${errorLogs.length} row(s) failed, transaction rolled back)`,
+          completedAt: new Date(),
+        },
+      });
+    } else {
+      await transaction.commit();
+      await repo.update({
+        filterByTk: task.id,
+        values: {
+          status: 'completed',
+          progress: 100,
+          processedRows,
+          completedAt: new Date(),
+        },
+      });
+    }
+  } catch (err: any) {
+    await transaction.rollback();
+    await repo.update({
+      filterByTk: task.id,
+      values: {
+        status: 'failed',
+        errorMessage: err.message || String(err),
+        completedAt: new Date(),
+      },
+    });
+  }
+
+  ctx.body = { taskId: task.id };
+  await next();
+}

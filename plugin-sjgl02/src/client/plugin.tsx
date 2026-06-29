@@ -306,6 +306,7 @@ function ImportPanel() {
                             </div>
                           );
                     },
+                      },
                     { title: '→', width: 30, render: () => <span style={{ color: '#999' }}>→</span> },
                       {
                         title: '映射方式',
@@ -351,8 +352,6 @@ function ImportPanel() {
         )}
         {!previewMeta && <Empty description="请先上传并解析文件" />}
       </Modal>
-    </div>
-          )}
           <div style={{ textAlign: 'right', marginTop: 12 }}>
             <Button onClick={() => setStep(0)} style={{ marginRight: 8 }}>← 上一步</Button>
               <Button type="primary" disabled={(() => {
@@ -364,6 +363,8 @@ function ImportPanel() {
               })()}
                 onClick={async () => { await handlePreview(); setStep(2); }}>下一步 →</Button>
           </div>
+            </div>
+          )}
         </div>
       )}
       {step === 2 && (
@@ -952,7 +953,7 @@ function PermissionPanel() {
                         .then((res: any) => {
                           const fields = res?.data?.data || [];
                           setModalFields(Array.isArray(fields) ? fields.map((f: any) => f.name) : []);
-          }).catch(() => { setExcelHeaders([]); setAvailSheets([]); setSheetName(''); });
+          }).catch(() => { setModalFields([]); });
                     }}>编辑</Button>
                     <Button size="small" danger onClick={() => deletePerm(p.tableName)}>删除</Button>
                   </Space>
@@ -1009,4 +1010,32 @@ function PermissionPanel() {
 }
 
 // ====== 区块组件 ======
-function Sjgl02Bl
+function Sjgl02Block() {
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ background: 'linear-gradient(135deg,#1677ff,#0958d9)', borderRadius: 10, padding: '10px 20px', color: '#fff', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontWeight: 600, fontSize: 16 }}>📊 数据管理</div>
+        <div style={{ opacity: 0.7, fontSize: 11 }}>@my-project/plugin-sjgl02 {VERSION}</div>
+      </div>
+      <Tabs destroyInactiveTabPane items={[
+        { key: 'import', label: '⬇ 导入', children: <ImportPanel /> },
+        { key: 'export', label: '⬆ 导出', children: <ExportPanel /> },
+        { key: 'tasks', label: '☰ 任务管理', children: <TaskPanel /> },
+      ]} />
+    </div>
+  );
+}
+
+export class PluginSjgl02Client extends Plugin {
+  async load() {
+    this.pluginSettingsManager.add('sjgl02', {
+      title: '数据管理',
+      icon: 'DatabaseOutlined',
+      Component: Sjgl02SettingsPageV1,
+    });
+
+    this.app.addComponents({ SjglBlock: Sjgl02Block });
+    this.app.schemaInitializerManager.addItem('page:addBlock', 'sjgl02.block', { title: '数据管理', Component: 'SjglBlock' });
+    this.app.schemaInitializerManager.addItem('popup:common:addBlock', 'sjgl02.block', { title: '数据管理', Component: 'SjglBlock' });
+  }
+}

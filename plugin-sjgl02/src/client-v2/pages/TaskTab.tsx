@@ -186,4 +186,11 @@ export default function TaskTab() {
             {logDrawer.task.errorLogs && logDrawer.task.errorLogs.length > 0 ? (
               <Table dataSource={logDrawer.task.errorLogs.map((log: any, i: number) => ({ key: i, ...log }))}
                 columns={[{ title: t('Row number'), dataIndex: 'row', width: 60 }, { title: 'Excel行', dataIndex: 'excelRow', width: 60 }, { title: t('Error reason'), dataIndex: 'reason' }, { title: t('Field value snapshot'), dataIndex: 'snapshot' }]}
-            
+                pagination={false} size="small" />
+            ) : <Empty description={t('No errors')} />}
+          </div>
+        )}
+      </Drawer>
+    </div>
+  );
+}
