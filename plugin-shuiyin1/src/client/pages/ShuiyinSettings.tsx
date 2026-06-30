@@ -19,6 +19,7 @@ const defaultSettings = {
   fontSize: 10,
   showTime: true,
   density: 5,
+  enabled: true,
 };
 
 export const ShuiyinSettings: React.FC = () => {
@@ -92,6 +93,13 @@ export const ShuiyinSettings: React.FC = () => {
         <Form.Item name="id" hidden>
           <Input />
         </Form.Item>
+        <Form.Item
+          label={t('Enable watermark')}
+          name="enabled"
+          valuePropName="checked"
+        >
+          <Switch />
+        </Form.Item>
         <Form.Item label={t('Watermark text')} name="text">
           <Input placeholder={t('Leave blank to use current user nickname')} />
         </Form.Item>
@@ -122,12 +130,4 @@ export const ShuiyinSettings: React.FC = () => {
         <Form.Item>
           <Space>
             <Button type="primary" onClick={handleSave} loading={saving}>
-              {t('Save')}
-            </Button>
-            <Button onClick={() => form.resetFields()}>{t('Reset')}</Button>
-          </Space>
-        </Form.Item>
-      </Form>
-    </Card>
-  );
-};
+            

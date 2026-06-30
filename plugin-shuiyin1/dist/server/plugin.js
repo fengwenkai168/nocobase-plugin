@@ -73,6 +73,19 @@ class PluginShuiyin1Server extends import_server.Plugin {
   }
   async upgrade() {
     this.app.log.info("[shuiyin1] running upgrade");
+    await this.syncVersion();
+    await this.migrateEnabledField();
+  }
+  async migrateEnabledField() {
+    const repo = this.db.getRepository("shuiyin1_settings");
+    const records = await repo.find();
+    for (const record of records) {
+      if (record.get("enabled") === void 0 || record.get("enabled") === null) {
+        record.set("enabled", true);
+        await record.save();
+        this.app.log.info("[shuiyin1] migrated enabled field for record", record.get("id"));
+      }
+    }
   }
   async syncVersion() {
     var _a, _b;
@@ -131,7 +144,8 @@ class PluginShuiyin1Server extends import_server.Plugin {
           opacity: 0.15,
           fontSize: 10,
           showTime: true,
-          density: 5
+          density: 5,
+          enabled: true
         }
       });
     }

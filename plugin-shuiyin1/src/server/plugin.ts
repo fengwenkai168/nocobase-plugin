@@ -36,6 +36,20 @@ export class PluginShuiyin1Server extends Plugin {
 
   async upgrade() {
     this.app.log.info('[shuiyin1] running upgrade');
+    await this.syncVersion();
+    await this.migrateEnabledField();
+  }
+
+  private async migrateEnabledField() {
+    const repo = this.db.getRepository('shuiyin1_settings');
+    const records = await repo.find();
+    for (const record of records) {
+      if (record.get('enabled') === undefined || record.get('enabled') === null) {
+        record.set('enabled', true);
+        await record.save();
+        this.app.log.info('[shuiyin1] migrated enabled field for record', record.get('id'));
+      }
+    }
   }
 
   private async syncVersion() {
@@ -86,29 +100,4 @@ export class PluginShuiyin1Server extends Plugin {
         }
       } catch {}
     }
-    console.log('[shuiyin1] package.json not found in:', candidates);
-    return null;
-  }
-
-  private async createDefaultSettings() {
-    const repo = this.db.getRepository('shuiyin1_settings');
-    const count = await repo.count();
-    if (count === 0) {
-      await repo.create({
-        values: {
-          text: '',
-          opacity: 0.15,
-          fontSize: 10,
-          showTime: true,
-          density: 5,
-        },
-      });
-    }
-  }
-
-  async afterEnable() {}
-  async afterDisable() {}
-  async remove() {}
-}
-
-export default PluginShuiyin1Server;
+    console.log('[shuiyin1] package.json not found in:'
