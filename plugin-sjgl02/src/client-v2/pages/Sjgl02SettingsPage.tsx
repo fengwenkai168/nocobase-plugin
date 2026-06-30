@@ -48,7 +48,7 @@ export default function Sjgl02SettingsPage() {
           padding: '4px 14px',
           fontSize: 11,
         }}>
-          @my-project/plugin-sjgl02 v1.0.27
+          @my-project/plugin-sjgl02 v1.0.51
         </div>
       </div>
       <Card style={{ borderRadius: 10, minHeight: 600 }}>

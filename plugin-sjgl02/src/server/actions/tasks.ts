@@ -65,10 +65,7 @@ export async function cancelTask(ctx: Context, next: Next) {
 
 async function getTaskViewScope(ctx: Context): Promise<string> {
   try {
-    const settingRepo = ctx.db.getRepository('sjgl02_settings');
-    const settings = await settingRepo.findOne();
-    return settings?.taskViewScope || 'own';
-  } catch {
-    return 'own';
-  }
-}
+    const roleNames = (ctx.state.currentUser?.roles || []).map((r: any) => r.name);
+    if (roleNames.length > 0) {
+      const roleRepo = ctx.db.getRepository('roles');
+      const userRoles = aw

@@ -49,6 +49,7 @@ var import_promises = __toESM(require("fs/promises"));
 var import_path = __toESM(require("path"));
 var import_archiver = __toESM(require("archiver"));
 var import_async_mutex = require("async-mutex");
+var import_permission_check = require("./permission-check");
 const exportMutex = new import_async_mutex.Mutex();
 function sanitizeSheetName(name) {
   return name.replace(/[\\\/\*\?\[\]:!@#\$%\^&\(\)]/g, "_").substring(0, 31);
@@ -221,6 +222,15 @@ async function executeExport(ctx, next) {
   if (!tableName) {
     ctx.throw(400, "tableName is required");
   }
+  if (tableName !== "__all__") {
+    const exportPerm = await (0, import_permission_check.checkExportPermission)(ctx, tableName);
+    if (exportPerm.exportFields && exportPerm.exportFields.length > 0 && selectedFields && selectedFields.length > 0) {
+      const invalidFields = selectedFields.filter((f) => !exportPerm.exportFields.includes(f));
+      if (invalidFields.length > 0) {
+        ctx.throw(403, `\u60A8\u7684\u6743\u9650\u4E0D\u5141\u8BB8\u5BFC\u51FA\u4EE5\u4E0B\u5B57\u6BB5\uFF1A${invalidFields.join("\u3001")}\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458`);
+      }
+    }
+  }
   const repo = ctx.db.getRepository("sjgl02_tasks");
   const task = await repo.create({
     values: {
@@ -259,6 +269,14 @@ async function executeExport(ctx, next) {
       if (!coll) continue;
       const targetRepo = ctx.db.getRepository(tblName);
       if (!targetRepo) continue;
+      if (tableName === "__all__") {
+        try {
+          const permCheck = await (0, import_permission_check.checkExportPermission)(ctx, tblName);
+          if (!permCheck.canExport) continue;
+        } catch {
+          continue;
+        }
+      }
       let records = [];
       let collectionTotal = 0;
       const appendFields = [];
@@ -543,4 +561,20 @@ async function getProgress(ctx, next) {
   }
   ctx.body = {
     progress: task.progress,
-    statu
+    status: task.status,
+    exportFileId: task.exportFileId
+  };
+  await next();
+}
+async function downloadExport(ctx, next) {
+  const { taskId } = ctx.action.params;
+  const repo = ctx.db.getRepository("sjgl02_tasks");
+  const task = await repo.findOne({ filter: { id: taskId } });
+  if (!task) {
+    ctx.throw(404, "Task not found");
+  }
+  if (!task.exportFileId) {
+    ctx.throw(404, "Export file not found");
+  }
+  const attachRepo = ctx.db.getRepository("attachments");
+  const attachment = a

@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import { useRequest } from 'ahooks';
 import { useTranslation } from 'react-i18next';
-import { useAPIClient } from '@nocobase/client-v2';
+import { useAPIClient } from '../hooks/useAPIClientCompat';
 import { NAMESPACE } from '../locale';
 
 const STEP_TITLES = ['选择数据表', '选择字段 & 配置', '执行导出'];
@@ -288,5 +288,3 @@ export default function ExportTab() {
         </div>
       )}
     </div>
-  );
-}

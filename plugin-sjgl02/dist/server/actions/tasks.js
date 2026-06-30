@@ -91,17 +91,10 @@ async function cancelTask(ctx, next) {
   await next();
 }
 async function getTaskViewScope(ctx) {
+  var _a, _b;
   try {
-    const settingRepo = ctx.db.getRepository("sjgl02_settings");
-    const settings = await settingRepo.findOne();
-    return (settings == null ? void 0 : settings.taskViewScope) || "own";
-  } catch {
-    return "own";
-  }
-}
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  cancelTask,
-  getTaskDetail,
-  listTasks
-});
+    const roleNames = (((_a = ctx.state.currentUser) == null ? void 0 : _a.roles) || []).map((r) => r.name);
+    if (roleNames.length > 0) {
+      const roleRepo = ctx.db.getRepository("roles");
+      const userRoles = await roleRepo.find({ filter: { name: { $in: roleNames } } });
+      if (userRoles.some((r) => r.name === "admin" || r.name ==

@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>权限管理 - 界面原型图 v4.0</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f0f2f5; padding: 20px; }
+.container { max-width: 1400px; margin: 0 auto; }
+.page-title { background: linear-gradient(135deg,#1677ff,#0958d9); border-radius:12px; padding:14px 24px; color:#fff; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; }
+.page-title h2 { font-size:18px; font-weight:600; }
+.page-title .ver { background:rgba(255,255,255,0.2); border-radius:20px; padding:4px 14px; font-size:11px; }
+.page-title p { opacity:0.8; font-size:12px; margin-top:2px; }
+
+.annotation { position:absolute; background:#ff4d4f; color:#fff; font-size:10px; width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; z-index:10; cursor:pointer; font-weight:700; }
+.annotation:hover { background:#ff7875; transform:scale(1.2); }
+.ann-note { position:absolute; background:#fffbe6; border:1px solid #ffe58f; border-radius:6px; padding:6px 10px; font-size:12px; max-width:220px; z-index:20; box-shadow:0 2px 8px rgba(0,0,0,0.1); line-height:1.6; opacity:0; transition:opacity 0.2s; pointer-events:none; }
+.annotation:hover + .ann-note { opacity:1; }
+
+.main { display:flex; gap:16px; }
+.sidebar { width:260px; flex-shrink:0; }
+.content { flex:1; }
+
+.card { background:#fff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.06); border:1px solid #f0f0f0; }
+.card-h { padding:12px 16px; border-bottom:1px solid #f0f0f0; font-size:13px; font-weight:600; color:#333; }
+.card-b { padding:12px 16px; }
+
+.sbox { margin-bottom:10px; }
+.sbox input { width:100%; padding:6px 10px 6px 28px; border:1px solid #d9d9d9; border-radius:6px; font-size:12px; outline:none; }
+.sbox:before { content:'🔍'; position:absolute; left:8px; top:6px; font-size:12px; }
+
+.t-item { padding:8px 10px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:2px; }
+.t-item:hover { background:#f5f5f5; }
+.t-item.active { background:#e6f4ff; color:#1677ff; }
+.ava { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; color:#fff; font-weight:600; flex-shrink:0; }
+.ava.b { background:#1677ff; }
+.ava.g { background:#52c41a; }
+.glabel { font-size:11px; color:#999; padding:8px 8px 4px; font-weight:600; }
+.uroles { font-size:11px; color:#999; margin-top:2px; }
+
+.tag { display:inline-block; padding:0 6px; border-radius:4px; font-size:11px; line-height:20px; margin-left:4px; }
+.tb { background:#e6f4ff; color:#1677ff; border:1px solid #91caff; }
+.tg { background:#f6ffed; color:#52c41a; border:1px solid #b7eb8f; }
+.tp { background:#f9f0ff; color:#722ed1; border:1px solid #d3adf7; }
+.to { background:#fff7e6; color:#fa8c16; border:1px solid #ffd591; }
+.tr { background:#fff2f0; color:#ff4d4f; border:1px solid #ffccc7; }
+.tc { background:#e6fffb; color:#13c2c2; border:1px solid #87e8de; }
+.tx { background:#fafafa; color:#666; border:1px solid #e8e8e8; }
+
+.sw { width:40px; height:22px; border-radius:11px; position:relative; cursor:pointer; display:inline-block; vertical-align:middle; }
+.sw.on { background:#1677ff; }
+.sw.off { background:#d9d9d9; }
+.sw.dis { opacity:0.5; cursor:not-allowed; }
+.sw-th { width:18px; height:18px; border-radius:50%; background:#fff; position:absolute; top:2px; box-shadow:0 1px 3px rgba(0,0,0,0.2); }
+.sw.on .sw-th { left:20px; }
+.sw.off .sw-th { left:2px; }
+.sw-lb { font-size:10px; position:absolute; top:4px; color:#fff; font-weight:600; }
+.sw.on .sw-lb { left:5px; }
+.sw.off .sw-lb { right:5px; color:#999; }
+
+.pcard { border:1px solid #f0f0f0; border-radius:8px; padding:12px; margin-bottom:8px; }
+.pcard.inher { background:#f9f9f9; opacity:0.85; }
+.pc-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.pc-tagrow { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+
+.bt { display:inline-flex; align-items:center; gap:4px; padding:4px 12px; border-radius:6px; font-size:12px; cursor:pointer; border:1px solid transparent; font-weight:500; }
+.bt-pr { background:#1677ff; color:#fff; border-color:#1677ff; }
+.bt-lk { background:none; color:#1677ff; border:none; padding:4px 8px; }
+.bt-dg { background:none; color:#ff4d4f; border:none; padding:4px 8px; }
+.bt-sm { padding:2px 8px; font-size:11px; }
+
+.modal-bg { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.45); z-index:1000; display:flex; align-items:center; justify-content:center; }
+.modal { background:#fff; border-radius:10px; width:720px; max-height:85vh; overflow-y:auto; box-shadow:0 6px 30px rgba(0,0,0,0.15); }
+.modal-h { padding:14px 20px; border-bottom:1px solid #f0f0f0; font-size:15px; font-weight:600; }
+.modal-b { padding:16px 20px; }
+.modal-f { padding:12px 20px; border-top:1px solid #f0f0f0; display:flex; justify-content:flex-end; gap:8px; }
+
+.fg { margin-bottom:14px; }
+.flb { font-size:12px; color:#666; margin-bottom:4px; display:block; }
+.flb .rq { color:#ff4d4f; margin-left:2px; }
+.fin { width:100%; padding:6px 10px; border:1px solid #d9d9d9; border-radius:6px; font-size:12px; background:#fff; }
+
+.section { border:1px solid #e8e8e8; border-radius:8px; padding:14px; margin-bottom:12px; }
+.section.imp { border-left:3px solid #1677ff; }
+.section.exp { border-left:3px solid #52c41a; }
+.secttl { font-size:13px; font-weight:600; margin-bottom:10px; color:#333; }
+
+.tginput { display:flex; flex-wrap:wrap; gap:4px; padding:4px; border:1px solid #d9d9d9; border-radius:6px; min-height:32px; align-items:center; cursor:pointer; }
+.chip { display:inline-flex; align-items:center; gap:3px; padding:1px 6px; border-radius:4px; font-size:11px; background:#f0f0f0; border:1px solid #e8e8e8; }
+.chip .rmv { cursor:pointer; color:#999; font-size:12px; margin-left:2px; }
+.cnt { font-size:11px; color:#999; padding:0 4px; }
+
+.frow { display:flex; align-items:center; gap:8px; margin-bottom:6px; padding:6px 8px; background:#fafafa; border-radius:6px; }
+.frow select, .frow input { padding:3px 6px; border:1px solid #e8e8e8; border-radius:4px; font-size:11px; }
+.frow .rmv { cursor:pointer; color:#ff4d4f; font-size:14px; }
+
+.cbx { width:15px; height:15px; border:1px solid #d9d9d9; border-radius:3px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.cbx.ck { background:#1677ff; border-color:#1677ff; color:#fff; }
+.cbx.ck:after { content:'✓'; font-size:11px; }
+
+.pager { display:flex; justify-content:center; gap:6px; margin-top:12px; }
+.pager span { padding:3px 8px; border:1px solid #d9d9d9; border-radius:4px; font-size:11px; cursor:pointer; }
+.pager span.act { background:#1677ff; color:#fff; border-color:#1677ff; }
+
+.radio-g { display:inline-flex; border:1px solid #d9d9d9; border-radius:6px; overflow:hidden; }
+.radio-g .rb { padding:3px 10px; font-size:11px; cursor:pointer; background:#fff; border-right:1px solid #d9d9d9; }
+.radio-g .rb:last-child { border-right:none; }
+.radio-g .rb.act { background:#1677ff; color:#fff; }
+
+.tab-n { display:flex; }
+.tab-n .ti { padding:10px 20px; cursor:pointer; font-size:13px; border-bottom:2px solid transparent; color:#666; }
+.tab-n .ti.act { color:#1677ff; border-bottom-color:#1677ff; font-weight:600; }
+
+.legend { padding:14px; margin-top:16px; background:#fff; border-radius:10px; border:2px dashed #ff4d4f; }
+.legend h3 { font-size:14px; color:#ff4d4f; margin-bottom:10px; }
+.legend ol { padding-left:20px; }
+.legend li { font-size:12px; margin-bottom:6px; color:#555; line-height:1.6; }
+.legend li b { color:#ff4d4f; }
+
+.alert { padding:8px 12px; border-radius:6px; font-size:12px; margin-bottom:12px; display:flex; align-items:flex-start; gap:8px; }
+.alert-info { background:#e6f4ff; border:1px solid #91caff; color:#1677ff; }
+.missing-box { margin-top:12px; padding:10px; background:#fff2f0; border-radius:6px; border-left:3px solid #ff4d4f; line-height:1.8; }
+.missing-box strong { color:#ff4d4f; }
+.section-title { font-weight:600; font-size:13px; color:#999; margin-bottom:6px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 页面标题 -->
+  <div class="page-title">
+    <div><h2>📊 数据管理</h2><p>导入 · 导出 · 任务管理 · 权限管理</p></div>
+    <div class="ver">@my-project/plugin-sjgl02 v1.0.49</div>
+  </div>
+
+  <!-- Tab导航 -->
+  <div style="background:#fff; border-radius:10px 10px 0 0; border:1px solid #f0f0f0; border-bottom:none;">
+    <div class="tab-n">
+      <div class="ti">⬇ 导入</div><div class="ti">⬆ 导出</div><div class="ti">☰ 任务管理</div><div class="ti act">✓ 权限管理</div>
+    </div>
+  </div>
+
+  <!-- 主区域 -->
+  <div class="main" style="padding:16px; background:#fff; border-radius:0 0 10px 10px; border:1px solid #f0f0f0; border-top:none;">
+
+    <!-- ===== 左侧栏 ===== -->
+    <div class="sidebar" style="position:relative;">
+      <div class="annotation" style="top:-6px; left:6px;">①</div>
+      <div class="ann-note" style="top:16px; left:28px;"><b>左侧栏</b><br/>用户/角色选择面板<br/>span=6 列宽（260px）</div>
+
+      <div class="card" style="max-height:480px; overflow:auto;">
+        <div class="card-h" style="position:relative;">
+          👥 用户 / 角色
+          <div class="annotation" style="top:6px; right:-28px;">②</div>
+          <div class="ann-note" style="top:28px; right:-10px; left:auto;"><b>搜索框</b><br/>输入关键字实时<br/>过滤用户或角色</div>
+        </div>
+        <div class="card-b">
+          <div class="sbox" style="position:relative;"><span style="position:absolute;left:8px;top:6px;font-size:12px;">🔍</span><input type="text" placeholder="搜索用户/角色..."></div>
+
+          <div class="glabel">👤 用户 (3)</div>
+          <div class="t-item active">
+            <div class="ava b">U</div>
+            <div><div>张明</div><div class="uroles">R 管理员 · R 编辑</div></div>
+          </div>
+          <div class="t-item"><div class="ava b">U</div><div><div>李华</div></div></div>
+          <div class="t-item"><div class="ava b">U</div><div><div>王芳</div><div class="uroles">R 编辑</div></div></div>
+
+          <div class="glabel" style="position:relative;">
+            👥 角色 (3)
+            <div class="annotation" style="top:-2px; left:68px;">③</div>
+            <div class="ann-note" style="top:12px; left:88px;"><b>角色分组</b><br/>绿色头像 + 角色名<br/>点击选中查看权限</div>
+          </div>
+          <div class="t-item"><div class="ava g">R</div><div><div>管理员（admin）</div></div></div>
+          <div class="t-item"><div class="ava g">R</div><div><div>编辑（editor）</div></div></div>
+          <div class="t-item"><div class="ava g">R</div><div><div>超级管理员（root）</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 右侧内容 ===== -->
+    <div class="content" style="position:relative;">
+      <div class="annotation" style="top:-6px; left:6px;">④</div>
+      <div class="ann-note" style="top:16px; left:28px;"><b>右侧权限配置区</b><br/>span=18 列宽<br/>显示选中目标的权限</div>
+
+      <!-- 头部信息栏 -->
+      <div class="card" style="margin-bottom:12px;">
+        <div class="card-b" style="display:flex; justify-content:space-between; align-items:center; padding:8px 14px;">
+          <div style="display:flex; align-items:center; gap:8px; position:relative;">
+            <div class="annotation" style="top:-4px; left:-4px;">⑤</div>
+            <div class="ann-note" style="top:18px; left:10px;"><b>选中目标信息</b><br/>头像+名称+类型标签</div>
+            <div class="ava b">U</div>
+            <strong style="font-size:14px;">张明</strong>
+            <span class="tag tb">用户</span>
+            <span style="font-size:11px; color:#999; margin-left:4px;">角色：</span>
+            <span class="tag tg">管理员（admin）</span>
+            <span class="tag to">编辑（editor）</span>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div class="annotation" style="top:-4px; left:518px;">⑥</div>
+            <div class="ann-note" style="top:16px; left:380px;"><b>全局设置</b><br/>任务查看范围切换<br/>立即保存到后端</div>
+            <span style="font-size:12px; color:#666;">任务查看范围：</span>
+            <div class="radio-g"><div class="rb">仅查看自己的</div><div class="rb act">查看全部</div></div>
+
+            <div class="annotation" style="top:-4px; left:726px;">⑦</div>
+            <div class="ann-note" style="top:16px; left:600px;"><b>添加权限按钮</b><br/>弹出编辑弹窗<br/><b style="color:#52c41a;">admin/root时隐藏</b></div>
+            <span class="bt bt-pr">+ 添加权限</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子Tab：权限配置 / 操作日志 -->
+      <div style="display:flex; border-bottom:2px solid #f0f0f0; margin-bottom:12px; position:relative;">
+        <div class="annotation" style="top:4px; left:2px;">㉙</div>
+        <div class="ann-note" style="top:24px; left:22px;"><b>子Tab切换</b><br/>权限配置：查看/编辑权限<br/>操作日志：查看变更记录</div>
+        <div class="subtab active" onclick="switchSubTab('perm')" id="subtab-perm" style="padding:8px 16px; cursor:pointer; font-size:13px; border-bottom:2px solid #1677ff; color:#1677ff; font-weight:600; margin-bottom:-2px;">✓ 权限配置</div>
+        <div class="subtab" onclick="switchSubTab('log')" id="subtab-log" style="padding:8px 16px; cursor:pointer; font-size:13px; border-bottom:2px solid transparent; color:#999; margin-bottom:-2px;">📋 操作日志（5条）</div>
+      </div>
+
+      <div id="permContent">
+      <!-- 批量操作栏 -->
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; position:relative;">
+        <div class="annotation" style="top:-4px; left:0px;">⑧</div>
+        <div class="ann-note" style="top:14px; left:20px;"><b>批量操作栏</b><br/>全选自定义权限<br/>批量删除选中项</div>
+        <span class="cbx"></span> <span style="font-size:12px; color:#666;">全选（仅自定义权限）</span>
+        <div style="margin-left:auto; position:relative;">
+          <div class="annotation" style="top:-4px; left:40px;">⑨</div>
+          <div class="ann-note" style="top:14px; left:60px;"><b>权限搜索框</b><br/>按表名或表标识过滤</div>
+          <input type="text" placeholder="搜索表名或表标识..." style="padding:3px 8px; border:1px solid #d9d9d9; border-radius:4px; font-size:11px; width:180px;">
+        </div>
+      </div>
+
+      <!-- 继承权限分区 -->
+      <div style="margin-bottom:10px; position:relative;">
+        <div class="annotation" style="top:-2px; left:-4px;">⑪</div>
+        <div class="ann-note" style="top:14px; left:14px;"><b>📦 继承权限分区</b><br/>从角色继承的权限<br/>灰色背景，不可编辑<br/><b>可点击标题收起/展开</b></div>
+        <div class="section-title" onclick="toggleSection('inherited')" style="cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px;">
+          <span id="inherited-arrow" style="font-size:11px; transition:transform 0.2s; display:inline-block;">▼</span>
+          📦 角色继承的权限（2条）
+        </div>
+        <div id="inherited-cards">
+
+        <div class="pcard inher">
+          <div class="pc-top">
+            <div style="display:flex; align-items:center; gap:6px; position:relative;">
+              <strong style="font-size:13px;">用户表 (users)</strong>
+              <div class="annotation" style="position:relative; top:auto; left:auto; display:inline-flex; margin:0; font-size:10px; width:16px; height:16px;">⑫</div>
+              <div class="ann-note" style="top:18px; left:100px;"><b>权限标记</b><br/>紫色=继承<br/>蓝色=系统管理</div>
+              <span class="tag tp">继承</span>
+            </div>
+            <div style="display:flex; gap:4px;">
+              <span class="bt bt-lk bt-sm" onclick="openDetail(event)">查看详情</span>
+            </div>
+          </div>
+          <div class="pc-tagrow" style="position:relative;">
+            <div class="annotation" style="position:relative; top:auto; left:auto; display:inline-flex; margin:0;  font-size:10px; width:16px; height:16px;">⑬</div>
+            <div class="ann-note" style="top:20px; left:60px;"><b>权限标签行</b><br/>蓝=导入/绿=导出<br/>橙=模式+唯一值<br/>红=必填/青=可导入<br/>紫=可导出</div>
+            <span class="tag tb">导入: 是</span><span class="tag tg">导出: 是</span>
+            <span class="tag to">模式: 新增 / 更新 / 新增+更新</span>
+            <span class="tag to">唯一值: 手机号,邮箱</span>
+            <span class="tag tr">必填: 姓名,手机号</span>
+          </div>
+        </div>
+
+        <div class="pcard inher">
+          <div class="pc-top">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <strong style="font-size:13px;">订单表 (orders)</strong>
+              <span class="tag tp">继承</span>
+            </div>
+            <div style="display:flex; gap:4px;">
+              <span class="bt bt-lk bt-sm" onclick="openDetail(event)">查看详情</span>
+            </div>
+          </div>
+          <div class="pc-tagrow">
+            <span class="tag tb">导入: 是</span><span class="tag tg">导出: 否</span>
+            <span class="tag to">模式: 新增</span>
+            <span class="tag tc">可导入: 全部</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 自定义权限分区 -->
+      <div style="margin-bottom:10px; position:relative;">
+        <div class="annotation" style="top:-2px; left:-4px;">⑭</div>
+        <div class="ann-note" style="top:14px; left:14px;"><b>✏️ 自定义权限分区</b><br/>当前目标的独立权限配置<br/><b>可点击标题收起/展开</b></div>
+        <div class="section-title" onclick="toggleSection('custom')" style="cursor:pointer; user-select:none; display:flex; align-items:center; gap:6px; color:#333;">
+          <span id="custom-arrow" style="font-size:11px; transition:transform 0.2s; display:inline-block;">▼</span>
+          ✏️ 用户自定义权限（3条）
+        </div>
+        <div id="custom-cards">
+
+        <!-- 卡片1 - 含数量化标签 -->
+        <div class="pcard" style="position:relative;">
+          <div class="pc-top">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <div class="annotation" style="position:relative; top:auto; left:auto; display:inline-flex; margin:0;  font-size:10px; width:16px; height:16px;">⑮</div>
+              <div class="ann-note" style="top:18px; left:80px;"><b>批量选择框</b><br/>勾选后用批量<br/>删除按钮操作</div>
+              <span class="cbx"></span>
+              <strong style="font-size:13px;">客户表 (customers)</strong>
+            </div>
+            <div style="display:flex; gap:4px; position:relative;">
+              <div class="annotation" style="position:relative; top:auto; left:auto; display:inline-flex; margin:0;  font-size:10px; width:16px; height:16px;">⑯</div>
+              <div class="ann-note" style="top:18px; right:60px; left:auto;"><b>编辑/删除按钮</b><br/>编辑→弹出弹窗配置<br/>删除→移除权限</div>
+              <span class="bt bt-lk bt-sm">编辑</span>
+              <span class="bt bt-dg bt-sm">删除</span>
+            </div>
+          </div>
+          <div class="pc-tagrow" style="position:relative;">
+            <div class="annotation" style="position:relative; top:auto; left:auto; display:inline-flex; margin:0;  font-size:10px; width:16px; height:16px;">⑱</div>
+            <div class="ann-note" style="top:20px; left:60px;"><b style="color:red;">★ 数量化标签</b><br/>显示字段数量<br/>可导入:5个字段<br/>可导出:8个字段</div>
+            <span class="tag tb">导入: 是</span><span class="tag tg">导出: 否</span>
+            <span class="tag to">模式: 新增+更新</span>
+            <span class="tag to">唯一值: 客户编号</span>
+            <span class="tag tc">可导入: 5个字段</span>
+            <span class="tag tp">可导出: —</span>
+          </div>
+        </div>
+
+        <!-- 卡片2 -->
+        <div class="pcard">
+          <div class="pc-top">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="cbx"></span>
+              <strong style="font-size:13px;">产品表 (products)</strong>
+            </div>
+            <div style="display:flex; gap:4px;">
+              <span class="bt bt-lk bt-sm">编辑</span><span class="bt bt-dg bt-sm">删除</span>
+            </div>
+          </div>
+          <div class="pc-tagrow">
+            <span class="tag tb">导入: 是</span><span class="tag tg">导出: 否</span>
+            <span class="tag to">模式: 新增</span>
+            <span class="tag tr">必填: 产品名称,价格</span>
+            <span class="tag tc">可导入: 3个字段</span>
+          </div>
+        </div>
+
+        <!-- 卡片3 - 含导出筛选 -->
+        <div class="pcard">
+          <div class="pc-top">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="cbx"></span>
+              <strong style="font-size:13px;">商城表 (stores)</strong>
+            </div>
+            <div style="display:flex; gap:4px;">
+              <span class="bt bt-lk bt-sm">编辑</span><span class="bt bt-dg bt-sm">删除</span>
+            </div>
+          </div>
+          <div class="pc-tagrow">
+            <span class="tag tb">导入: 是</span><span class="tag tg">导出: 是</span>
+            <span class="tag to">模式: 新增+更新</span>
+            <span class="tag to">唯一值: 编码</span>
+            <span class="tag tc">可导入: 9个字段</span>
+            <span class="tag tp">可导出: 4个字段</span>
+            <span class="tag tx">📋 筛选: status=启用</span>
+          </div>
+        </div>
+      </div>
+      </div> <!-- end custom-cards -->
+      </div>
+      </div> <!-- end #permContent -->
+
+      <!-- 操作日志内容 -->
+      <div id="logContent" style="display:none;">
+
+        <div class="card" style="margin-bottom:12px;">
+          <div class="card-b" style="display:flex; gap:12px; align-items:center; padding:8px 14px; position:relative;">
+            <div class="annotation" style="top:-4px; left:6px;">㉚</div>
+            <div class="ann-note" style="top:14px; left:26px;"><b>日志筛选栏</b><br/>按操作类型、时间<br/>筛选日志记录</div>
+            <span style="font-size:12px; color:#666;">操作类型：</span>
+            <select style="padding:3px 6px; border:1px solid #d9d9d9; border-radius:4px; font-size:11px;"><option>全部</option><option>创建</option><option>修改</option><option>删除</option><option>切换</option></select>
+            <span style="font-size:12px; color:#666;">时间范围：</span>
+            <select style="padding:3px 6px; border:1px solid #d9d9d9; border-radius:4px; font-size:11px;"><option>最近7天</option><option>最近30天</option><option>全部</option></select>
+            <span style="font-size:11px; color:#999; margin-left:auto;">共 5 条记录</span>
+          </div>
+        </div>
+
+        <!-- 日志表格 -->
+        <div class="card" style="position:relative;">
+          <div class="annotation" style="top:8px; left:6px;">㉛</div>
+          <div class="ann-note" style="top:28px; left:26px;"><b>操作日志表</b><br/>审计所有权限变更<br/>谁(who)→操作(what)<br/>→目标(whom)→表(where)<br/>→变更快照(changes)</div>
+          <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+              <tr style="background:#fafafa; border-bottom:2px solid #f0f0f0;">
+                <th style="padding:8px 10px; text-align:left; color:#666; font-weight:600;">时间</th>
+                <th style="padding:8px 10px; text-align:left; color:#666; font-weight:600;">操作人</th>
+                <th style="padding:8px 10px; text-align:left; color:#666; font-weight:600;">操作</th>
+                <th style="padding:8px 10px; text-align:left; color:#666; font-weight:600;">目标</th>
+                <th style="padding:8px 10px; text-align:left; color:#666; font-weight:600;">数据表</th>
+                <th style="padding:8px 10px; text-align:left; color:#666; font-weight:600;">变更概要</th>
+                <th style="padding:8px 10px; text-align:center; color:#666; font-weight:600; width:60px;">详情</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-bottom:1px solid #f5f5f5;" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background=''">
+                <td style="padding:8px 10px; color:#999;">2026-06-30 18:30</td>
+                <td style="padding:8px 10px;">nocobase</td>
+                <td style="padding:8px 10px;"><span class="tag tg" style="font-size:10px;">创建</span></td>
+                <td style="padding:8px 10px;">张明（用户）</td>
+                <td style="padding:8px 10px;"><b>customers</b></td>
+                <td style="padding:8px 10px; font-size:11px; color:#666;">新增权限：导入=是 导出=否 模式=upsert</td>
+                <td style="padding:8px 10px; text-align:center;"><span class="bt bt-lk bt-sm" onclick="toggleLogDetail(0)" style="font-size:11px;">展开</span></td>
+              </tr>
+              <tr id="logDetail-0" style="display:none; border-bottom:1px solid #f5f5f5; background:#fffbe6;">
+                <td colspan="7" style="padding:10px 14px; font-size:11px; color:#555;">
+                  <b>变更详情：</b><br/>
+                  <span style="color:#999;">操作前：</span>无（新建）<br/>
+                  <span style="color:#52c41a;">操作后：</span>canImport=true, canExport=false, importMode=["upsert"], importFields=["姓名（name）","手机号（phone）","邮箱（email）","地址（address）","备注（remark）"], uniqueFields=["客户编号（customerCode）"]
+                </td>
+              </tr>
+              <tr style="border-bottom:1px solid #f5f5f5; background:#fafafa;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='#fafafa'">
+                <td style="padding:8px 10px; color:#999;">2026-06-30 17:15</td>
+                <td style="padding:8px 10px;">nocobase</td>
+                <td style="padding:8px 10px;"><span class="tag to" style="font-size:10px;">修改</span></td>
+                <td style="padding:8px 10px;">编辑（角色）</td>
+                <td style="padding:8px 10px;"><b>orders</b></td>
+                <td style="padding:8px 10px; font-size:11px; color:#666;">修改权限：导入模式 + 唯一值字段变更</td>
+                <td style="padding:8px 10px; text-align:center;"><span class="bt bt-lk bt-sm" onclick="toggleLogDetail(1)" style="font-size:11px;">展开</span></td>
+              </tr>
+              <tr id="logDetail-1" style="display:none; border-bottom:1px solid #f5f5f5; background:#fffbe6;">
+                <td colspan="7" style="padding:10px 14px; font-size:11px; color:#555;">
+                  <b>变更详情：</b><br/>
+                  <span style="color:#999;">操作前：</span>importMode=["insert"]<br/>
+                  <span style="color:#52c41a;">操作后：</span>importMode=["insert","update"], uniqueFields=["订单编号（orderCode）"]
+                </td>
+              </tr>
+              <tr style="border-bottom:1px solid #f5f5f5;" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background=''">
+                <td style="padding:8px 10px; color:#999;">2026-06-30 16:02</td>
+                <td style="padding:8px 10px;">nocobase</td>
+                <td style="padding:8px 10px;"><span class="tag tr" style="font-size:10px;">删除</span></td>
+                <td style="padding:8px 10px;">张明（用户）</td>
+                <td style="padding:8px 10px;"><b>inventory</b></td>
+                <td style="padding:8px 10px; font-size:11px; color:#666;">移除权限：导入=否 导出=是</td>
+                <td style="padding:8px 10px; text-align:center;"><span class="bt bt-lk bt-sm" onclick="toggleLogDetail(2)" style="font-size:11px;">展开</span></td>
+              </tr>
+              <tr id="logDetail-2" style="display:none; border-bottom:1px solid #f5f5f5; background:#fffbe6;">
+                <td colspan="7" style="padding:10px 14px; font-size:11px; color:#555;">
+                  <b>变更详情：</b><br/>
+                  <span style="color:#999;">操作前：</span>canImport=false, canExport=true, importMode=["insert"]<br/>
+                  <span style="color:#ff4d4f;">操作结果：</span>已删除
+                </td>
+              </tr>
+              <tr style="border-bottom:1px solid #f5f5f5; background:#fafafa;" onmouseover="this.style.background='#f0f0f0'" onmouseout="this.style.background='#fafafa'">
+                <td style="padding:8px 10px; color:#999;">2026-06-29 14:20</td>
+                <td style="padding:8px 10px;">nocobase</td>
+                <td style="padding:8px 10px;"><span class="tag tb" style="font-size:10px;">切换</span></td>
+                <td style="padding:8px 10px;">李华（用户）</td>
+                <td style="padding:8px 10px;"><b>products</b></td>
+                <td style="padding:8px 10px; font-size:11px; color:#666;">切换开关：canImport 否→是</td>
+                <td style="padding:8px 10px; text-align:center;"><span class="bt bt-lk bt-sm" onclick="toggleLogDetail(3)" style="font-size:11px;">展开</span></td>
+              </tr>
+              <tr id="logDetail-3" style="display:none; border-bottom:1px solid #f5f5f5; background:#fffbe6;">
+                <td colspan="7" style="padding:10px 14px; font-size:11px; color:#555;">
+                  <b>变更详情：</b><br/>
+                  <span style="color:#999;">操作前：</span>canImport=false<br/>
+                  <span style="color:#52c41a;">操作后：</span>canImport=true
+                </td>
+              </tr>
+              <tr style="border-bottom:1px solid #f5f5f5;" onmouseover="this.style.background='#fafafa'" onmouseout="this.style.background=''">
+                <td style="padding:8px 10px; color:#999;">2026-06-29 10:05</td>
+                <td style="padding:8px 10px;">admin</td>
+                <td style="padding:8px 10px;"><span class="tag tc" style="font-size:10px;">系统补齐</span></td>
+                <td style="padding:8px 10px;">管理员（角色）</td>
+                <td style="padding:8px 10px;"><b>sjgl02_tasks</b></td>
+                <td style="padding:8px 10px; font-size:11px; color:#666;">系统自动补齐：新增表权限（管理员全权限）</td>
+                <td style="padding:8px 10px; text-align:center;"><span class="bt bt-lk bt-sm" onclick="toggleLogDetail(4)" style="font-size:11px;">展开</span></td>
+              </tr>
+              <tr id="logDetail-4" style="display:none; border-bottom:1px solid #f5f5f5; background:#fffbe6;">
+                <td colspan="7" style="padding:10px 14px; font-size:11px; color:#555;">
+                  <b>变更详情：</b><br/>
+                  <span style="color:#52c41a;">操作后：</span>targetType=role, targetId=admin, canImport=true, canExport=true, importMode=["insert","update","upsert"]<br/>
+                  <span style="color:#999;">来源：</span>getPermissions 自动补齐机制（检测到管理员角色缺少此表权限记录）
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="padding:8px 14px; border-top:1px solid #f0f0f0; display:flex; justify-content:flex-end; gap:6px;">
+            <span style="font-size:11px; color:#999;">每页10条</span>
+            <span style="padding:3px 8px; border:1px solid #d9d9d9; border-radius:4px; font-size:11px; cursor:pointer; background:#1677ff; color:#fff;">1</span>
+          </div>
+        </div>
+      </div> <!-- end #logContent -->
+
+      <!-- 分页 -->
+      <div class="pager" style="position:relative;">
+        <div class="annotation" style="top:-4px; left:260px;">⑲</div>
+        <div class="ann-note" style="top:14px; left:280px;"><b>分页控件</b><br/>每页10条<br/>超出分页显示</div>
+        <span class="act">1</span><span>2</span><span>...</span><span>11</span><span>›</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 权限编辑弹窗 ===== -->
+  <div class="modal-bg">
+    <div class="modal" style="position:relative;">
+      <div class="annotation" style="top:8px; left:8px;">⑳</div>
+      <div class="ann-note" style="top:28px; left:28px;"><b>权限编辑弹窗</b><br/>Modal 宽度 720px<br/>新增/编辑权限</div>
+
+      <div class="modal-h">✏️ 新增权限</div>
+      <div class="modal-b">
+
+        <!-- 选择数据表 -->
+        <div class="fg" style="position:relative;">
+          <label class="flb">选择数据表<span class="rq">*</span></label>
+          <div class="annotation" style="top:0; left:80px;">㉑</div>
+          <div class="ann-note" style="top:16px; left:100px;"><b>数据表选择器</b><br/>搜索过滤<br/>格式: 标题 (表名)<br/>选后加载字段列表</div>
+          <select class="fin"><option>客户表 (customers)</option></select>
+        </div>
+
+        <!-- 导入/导出开关 -->
+        <div style="display:flex; gap:16px; margin-bottom:14px; position:relative;">
+          <div class="annotation" style="top:-4px; left:16px;">㉒</div>
+          <div class="ann-note" style="top:14px; left:36px;"><b>允许导入开关</b><br/>开启→显示导入配置区<br/>关闭→隐藏导入配置区</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="flb" style="margin:0;">允许导入</span>
+            <span class="sw on" onclick="var t=this;t.classList.toggle('on');t.classList.toggle('off');document.getElementById('imsec').style.display=t.classList.contains('on')?'block':'none'">
+              <span class="sw-th"></span><span class="sw-lb">导入</span>
+            </span>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="flb" style="margin:0;">允许导出</span>
+            <span class="sw off" onclick="var t=this;t.classList.toggle('on');t.classList.toggle('off');document.getElementById('exsec').style.display=t.classList.contains('on')?'block':'none'">
+              <span class="sw-th"></span><span class="sw-lb">关</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- 导入配置区 -->
+        <div class="section imp" id="imsec" style="position:relative;">
+          <div class="annotation" style="top:6px; left:-2px;">㉓</div>
+          <div class="ann-note" style="top:18px; left:14px;"><b>导入配置区</b><br/>蓝色左边框标记<br/>Switch 联动显隐</div>
+          <div class="secttl">⬇ 导入配置</div>
+
+          <div class="fg">
+            <label class="flb">导入模式 <span style="color:#999;font-weight:400;">(可多选)</span><span class="rq">*</span></label>
+            <div class="annotation" style="top:0; left:52px;">㉔</div>
+            <div class="ann-note" style="top:16px; left:72px;"><b>导入模式（多选）</b><br/>支持同时勾选多种模式<br/>新增(insert)<br/>更新(update)<br/>新增+更新(upsert)</div>
+            <div class="tginput">
+              <span class="chip">新增 (insert) <span class="rmv">✕</span></span>
+              <span class="chip">新增+更新 (upsert) <span class="rmv">✕</span></span>
+              <span class="cnt">2 个模式已选 ▼</span>
+            </div>
+          </div>
+
+          <div class="fg" style="position:relative;">
+            <label class="flb">唯一值字段 <span style="color:#999;font-weight:400;">(upsert/update必填)</span><span class="rq">*</span></label>
+            <div class="annotation" style="top:0; left:52px;">㉕</div>
+            <div class="ann-note" style="top:16px; left:72px;"><b style="color:red;">★ 唯一值字段</b><br/>Tag 交互模式<br/>已选标签可删除<br/>下拉已选灰化禁用<br/>实时显示计数</div>
+            <div class="tginput">
+              <span class="chip">客户编号（customerCode） <span class="rmv">✕</span></span>
+              <span class="chip">手机号（phone） <span class="rmv">✕</span></span>
+              <span class="cnt">2 个字段已选 ▼</span>
+            </div>
+          </div>
+
+          <div class="fg">
+            <label class="flb">必填字段</label>
+            <div class="tginput">
+              <span class="chip">姓名（name） <span class="rmv">✕</span></span>
+              <span class="chip">手机号（phone） <span class="rmv">✕</span></span>
+              <span class="chip">邮箱（email） <span class="rmv">✕</span></span>
+              <span class="cnt">3 个字段已选 ▼</span>
+            </div>
+          </div>
+
+          <div class="fg">
+            <label class="flb">可导入字段 <span style="color:#999;font-weight:400;">(空=全部允许)</span></label>
+            <div class="tginput">
+              <span class="chip">姓名（name） <span class="rmv">✕</span></span><span class="chip">手机号（phone） <span class="rmv">✕</span></span><span class="chip">邮箱（email） <span class="rmv">✕</span></span><span class="chip">地址（address） <span class="rmv">✕</span></span><span class="chip">备注（remark） <span class="rmv">✕</span></span>
+              <span class="cnt">5 个字段已选 ▼</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 导出配置区 -->
+        <div class="section exp" id="exsec" style="display:none; position:relative;">
+          <div class="annotation" style="top:6px; left:-2px;">㉖</div>
+          <div class="ann-note" style="top:18px; left:14px;"><b>导出配置区</b><br/>绿色左边框标记<br/>Switch 联动显隐</div>
+          <div class="secttl">⬆ 导出配置</div>
+
+          <div class="fg">
+            <label class="flb">可导出字段 <span style="color:#999;font-weight:400;">(空=全部允许)</span></label>
+            <div class="tginput">
+              <span class="chip">姓名（name） <span class="rmv">✕</span></span><span class="chip">手机号（phone） <span class="rmv">✕</span></span><span class="chip">创建时间（createdAt） <span class="rmv">✕</span></span><span class="chip">状态（status） <span class="rmv">✕</span></span>
+              <span class="cnt">4 个字段已选 ▼</span>
+            </div>
+          </div>
+
+          <!-- 导出范围筛选 -->
+          <div class="fg" style="position:relative;">
+            <label class="flb">导出范围筛选 <span style="color:#999;font-weight:400;">(可选)</span></label>
+            <div class="annotation" style="top:0; left:72px;">㉗</div>
+            <div class="ann-note" style="top:16px; left:92px;"><b style="color:red;">★★★ 导出范围筛选</b><br/><b style="color:red">完全缺失！</b><br/>AND多行条件<br/>字段→操作符→值<br/>支持添加/删除行</div>
+            <div class="frow"><select><option>状态</option></select><select><option>= 等于</option></select><input type="text" value="启用"><span class="rmv">✕</span></div>
+            <div class="frow"><select><option>创建时间</option></select><select><option>&gt; 大于</option></select><input type="text" value="2026-01-01"><span class="rmv">✕</span></div>
+            <span style="font-size:11px; color:#1677ff; cursor:pointer;">+ 添加筛选条件</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-f">
+        <span class="bt bt-lk">取消</span>
+        <span class="bt bt-pr">保存配置</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 查看详情弹窗（只读） ===== -->
+  <div class="modal-bg" id="detailModal" style="display:none;">
+    <div class="modal" style="position:relative; width:680px;">
+      <div class="annotation" style="top:8px; left:8px;">㉘</div>
+      <div class="ann-note" style="top:28px; left:28px;"><b>查看详情弹窗（只读）</b><br/>继承权限不可修改<br/>仅查看配置内容</div>
+
+      <div class="modal-h" style="background:#fafafa; color:#999; display:flex; justify-content:space-between; align-items:center;">
+        <span>📋 查看权限详情 · <span style="color:#722ed1;">继承自角色权限</span></span>
+        <span class="bt bt-lk" onclick="document.getElementById('detailModal').style.display='none'" style="font-size:16px;">✕</span>
+      </div>
+      <div class="modal-b">
+
+        <div class="alert alert-info" style="margin-bottom:14px;">
+          <span>🔒</span>
+          <div><b>此权限为继承权限，不可在此编辑。</b><br/><span style="font-size:11px; color:#666;">来源：角色「编辑（editor）」→ 表「用户表（users）」如需修改请切换到对应角色。</span></div>
+        </div>
+
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+          <tr><td style="padding:6px 8px; color:#666; width:100px;">数据表</td><td style="padding:6px 8px;"><b>用户表（users）</b></td></tr>
+          <tr style="background:#fafafa;"><td style="padding:6px 8px; color:#666;">允许导入</td><td style="padding:6px 8px;"><span class="tag tb">是</span></td></tr>
+          <tr><td style="padding:6px 8px; color:#666;">允许导出</td><td style="padding:6px 8px;"><span class="tag tb">是</span></td></tr>
+          <tr style="background:#fafafa;"><td style="padding:6px 8px; color:#666;">导入模式</td><td style="padding:6px 8px;"><span class="tag to">新增（insert）</span> <span class="tag to">更新（update）</span> <span class="tag to">新增+更新（upsert）</span></td></tr>
+          <tr><td style="padding:6px 8px; color:#666;">唯一值字段</td><td style="padding:6px 8px;"><span class="tag to">手机号（phone）</span> <span class="tag to">邮箱（email）</span></td></tr>
+          <tr style="background:#fafafa;"><td style="padding:6px 8px; color:#666;">必填字段</td><td style="padding:6px 8px;"><span class="tag tr">姓名（name）</span> <span class="tag tr">手机号（phone）</span></td></tr>
+          <tr><td style="padding:6px 8px; color:#666;">可导入字段</td><td style="padding:6px 8px;"><span style="color:#52c41a;">全部字段允许（未限制）</span></td></tr>
+          <tr style="background:#fafafa;"><td style="padding:6px 8px; color:#666;">可导出字段</td><td style="padding:6px 8px;"><span style="color:#52c41a;">全部字段允许（未限制）</span></td></tr>
+          <tr><td style="padding:6px 8px; color:#666;">导出筛选</td><td style="padding:6px 8px;"><span style="color:#999;">无筛选条件</span></td></tr>
+        </table>
+      </div>
+      <div class="modal-f" style="justify-content:center;">
+        <span class="bt bt-lk" onclick="document.getElementById('detailModal').style.display='none'">关闭</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  function openDetail(e) { e.stopPropagation(); document.getElementById('detailModal').style.display='flex'; }
+  function toggleSection(type) {
+    var cards = document.getElementById(type + '-cards');
+    var arrow = document.getElementById(type + '-arrow');
+    if (cards.style.display === 'none') {
+      cards.style.display = '';
+      arrow.textContent = '▼';
+    } else {
+      cards.style.display = 'none';
+      arrow.textContent = '▶';
+    }
+  }
+  function switchSubTab(tab) {
+    document.getElementById('permContent').style.display = tab === 'perm' ? '' : 'none';
+    document.getElementById('logContent').style.display = tab === 'log' ? '' : 'none';
+    document.getElementById('subtab-perm').className = tab === 'perm' ? 'subtab active' : 'subtab';
+    document.getElementById('subtab-perm').style.cssText = tab === 'perm' ? 'padding:8px 16px;cursor:pointer;font-size:13px;border-bottom:2px solid #1677ff;color:#1677ff;font-weight:600;margin-bottom:-2px;' : 'padding:8px 16px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent;color:#999;margin-bottom:-2px;';
+    document.getElementById('subtab-log').className = tab === 'log' ? 'subtab active' : 'subtab';
+    document.getElementById('subtab-log').style.cssText = tab === 'log' ? 'padding:8px 16px;cursor:pointer;font-size:13px;border-bottom:2px solid #1677ff;color:#1677ff;font-weight:600;margin-bottom:-2px;' : 'padding:8px 16px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent;color:#999;margin-bottom:-2px;';
+  }
+  function toggleLogDetail(idx) {
+    var el = document.getElementById('logDetail-'+idx);
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+    var btn = el.previousElementSibling.querySelector('.bt');
+    btn.textContent = el.style.display === 'none' ? '展开' : '收起';
+  }
+  </script>
+
+  <!-- ===== 图例标注清单 ===== -->
+  <div class="legend">
+    <h3>📋 界面元素标注清单（红色数字①②③···对应页面中红色圆点）</h3>
+    <ol>
+      <li><b>① 左侧栏</b>：用户/角色选择面板（span=6，260px）</li>
+      <li><b>② 搜索框</b>：输入关键字实时过滤用户或角色名称</li>
+      <li><b>③ 角色分组</b>：绿色头像 + 角色名，点击选中查看权限配置</li>
+      <li><b>④ 右侧权限配置区</b>：选中目标的权限卡片区域（span=18）</li>
+      <li><b>⑤ 选中目标信息</b>：头像 + 用户名 + 类型标签 + 所属角色标签</li>
+      <li><b>⑥ 全局设置</b>：任务查看范围（仅看自己的 / 查看全部），立即保存</li>
+      <li><b>⑦ 添加权限按钮</b>：弹出权限编辑弹窗，admin/root 角色时隐藏此按钮</li>
+      <li><b>⑧ 批量操作栏</b>：全选自定义权限 + 批量删除（Popconfirm 确认）</li>
+      <li><b>⑨ 权限搜索框</b>：按表名或表标识过滤权限卡片列表</li>
+      <li><b>⑩ 系统管理提示</b>：admin/root 角色专属 Alert 提示，全部权限不可修改</li>
+      <li><b>⑪ 继承权限分区</b>：从角色继承来的权限，灰色背景、不可编辑，仅可查看详情</li>
+      <li><b>⑫ 权限标记</b>：紫色="继承"、蓝色="系统管理"</li>
+      <li><b>⑬ 权限标签行</b>：蓝色(导入) / 绿色(导出) / 橙色(模式+唯一值) / 红色(必填) / 青色(可导入数) / 紫色(可导出数) / 灰色(筛选条件)</li>
+      <li><b>⑭ 自定义权限分区</b>：当前目标的独立权限配置，可编辑、可删除</li>
+      <li><b>⑮ 批量选择框</b>：勾选后通过"批量删除"按钮操作，仅自定义权限可选</li>
+      <li><b>⑯ 编辑/删除按钮</b>：单条权限的操作入口（编辑→弹窗，删除→即时移除）</li>
+      <li><b style="color:red;">⑱ 数量化标签 ★ 缺失</b>：卡片上显示可导入/可导出字段数量</li>
+      <li><b>⑲ 分页控件</b>：每页 10 条，总条数超过时自动分页</li>
+      <li><b>⑳ 权限编辑弹窗</b>：Modal 720px，包含所有权限配置项</li>
+      <li><b>㉑ 数据表选择器</b>：搜索过滤 + "标题（表名）"格式，选中后自动加载字段</li>
+      <li><b>㉒ 允许导入/导出开关</b>：分别控制下方导入/导出配置区域显示/隐藏</li>
+      <li><b>㉓ 导入配置区</b>：蓝色左边框标识，Switch 开→显示，关→隐藏</li>
+      <li><b>㉔ 导入模式（多选）</b>：支持同时勾选多种模式（insert/update/upsert），Tag 交互</li>
+      <li><b style="color:red;">㉕ 唯一值字段 ★ 实现偏离</b>：应为 Tag 交互（已选可删 + 下拉标灰 + 实时计数），当前为普通多选</li>
+      <li><b>㉖ 导出配置区</b>：绿色左边框标识，Switch 开→显示，关→隐藏</li>
+      <li><b style="color:red;">㉗ 导出范围筛选 ★★★ 完全缺失</b>：多行 AND 条件（字段→操作符→值输入），支持添加/删除行</li>
+      <li><b>㉘ 查看详情弹窗（新增）</b>：继承权限只读查看，显示完整配置表 + 来源角色提示 + 所有字段详情</li>
+      <li><b>㉙ 子Tab切换</b>：权限配置（编辑模式）/ 操作日志（审计模式）</li>
+      <li><b>㉚ 日志筛选栏</b>：按操作类型（创建/修改/删除/切换）、时间范围筛选审计日志</li>
+      <li><b>㉛ 操作日志表</b>：7 列完整审计（时间/操作人/操作/目标/数据表/变更概要/详情展开），支持展开查看完整变更 JSON</li>
+    </ol>
+
+    <div class="missing-box">
+      <strong>📋 功能清单（已实现 / 待实现）：</strong><br/>
+      <span style="font-size:12px; color:#333;">
+        ✅ <b style="color:#52c41a;">操作日志</b> — 已实现（sjgl02_permission_logs表 + savePermissions自动记录 + 子Tab界面）<br/>
+        ✅ <b style="color:#52c41a;">权限配置CRUD</b> — 已实现（添加/编辑/删除/开关/批量删除）<br/>
+        ✅ <b style="color:#52c41a;">查看详情弹窗</b> — 已实现（继承权限只读查看 + 来源角色信息）<br/>
+        ✅ <b style="color:#52c41a;">导入模式多选</b> — 已确认（Tag交互 + 多模式同时勾选）<br/>
+        🟡 <b style="color:#fa8c16;">导出范围筛选 (FilterConditionBuilder)</b> — <b style="color:red;">待实现</b><br/>
+        🟡 <b style="color:#fa8c16;">可导入/可导出数量化标签</b> — <b style="color:red;">待实现</b>，卡片标签行显示字段数量<br/>
+        🟡 <b style="color:#fa8c16;">唯一值/必填字段 → Tag交互模式</b> — <b style="color:red;">待实现</b>，弹窗内改为已选标签+计数
+      </span>
+    </div>
+    </div>
+</body>
+</html>

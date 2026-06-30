@@ -1,6 +1,6 @@
 {
   "name": "@my-project/plugin-sjgl02",
-  "version": "1.0.44",
+  "version": "1.0.51",
   "displayName": "@my-project/plugin-sjgl02",
   "displayName.zh-CN": "数据管理",
   "description": "NocoBase data import/export plugin with task management and table-level permission control",

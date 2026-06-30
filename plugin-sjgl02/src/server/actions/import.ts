@@ -2,6 +2,7 @@ import { Context, Next } from '@nocobase/actions';
 import * as XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
+import { checkImportPermission } from './permission-check';
 
 export async function getTableFields(ctx: Context, next: Next) {
   const { tableName } = ctx.action.params;
@@ -153,6 +154,31 @@ export async function executeImport(ctx: Context, next: Next) {
   const coll = ctx.db.getCollection(tableName);
   if (!coll) {
     ctx.throw(404, `Table ${tableName} not found`);
+  }
+
+  const perm = await checkImportPermission(ctx, tableName);
+
+  if (perm.importMode.length > 0 && !perm.importMode.includes(importMode)) {
+    ctx.throw(403, `您的权限不允许使用「${importMode}」模式导入数据表「${tableName}」，允许的模式：${perm.importMode.join('、')}`);
+  }
+
+  const allowedImportFields = perm.importFields || [];
+  if (allowedImportFields.length > 0 && fieldMapping) {
+    for (const tableField of Object.keys(fieldMapping)) {
+      if (!allowedImportFields.includes(tableField)) {
+        ctx.throw(403, `您的权限不允许导入字段「${tableField}」，请联系管理员`);
+      }
+    }
+  }
+
+  const requiredPermFields = perm.requiredFields || [];
+  if (requiredPermFields.length > 0 && fieldMapping) {
+    for (const rf of requiredPermFields) {
+      const mappedTo = fieldMapping[rf];
+      if (!mappedTo || mappedTo === '__ignore__') {
+        ctx.throw(400, `必填字段「${rf}」未在字段映射中配置`);
+      }
+    }
   }
 
   const attachRepo = ctx.db.getRepository('attachments');
@@ -374,5 +400,4 @@ export async function executeImport(ctx: Context, next: Next) {
           row: rowIndex,
           excelRow: (headerRow || 1) + rowIndex - 1,
           reason: rowErr.message || String(rowErr),
-          snapshot: buildSnapshot(dataRows[i]),
-   
+          snapshot: buildSnapshot

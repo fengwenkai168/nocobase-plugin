@@ -48,6 +48,6 @@ var sjgl02_settings_default = (0, import_database.defineCollection)({
       type: "integer",
       name: "batchSize",
       defaultValue: 1e3
-    }
-  ]
-});
+    },
+    {
+ 

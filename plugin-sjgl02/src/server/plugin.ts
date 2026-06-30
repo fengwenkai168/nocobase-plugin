@@ -85,6 +85,7 @@ export class PluginSjgl02Server extends Plugin {
     acl.allow('sjgl02_tasks', '*', 'loggedIn');
     acl.allow('sjgl02_table_permissions', '*', 'loggedIn');
     acl.allow('sjgl02_settings', '*', 'loggedIn');
+    acl.allow('sjgl02_permission_logs', '*', 'loggedIn');
   }
 
   async install() {
@@ -93,7 +94,7 @@ export class PluginSjgl02Server extends Plugin {
     if (existing === 0) {
       await settingRepo.create({
         values: {
-          taskViewScope: 'all',
+          taskViewScope: 'own',
           maxFileSize: 50,
           batchSize: 1000,
         },
@@ -113,15 +114,29 @@ export class PluginSjgl02Server extends Plugin {
       const tables = this.db.collections;
       const tablePermissions: any[] = [];
       for (const [name] of tables) {
-        if (name.startsWith('sjgl02_')) continue;
         for (const roleId of roleIds) {
           tablePermissions.push({
             targetType: 'role',
             targetId: roleId,
             targetName: roleId === 'admin' ? '管理员' : '超级管理员',
             tableName: name,
-          canImport: true,
-          canExport: true,
-          importMode: ['insert', 'update', 'upsert'],
-          uniqueFields: [],
-          re
+            canImport: true,
+            canExport: true,
+            importMode: ['insert', 'update', 'upsert'],
+            uniqueFields: [],
+            requiredFields: [],
+            importFields: [],
+            exportFields: [],
+          });
+        }
+      }
+      if (tablePermissions.length > 0) {
+        for (const perm of tablePermissions) {
+          await permRepo.create({ values: perm });
+        }
+      }
+    }
+  }
+}
+
+export default PluginSjgl02Server;

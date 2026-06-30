@@ -5,6 +5,7 @@ import fsp from 'fs/promises';
 import path from 'path';
 import archiver from 'archiver';
 import { Mutex } from 'async-mutex';
+import { checkExportPermission } from './permission-check';
 
 const exportMutex = new Mutex();
 
@@ -174,6 +175,16 @@ export async function executeExport(ctx: Context, next: Next) {
     ctx.throw(400, 'tableName is required');
   }
 
+  if (tableName !== '__all__') {
+    const exportPerm = await checkExportPermission(ctx, tableName);
+    if (exportPerm.exportFields && exportPerm.exportFields.length > 0 && selectedFields && selectedFields.length > 0) {
+      const invalidFields = selectedFields.filter((f: string) => !exportPerm.exportFields.includes(f));
+      if (invalidFields.length > 0) {
+        ctx.throw(403, `您的权限不允许导出以下字段：${invalidFields.join('、')}，请联系管理员`);
+      }
+    }
+  }
+
   const repo = ctx.db.getRepository('sjgl02_tasks');
   const task = await repo.create({
     values: {
@@ -219,6 +230,15 @@ export async function executeExport(ctx: Context, next: Next) {
       if (!coll) continue;
       const targetRepo = ctx.db.getRepository(tblName);
       if (!targetRepo) continue;
+
+      if (tableName === '__all__') {
+        try {
+          const permCheck = await checkExportPermission(ctx, tblName);
+          if (!permCheck.canExport) continue;
+        } catch {
+          continue;
+        }
+      }
 
       let records: any[] = [];
       let collectionTotal = 0;
@@ -504,4 +524,25 @@ export async function executeExport(ctx: Context, next: Next) {
 
 export async function getProgress(ctx: Context, next: Next) {
   const { taskId } = ctx.action.params;
-  const repo = ctx.db.getRepository('sjgl
+  const repo = ctx.db.getRepository('sjgl02_tasks');
+  const task = await repo.findOne({ filter: { id: taskId } });
+  if (!task) {
+    ctx.throw(404, 'Task not found');
+  }
+  ctx.body = {
+    progress: task.progress,
+    status: task.status,
+    exportFileId: task.exportFileId,
+  };
+  await next();
+}
+
+export async function downloadExport(ctx: Context, next: Next) {
+  const { taskId } = ctx.action.params;
+  const repo = ctx.db.getRepository('sjgl02_tasks');
+  const task = await repo.findOne({ filter: { id: taskId } });
+  if (!task) {
+    ctx.throw(404, 'Task not found');
+  }
+  if (!task.exportFileId) {
+    ctx.throw(404, 

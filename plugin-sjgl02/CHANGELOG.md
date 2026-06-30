@@ -1,5 +1,102 @@
 # CHANGELOG
 
+## 1.0.50 (2026-06-30)
+
+### 修复
+- **收起/展开分页修复**：收起继承权限后，分页基于可见项重新计算，自定义权限直接在第一页可见
+- **选表下拉过滤修复**：只过滤已有自定义权限的表（`!_inherited`），角色继承的表允许添加自定义覆盖
+- **前端权限一致性**：`useTablePermission` 和 v1 ImportPanel 优先检查用户级 canImport=false，不复用角色继承
+- **getSettings GET 无副作用**：不再在查询不到记录时自动创建默认记录
+
+### 新增
+- `AGENTS.md` 补充权限开发约束：_inherited 标记必须 toJSON 后设置、admin/root 短路规则、前后端一致性要求
+
+## 1.0.49 (2026-06-30)
+
+### 重构
+- 权限面板按 sjgl02-permission-prototype.html 原型图完全重写（16 个关键改动）
+
+### 新增
+- 继承权限「查看详情」只读弹窗（含来源角色、完整配置表）
+- 子Tab：[✓ 权限配置] / [📋 操作日志]（审计日志表 sjgl02_permission_logs）
+- 权限分区收起/展开（▼ 📦 / ▶ ✏️）
+- 批量操作：全选 Checkbox + 批量删除 Popconfirm
+- 角色显示格式：管理员（admin）、编辑（editor）
+- 字段显示格式：姓名（name）
+- 数量化标签：可导入: N个字段 / 可导出: N个字段
+- admin/root 所有表权限（含 sjgl02_ 系统表）自动补齐
+
+### 修复
+- **核心Bug：_inherited/_systemManaged 标记序列化丢失**：Sequelize 模型实例设置属性无效，改为 `p.toJSON()` 转纯对象后再设置
+- **添加权限按钮逻辑修复**：从 `!perms.every(p => p._inherited)` 改为 `!isSystemManaged`
+- 默认任务查看范围 `'all'` → `'own'`
+- admin/root 自动补齐去除 `sjgl02_` 前缀过滤，含系统表权限
+- Dragger 导出空指针修复
+
+### 删除
+- 卡片上 Switch 导入/导出开关（移到编辑弹窗内）
+- ⚡自定义标签（不再显示）
+
+## 1.0.48 (2026-06-30)
+
+### 深度重构
+- 架构升级：创建 `src/client-v2/hooks/` + `src/client-v2/types/` 目录，7 个共享 hooks
+- v1 plugin.tsx 拆分：1204 行 → 5 个独立 Panel 文件（ImportPanel/ExportPanel/TaskPanel/PermissionPanel/Sjgl02Block）
+- v2 PermissionTab 重构：355 行 → 220 行（-38%），使用共享 hooks
+- v2 ImportTab 重构：使用 useTablePermission hook，消除冗余 auth:check 请求
+
+### 数据模型升级
+- sjgl02_table_permissions 新增：permissions JSON 字段（未来扩展）、priority 优先级字段、createdAt/updatedAt/createdById 审计字段
+- 新增 sjgl02_permission_logs 审计日志表（action/targetType/targetId/tableName/changes/operatorId/createdAt）
+- savePermissions 自动记录 create/update/delete 操作到审计日志
+
+### 新增功能
+- v2 权限面板批量操作：全选 Checkbox + 批量删除（Popconfirm 确认）
+
+### 文件结构变更
+- 新增：`src/client-v2/hooks/` 下 7 个 hook 文件 + `index.ts` 桶导出
+- 新增：`src/client-v2/types/permission.ts` 类型定义
+- 新增：`src/client/panels/` 下 6 个 Panel 文件 + `shared.ts`
+- 新增：`src/server/collections/sjgl02_permission_logs.ts`
+- 精简：`src/client/plugin.tsx` 1204 → 57 行
+- 重构：`src/client-v2/pages/PermissionTab.tsx` 355 → 240 行
+
+## 1.0.47 (2026-06-30)
+
+### 严重修复
+- install() 数据重复创建：创建循环从外层 for tables 内部移到外部，消除多项式级数重复（104 张表避免创 5000+ 条）
+- 数据库添加 UNIQUE(targetType, targetId, tableName) 唯一约束，防止重复记录和并发竞态
+
+### 修复
+- getPermissions admin/root 自动补齐改为批量创建（收集到数组后逐个 INSERT）
+- 前端导入面板（v1+v2）权限模式限制修复：仅查询当前用户权限，消除 N+1 API 请求
+- permission-check.ts 多角色权限取最宽松（canImport=true 优先），不再只取单条最高 ID
+- Alert 提示文案加入"超级管理员"，覆盖 root 角色
+
+### 新增
+- admin/root 权限服务端新增 `_systemManaged: true` 标记
+- 前端权限卡片区分三种标签：系统管理（蓝色）、继承（紫色）、自定义（橙色）
+
+## 1.0.46 (2026-06-30)
+
+### 新增
+- 服务端权限强制校验：导入/导出操作通过 `permission-check.ts` 检查 `sjgl02_table_permissions` 表权限
+- 导入模式校验：服务端校验请求的 importMode 是否在权限允许范围内
+- 字段级权限过滤：导入时校验字段映射是否在 `importFields` 允许范围内，导出时校验 `exportFields`
+- 全表导出逐表权限检查：`__all__` 模式对每个表逐表检查 export 权限，无权限的表自动跳过
+
+### 修复
+- admin/root 角色自动补齐权限时 `targetName` 区分「管理员」和「超级管理员」（修复硬编码问题）
+- v1 自动保存只发送非继承权限（`_inherited !== true`），消除继承权限被错误修改的风险
+- v1 Switch 组件 `checkedChildren/unCheckedChildren` 文案区分（导入/关、导出/关），修复之前两个状态文案相同
+- 前端 `_inherited` 标记被 `map` 覆盖：`{ ...p, _inherited: false }` 改为 `{ ...p, _inherited: p._inherited ?? false }`，保留服务端设置的标记
+- 用户拥有多角色时继承权限按 `tableName` 去重，消除 React 重复 key 警告
+
+### 变更
+- 新增 `src/server/actions/permission-check.ts` 权限检查工具模块
+- `executeImport` 新增权限检查、导入模式校验、字段级权限过滤、必填字段校验
+- `executeExport` 新增单表权限检查和字段级过滤、全表模式逐表权限检查
+
 ## 1.0.27 (2026-06-29)
 
 ### 文档修正

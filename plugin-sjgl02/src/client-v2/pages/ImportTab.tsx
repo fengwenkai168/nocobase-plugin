@@ -6,8 +6,9 @@ import {
 import { InboxOutlined } from '@ant-design/icons';
 import { useRequest } from 'ahooks';
 import { useTranslation } from 'react-i18next';
-import { useAPIClient } from '@nocobase/client-v2';
+import { useAPIClient } from '../hooks/useAPIClientCompat';
 import { NAMESPACE } from '../locale';
+import { useTablePermission } from '../hooks';
 
 const { Dragger } = Upload;
 
@@ -27,7 +28,7 @@ export default function ImportTab() {
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedTable, setSelectedTable] = useState<any>(null);
   const [importMode, setImportMode] = useState('insert');
-  const [allowedModes, setAllowedModes] = useState<string[]>(['insert', 'update', 'upsert']);
+  const { allowedModes } = useTablePermission(api, selectedTable?.name);
   const [uploadedFileId, setUploadedFileId] = useState<number | null>(null);
   const [uploadFileName, setUploadFileName] = useState('');
   const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
@@ -80,29 +81,6 @@ export default function ImportTab() {
         .finally(() => setLoading(false));
     }
   }, [selectedTable?.name, api, t]);
-
-  useEffect(() => {
-    if (!selectedTable?.name) return;
-    api.request({ url: 'sjgl02Permissions:userRoleList', method: 'get' }).then((res: any) => {
-      const data = res?.data?.data;
-      const roles = data?.roles || [];
-      const users = data?.users || [];
-      const queries = [...roles.map((r: any) => api.request({ url: 'sjgl02Permissions:get', method: 'get', params: { targetType: 'role', targetId: r.id } })),
-        ...users.map((u: any) => api.request({ url: 'sjgl02Permissions:get', method: 'get', params: { targetType: 'user', targetId: u.id } }))];
-      Promise.all(queries).then((results: any[]) => {
-        for (const r of results) {
-          const perms = r?.data?.data;
-          if (!Array.isArray(perms)) continue;
-          const perm = perms.find((p: any) => p.tableName === selectedTable.name && p.canImport);
-          if (perm?.importMode) {
-            setAllowedModes(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode]);
-            return;
-          }
-        }
-        setAllowedModes(['insert', 'update', 'upsert']);
-      }).catch(() => setAllowedModes(['insert', 'update', 'upsert']));
-    }).catch(() => setAllowedModes(['insert', 'update', 'upsert']));
-  }, [selectedTable?.name, api]);
 
   const handleTableSelect = (value: string) => {
     const table = tables.find((t: any) => t.name === value);
@@ -467,4 +445,45 @@ export default function ImportTab() {
                 const titles: Record<string, string> = {};
                 tableFields.forEach((f: any) => { titles[f.name] = f.uiSchema?.title || f.name; });
                 Object.entries(fieldMapping).forEach(([fieldName, excelCol]) => {
-                  const 
+                  const disp = titles[fieldName] || fieldName;
+                  if (excelCol === '__custom__') {
+                    cols.push({ title: '自定义-' + disp + '(' + fieldName + ')', dataIndex: fieldName, key: fieldName });
+                  } else if (excelCol && excelCol !== '__ignore__' && !seen.has(excelCol)) {
+                    seen.add(excelCol);
+                    cols.push({ title: excelCol + '-' + disp + '(' + fieldName + ')', dataIndex: excelCol, key: excelCol });
+                  }
+                });
+                return cols;
+              })()}
+              pagination={false} size="small" />
+          ) : (
+            <Empty description="暂无预览数据，请返回上一步上传文件并预览" />
+          )}
+          <div style={{ textAlign: 'right', marginTop: 16 }}>
+            <Button onClick={() => setCurrentStep(1)} style={{ marginRight: 8 }}>← 上一步</Button>
+            <Button type="primary" onClick={handleExecuteImport} loading={executing}>▶ 执行导入</Button>
+          </div>
+        </div>
+      )}
+      <Modal title="📋 表头及预览数据" open={previewModal} onCancel={() => setPreviewModal(false)}
+        footer={<Button onClick={() => setPreviewModal(false)}>关闭</Button>}
+        width={800}>
+        {previewMeta && (
+          <div>
+            <Descriptions size="small" column={3} bordered style={{ marginBottom: 12 }}>
+              <Descriptions.Item label="Sheet">{sheetName}</Descriptions.Item>
+              <Descriptions.Item label="表头行">{headerRow}</Descriptions.Item>
+              <Descriptions.Item label="数据行数">{previewMeta.totalRows || 0}</Descriptions.Item>
+            </Descriptions>
+            <Table dataSource={previewMeta.previewRows?.map((row: any, idx: number) => ({ ...row, __rowKey: idx })) || []}
+              rowKey="__rowKey"
+              columns={previewMeta.headerColumns?.map((h: string) => ({ title: h, dataIndex: h, ellipsis: true })) || []}
+              pagination={false} size="small" scroll={{ x: 'max-content' }} />
+          </div>
+        )}
+        {!previewMeta && <Empty description="请先上传并解析文件" />}
+      </Modal>
+    </div>
+  );
+}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 

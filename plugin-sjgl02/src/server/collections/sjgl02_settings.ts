@@ -19,5 +19,5 @@ export default defineCollection({
       name: 'batchSize',
       defaultValue: 1000,
     },
-  ],
-});
+    {
+   

@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import { useRequest } from 'ahooks';
 import { useTranslation } from 'react-i18next';
-import { useAPIClient } from '@nocobase/client-v2';
+import { useAPIClient } from '../hooks/useAPIClientCompat';
 import { NAMESPACE } from '../locale';
 
 const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
@@ -188,4 +188,7 @@ export default function TaskTab() {
                 columns={[{ title: t('Row number'), dataIndex: 'row', width: 60 }, { title: 'Excel行', dataIndex: 'excelRow', width: 60 }, { title: t('Error reason'), dataIndex: 'reason' }, { title: t('Field value snapshot'), dataIndex: 'snapshot' }]}
                 pagination={false} size="small" />
             ) : <Empty description={t('No errors')} />}
- 
+          </div>
+        )}
+      </Drawer>
+    </div>

@@ -45,6 +45,7 @@ module.exports = __toCommonJS(import_exports);
 var XLSX = __toESM(require("xlsx"));
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
+var import_permission_check = require("./permission-check");
 async function getTableFields(ctx, next) {
   var _a;
   const { tableName } = ctx.action.params;
@@ -201,6 +202,27 @@ async function executeImport(ctx, next) {
   const coll = ctx.db.getCollection(tableName);
   if (!coll) {
     ctx.throw(404, `Table ${tableName} not found`);
+  }
+  const perm = await (0, import_permission_check.checkImportPermission)(ctx, tableName);
+  if (perm.importMode.length > 0 && !perm.importMode.includes(importMode)) {
+    ctx.throw(403, `\u60A8\u7684\u6743\u9650\u4E0D\u5141\u8BB8\u4F7F\u7528\u300C${importMode}\u300D\u6A21\u5F0F\u5BFC\u5165\u6570\u636E\u8868\u300C${tableName}\u300D\uFF0C\u5141\u8BB8\u7684\u6A21\u5F0F\uFF1A${perm.importMode.join("\u3001")}`);
+  }
+  const allowedImportFields = perm.importFields || [];
+  if (allowedImportFields.length > 0 && fieldMapping) {
+    for (const tableField of Object.keys(fieldMapping)) {
+      if (!allowedImportFields.includes(tableField)) {
+        ctx.throw(403, `\u60A8\u7684\u6743\u9650\u4E0D\u5141\u8BB8\u5BFC\u5165\u5B57\u6BB5\u300C${tableField}\u300D\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458`);
+      }
+    }
+  }
+  const requiredPermFields = perm.requiredFields || [];
+  if (requiredPermFields.length > 0 && fieldMapping) {
+    for (const rf of requiredPermFields) {
+      const mappedTo = fieldMapping[rf];
+      if (!mappedTo || mappedTo === "__ignore__") {
+        ctx.throw(400, `\u5FC5\u586B\u5B57\u6BB5\u300C${rf}\u300D\u672A\u5728\u5B57\u6BB5\u6620\u5C04\u4E2D\u914D\u7F6E`);
+      }
+    }
   }
   const attachRepo = ctx.db.getRepository("attachments");
   const attachment = await attachRepo.findOne({ filter: { id: fileId } });
@@ -413,15 +435,4 @@ async function executeImport(ctx, next) {
           row: rowIndex,
           excelRow: (headerRow || 1) + rowIndex - 1,
           reason: rowErr.message || String(rowErr),
-          snapshot: buildSnapshot(dataRows[i2])
-        });
-      }
-    }
-    if (errorLogs.length > 0) {
-      await transaction.rollback();
-      await repo.update({
-        filterByTk: task.id,
-        values: {
-          status: "failed",
-          progress: 0,
-          proces
+          snapshot: buildSnapshot(dat
