@@ -141,4 +141,86 @@ export async function savePermissions(ctx: Context, next: Next) {
   if (permissions.length === 0) {
     ctx.body = { success: true };
     await next();
-  
+    return;
+  }
+  const firstPerm = permissions[0];
+  if (!firstPerm.targetType || !firstPerm.targetId) {
+    ctx.body = { success: true };
+    await next();
+    return;
+  }
+  const filter = { targetType: firstPerm.targetType, targetId: String(firstPerm.targetId) };
+  const existingPerms = await repo.find({ filter });
+  const logRepo = ctx.db.getRepository('sjgl02_permission_logs');
+  const operatorId = ctx.state.currentUser?.id;
+  const submittedTableNames = new Set(permissions.map((p: any) => p.tableName));
+  for (const existing of existingPerms) {
+    if (!submittedTableNames.has(existing.tableName)) {
+      await repo.destroy({ filterByTk: existing.id });
+      try {
+        await logRepo.create({ values: {
+          action: 'delete', targetType: existing.targetType, targetId: existing.targetId,
+          targetName: existing.targetName, tableName: existing.tableName,
+          changes: { before: existing.toJSON?.() || existing },
+          operatorId, createdAt: new Date(),
+        }});
+      } catch {}
+    }
+  }
+  for (const perm of permissions) {
+    if (perm.canImport && (!perm.importMode || !Array.isArray(perm.importMode) || perm.importMode.length === 0)) {
+      perm.importMode = ['insert', 'update', 'upsert'];
+    }
+    const existing = existingPerms.find((e: any) => e.tableName === perm.tableName);
+    if (perm.id && existing) {
+      await repo.update({ filterByTk: perm.id, values: perm });
+      try {
+        await logRepo.create({ values: {
+          action: 'update', targetType: perm.targetType, targetId: perm.targetId,
+          targetName: perm.targetName, tableName: perm.tableName,
+          changes: { before: existing.toJSON?.() || existing, after: perm },
+          operatorId, createdAt: new Date(),
+        }});
+      } catch {}
+    } else if (!perm.id) {
+      await repo.create({ values: perm });
+      try {
+        await logRepo.create({ values: {
+          action: 'create', targetType: perm.targetType, targetId: perm.targetId,
+          targetName: perm.targetName, tableName: perm.tableName,
+          changes: { after: perm },
+          operatorId, createdAt: new Date(),
+        }});
+      } catch {}
+    }
+  }
+  ctx.body = { success: true };
+  await next();
+}
+
+export async function getSettings(ctx: Context, next: Next) {
+  const repo = ctx.db.getRepository('sjgl02_settings');
+  const userId = ctx.action.params.userId || ctx.state.currentUser?.id;
+  let settings = null;
+  if (userId) settings = await repo.findOne({ filter: { userId } });
+  if (!settings) {
+    settings = await repo.findOne({ filter: { userId: { $is: null } } });
+  }
+  ctx.body = settings || { taskViewScope: 'own', maxFileSize: 50, batchSize: 1000 };
+  await next();
+}
+
+export async function saveSettings(ctx: Context, next: Next) {
+  const values = ctx.action.params.values || ctx.action.params;
+  const repo = ctx.db.getRepository('sjgl02_settings');
+  const userId = values.userId || ctx.state.currentUser?.id;
+  let settings = null;
+  if (userId) settings = await repo.findOne({ filter: { userId } });
+  if (settings) {
+    await repo.update({ filterByTk: settings.id, values: { ...values, userId } });
+  } else {
+    await repo.create({ values: { ...values, userId: userId || null } });
+  }
+  ctx.body = { success: true };
+  await next();
+}

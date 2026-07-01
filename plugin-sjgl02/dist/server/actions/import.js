@@ -76,6 +76,7 @@ async function getTableFields(ctx, next) {
     var _a2, _b, _c, _d, _e;
     let title = ((_b = (_a2 = f.options) == null ? void 0 : _a2.uiSchema) == null ? void 0 : _b.title) || null;
     if (title && /^\{\{/.test(title)) title = null;
+    if (!title) title = f.name;
     return {
       name: f.name,
       type: f.type,
@@ -123,8 +124,8 @@ async function uploadParse(ctx, next) {
     const dataRows = allRows.slice(hRow + 1).filter((r) => r.some((c) => c !== ""));
     const previewRows = dataRows.slice(0, 10).map((row) => {
       const obj = {};
-      headerColumns.forEach((h, i2) => {
-        obj[h] = row[i2] !== void 0 ? row[i2] : "";
+      headerColumns.forEach((h, i) => {
+        obj[h] = row[i] !== void 0 ? row[i] : "";
       });
       return obj;
     });
@@ -176,8 +177,8 @@ async function preview(ctx, next) {
     const dataRows = allRows.slice(hRow + 1).filter((r) => r.some((c) => c !== ""));
     const previewRows = dataRows.slice(0, 10).map((row) => {
       const obj = {};
-      headers.forEach((h, i2) => {
-        obj[h] = row[i2] !== void 0 ? row[i2] : "";
+      headers.forEach((h, i) => {
+        obj[h] = row[i] !== void 0 ? row[i] : "";
       });
       return obj;
     });
@@ -327,7 +328,7 @@ async function executeImport(ctx, next) {
       });
       return JSON.stringify(snap).substring(0, 500);
     };
-    const applyBelongsToFK = (record) => {
+    const applyBelongsToFK = (record, rowIdx) => {
       var _a2, _b2;
       const belonegs = [];
       try {
@@ -339,18 +340,18 @@ async function executeImport(ctx, next) {
         const mappedVal = mapping[bf.name];
         if (mappedVal && mappedVal !== "__ignore__") {
           const colIdx = headers.indexOf(mappedVal);
-          if (colIdx >= 0 && colIdx < dataRows[i].length) {
-            record[fk] = dataRows[i][colIdx];
+          if (colIdx >= 0 && colIdx < dataRows[rowIdx].length) {
+            record[fk] = dataRows[rowIdx][colIdx];
           }
           delete record[bf.name];
         }
       }
     };
     const processedUniques = /* @__PURE__ */ new Set();
-    for (let i2 = 0; i2 < dataRows.length; i2++) {
-      const rowIndex = i2 + 1;
+    for (let i = 0; i < dataRows.length; i++) {
+      const rowIndex = i + 1;
       try {
-        const record = makeRecord(dataRows[i2]);
+        const record = makeRecord(dataRows[i]);
         for (const fn of dateFieldNames) {
           const v = record[fn];
           if (typeof v === "string") record[fn] = normalizeDateValue(v);
@@ -364,7 +365,7 @@ async function executeImport(ctx, next) {
                 row: rowIndex,
                 excelRow: (headerRow || 1) + rowIndex - 1,
                 reason: `\u552F\u4E00\u503C\u5B57\u6BB5\u7EC4\u5408\u91CD\u590D / Duplicate unique fields: ${uniqueFields.join("+")} = ${ufKey}`,
-                snapshot: buildSnapshot(dataRows[i2])
+                snapshot: buildSnapshot(dataRows[i])
               });
               continue;
             }
@@ -379,7 +380,7 @@ async function executeImport(ctx, next) {
                 row: rowIndex,
                 excelRow: (headerRow || 1) + rowIndex - 1,
                 reason: "\u66F4\u65B0\u6A21\u5F0F\u672A\u914D\u7F6E\u552F\u4E00\u503C\u5B57\u6BB5\uFF0C\u65E0\u6CD5\u5339\u914D\u5DF2\u6709\u8BB0\u5F55",
-                snapshot: buildSnapshot(dataRows[i2])
+                snapshot: buildSnapshot(dataRows[i])
               });
               continue;
             }
@@ -395,12 +396,12 @@ async function executeImport(ctx, next) {
                   row: rowIndex,
                   excelRow: (headerRow || 1) + rowIndex - 1,
                   reason: `\u552F\u4E00\u503C\u5339\u914D\u5230 ${matchCount} \u6761\u8BB0\u5F55\uFF0C\u65E0\u6CD5\u786E\u5B9A\u66F4\u65B0\u76EE\u6807 (Ambiguous: ${matchCount} records matched unique fields)`,
-                  snapshot: buildSnapshot(dataRows[i2])
+                  snapshot: buildSnapshot(dataRows[i])
                 });
                 continue;
               }
               if (matchCount === 1) {
-                applyBelongsToFK(record);
+                applyBelongsToFK(record, i);
                 await targetRepo.update({ filterByTk: existingRecords[0].id, values: record, transaction, context: ctx });
                 processedRows++;
                 continue;
@@ -411,7 +412,7 @@ async function executeImport(ctx, next) {
                   row: rowIndex,
                   excelRow: (headerRow || 1) + rowIndex - 1,
                   reason: "\u552F\u4E00\u503C\u5B57\u6BB5\u5728\u6570\u636E\u884C\u4E2D\u672A\u627E\u5230\u503C\uFF0C\u65E0\u6CD5\u5339\u914D",
-                  snapshot: buildSnapshot(dataRows[i2])
+                  snapshot: buildSnapshot(dataRows[i])
                 });
                 continue;
               }
@@ -419,7 +420,7 @@ async function executeImport(ctx, next) {
           }
         }
         if (importMode === "insert" || importMode === "upsert") {
-          applyBelongsToFK(record);
+          applyBelongsToFK(record, i);
           await targetRepo.create({ values: record, transaction, context: ctx });
           processedRows++;
         } else if (importMode === "update") {
@@ -427,7 +428,7 @@ async function executeImport(ctx, next) {
             row: rowIndex,
             excelRow: (headerRow || 1) + rowIndex - 1,
             reason: "\u672A\u5339\u914D\u5230\u5DF2\u6709\u8BB0\u5F55\uFF08\u66F4\u65B0\u6A21\u5F0F\uFF09",
-            snapshot: buildSnapshot(dataRows[i2])
+            snapshot: buildSnapshot(dataRows[i])
           });
         }
       } catch (rowErr) {
@@ -435,4 +436,50 @@ async function executeImport(ctx, next) {
           row: rowIndex,
           excelRow: (headerRow || 1) + rowIndex - 1,
           reason: rowErr.message || String(rowErr),
-          snapshot: buildSnapshot(dat
+          snapshot: buildSnapshot(dataRows[i])
+        });
+      }
+    }
+    if (errorLogs.length > 0) {
+      await transaction.rollback();
+      await repo.update({
+        filterByTk: task.id,
+        values: {
+          status: "failed",
+          progress: 0,
+          processedRows: 0,
+          errorLogs,
+          errorMessage: `${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u4E8B\u52A1\u5DF2\u56DE\u6EDA (${errorLogs.length} row(s) failed, transaction rolled back)`,
+          completedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    } else {
+      await transaction.commit();
+      await repo.update({
+        filterByTk: task.id,
+        values: {
+          status: "completed",
+          progress: 100,
+          processedRows,
+          completedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    }
+  } catch (err) {
+    await transaction.rollback();
+    await repo.update({
+      filterByTk: task.id,
+      values: {
+        status: "failed",
+        errorMessage: err.message || String(err),
+        completedAt: /* @__PURE__ */ new Date()
+      }
+    });
+  }
+  ctx.body = { taskId: task.id };
+  await next();
+}
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  executeImport,
+  getTab

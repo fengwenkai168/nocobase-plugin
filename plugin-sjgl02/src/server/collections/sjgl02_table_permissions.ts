@@ -22,4 +22,39 @@ export default defineCollection({
     { type: 'json', name: 'exportFields' },
     { type: 'json', name: 'exportFilter' },
     {
-   
+      type: 'json',
+      name: 'permissions',
+      description: '扩展权限 JSON（未来替代分散的布尔字段）',
+    },
+    {
+      type: 'integer',
+      name: 'priority',
+      defaultValue: 0,
+      description: '优先级（用户级 > 角色级继承，数值越大优先级越高）',
+    },
+    {
+      type: 'belongsTo',
+      name: 'createdBy',
+      target: 'users',
+      foreignKey: 'createdById',
+      description: '权限创建人',
+    },
+    {
+      type: 'date',
+      name: 'createdAt',
+    },
+    {
+      type: 'date',
+      name: 'updatedAt',
+    },
+  ],
+  autoGenId: true,
+  timestamps: true,
+  indexes: [
+    {
+      type: 'UNIQUE',
+      fields: ['targetType', 'targetId', 'tableName'],
+      name: 'sjgl02_perms_unique_target_table',
+    },
+  ],
+});

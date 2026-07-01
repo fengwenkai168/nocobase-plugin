@@ -1,0 +1,49 @@
+import { Plugin, useAPIClient } from '@nocobase/client';
+import React from 'react';
+import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, message, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload, Pagination, Alert } from 'antd';
+import { InboxOutlined, TableOutlined } from '@ant-design/icons';
+
+const { Dragger } = Upload;
+
+const VERSION = 'v1.0.47';
+
+// ====== API 工具 ======
+function apiRequest(client: any, url: string, opts: any = {}) {
+  if (!client || !client.request) {
+    console.warn('[sjgl02] apiRequest: client not ready for', url);
+    return Promise.reject(new Error('Client not ready'));
+  }
+  const method = (opts.method || 'get').toLowerCase();
+  return client.request({ url, method, data: opts.data, params: opts.params })
+    .then((res: any) => res?.data?.data ?? res?.data ?? null)
+    .catch((err: any) => {
+      console.error('[sjgl02] API error:', url, err?.response?.status);
+      return Promise.reject(err);
+    });
+}
+
+// ====== 主页面 ======
+function Sjgl02SettingsPageV1() {
+  return (
+    <div style={{ maxWidth: 1280, margin: '0 auto' }}>
+      <div style={{ background: 'linear-gradient(135deg,#1677ff,#0958d9)', borderRadius: 12, padding: '14px 24px', color: '#fff', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>📊 数据管理</div>
+          <div style={{ opacity: 0.8, fontSize: 12, marginTop: 2 }}>导入导出 · 任务管理 · 表级权限控制</div>
+        </div>
+        <div style={{ background: 'rgba(255,255,255,0.2)', borderRadius: 20, padding: '4px 14px', fontSize: 11 }}>
+          @my-project/plugin-sjgl02 {VERSION}
+        </div>
+      </div>
+      <Card style={{ borderRadius: 10, minHeight: 500 }}>
+        <Tabs defaultActiveKey="import" destroyInactiveTabPane items={[
+          { key: 'import', label: '⬇ 导入', children: <ImportPanel /> },
+          { key: 'export', label: '⬆ 导出', children: <ExportPanel /> },
+          { key: 'tasks', label: '☰ 任务管理', children: <TaskPanel /> },
+          { key: 'permissions', label: '✓ 权限管理', children: <PermissionPanel /> },
+        ]} />
+      </Card>
+    </div>
+  );
+}
+

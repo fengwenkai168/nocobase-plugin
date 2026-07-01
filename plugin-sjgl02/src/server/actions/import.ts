@@ -31,6 +31,7 @@ export async function getTableFields(ctx: Context, next: Next) {
   const fields = rawFields.map((f: any) => {
     let title = f.options?.uiSchema?.title || null;
     if (title && /^\{\{/.test(title)) title = null;
+    if (!title) title = f.name;
     return {
       name: f.name,
       type: f.type,
@@ -294,7 +295,7 @@ export async function executeImport(ctx: Context, next: Next) {
       return JSON.stringify(snap).substring(0, 500);
     };
 
-    const applyBelongsToFK = (record: Record<string, any>) => {
+    const applyBelongsToFK = (record: Record<string, any>, rowIdx: number) => {
       const belonegs: any[] = [];
       try { belonegs.push(...Array.from(coll.fields?.values() || []).filter((f: any) => f.type === 'belongsTo' && f.name !== 'createdBy' && f.name !== 'updatedBy')); } catch {}
       for (const bf of belonegs) {
@@ -302,8 +303,8 @@ export async function executeImport(ctx: Context, next: Next) {
         const mappedVal = mapping[bf.name];
         if (mappedVal && mappedVal !== '__ignore__') {
           const colIdx = headers.indexOf(mappedVal as string);
-          if (colIdx >= 0 && colIdx < (dataRows[i] as any[]).length) {
-            record[fk] = (dataRows[i] as any[])[colIdx];
+          if (colIdx >= 0 && colIdx < (dataRows[rowIdx] as any[]).length) {
+            record[fk] = (dataRows[rowIdx] as any[])[colIdx];
           }
           delete record[bf.name];
         }
@@ -365,7 +366,7 @@ export async function executeImport(ctx: Context, next: Next) {
               continue;
             }
             if (matchCount === 1) {
-              applyBelongsToFK(record);
+              applyBelongsToFK(record, i);
               await targetRepo.update({ filterByTk: existingRecords[0].id, values: record, transaction, context: ctx });
               processedRows++;
               continue;
@@ -384,7 +385,7 @@ export async function executeImport(ctx: Context, next: Next) {
           }
         }
         if (importMode === 'insert' || importMode === 'upsert') {
-          applyBelongsToFK(record);
+          applyBelongsToFK(record, i);
           await targetRepo.create({ values: record, transaction, context: ctx });
           processedRows++;
         } else if (importMode === 'update') {
@@ -400,4 +401,48 @@ export async function executeImport(ctx: Context, next: Next) {
           row: rowIndex,
           excelRow: (headerRow || 1) + rowIndex - 1,
           reason: rowErr.message || String(rowErr),
-          snapshot: buildSnapshot
+          snapshot: buildSnapshot(dataRows[i]),
+        });
+      }
+    }
+
+    if (errorLogs.length > 0) {
+      await transaction.rollback();
+      await repo.update({
+        filterByTk: task.id,
+        values: {
+          status: 'failed',
+          progress: 0,
+          processedRows: 0,
+          errorLogs,
+          errorMessage: `${errorLogs.length} 行数据失败，事务已回滚 (${errorLogs.length} row(s) failed, transaction rolled back)`,
+          completedAt: new Date(),
+        },
+      });
+    } else {
+      await transaction.commit();
+      await repo.update({
+        filterByTk: task.id,
+        values: {
+          status: 'completed',
+          progress: 100,
+          processedRows,
+          completedAt: new Date(),
+        },
+      });
+    }
+  } catch (err: any) {
+    await transaction.rollback();
+    await repo.update({
+      filterByTk: task.id,
+      values: {
+        status: 'failed',
+        errorMessage: err.message || String(err),
+        completedAt: new Date(),
+      },
+    });
+  }
+
+  ctx.body = { taskId: task.id };
+  await next();
+}

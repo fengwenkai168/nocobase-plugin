@@ -52,4 +52,39 @@ var sjgl02_table_permissions_default = (0, import_database.defineCollection)({
     { type: "json", name: "exportFields" },
     { type: "json", name: "exportFilter" },
     {
- 
+      type: "json",
+      name: "permissions",
+      description: "\u6269\u5C55\u6743\u9650 JSON\uFF08\u672A\u6765\u66FF\u4EE3\u5206\u6563\u7684\u5E03\u5C14\u5B57\u6BB5\uFF09"
+    },
+    {
+      type: "integer",
+      name: "priority",
+      defaultValue: 0,
+      description: "\u4F18\u5148\u7EA7\uFF08\u7528\u6237\u7EA7 > \u89D2\u8272\u7EA7\u7EE7\u627F\uFF0C\u6570\u503C\u8D8A\u5927\u4F18\u5148\u7EA7\u8D8A\u9AD8\uFF09"
+    },
+    {
+      type: "belongsTo",
+      name: "createdBy",
+      target: "users",
+      foreignKey: "createdById",
+      description: "\u6743\u9650\u521B\u5EFA\u4EBA"
+    },
+    {
+      type: "date",
+      name: "createdAt"
+    },
+    {
+      type: "date",
+      name: "updatedAt"
+    }
+  ],
+  autoGenId: true,
+  timestamps: true,
+  indexes: [
+    {
+      type: "UNIQUE",
+      fields: ["targetType", "targetId", "tableName"],
+      name: "sjgl02_perms_unique_target_table"
+    }
+  ]
+});

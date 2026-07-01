@@ -113,6 +113,7 @@ export async function getExportTableFields(ctx: Context, next: Next) {
   const fields = rawFields.map((f: any) => {
     let title = f.options?.uiSchema?.title || null;
     if (title && /^\{\{/.test(title)) title = null;
+    if (!title) title = f.name;
     return {
       name: f.name,
       type: f.type,
@@ -545,4 +546,21 @@ export async function downloadExport(ctx: Context, next: Next) {
     ctx.throw(404, 'Task not found');
   }
   if (!task.exportFileId) {
-    ctx.throw(404, 
+    ctx.throw(404, 'Export file not found');
+  }
+  const attachRepo = ctx.db.getRepository('attachments');
+  const attachment = await attachRepo.findOne({ filter: { id: task.exportFileId } });
+  if (!attachment) {
+    ctx.throw(404, 'Attachment record not found');
+  }
+  const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
+  const filePath = path.join(storageDir, attachment.path || attachment.filename);
+  if (!fs.existsSync(filePath)) {
+    ctx.throw(404, 'File not found on disk');
+  }
+  const fileName = attachment.title || attachment.filename || 'export.xlsx';
+  ctx.attachment(encodeURIComponent(fileName));
+  ctx.set('Content-Type', attachment.mimetype || 'application/octet-stream');
+  ctx.body = fs.createReadStream(filePath);
+  await next();
+}

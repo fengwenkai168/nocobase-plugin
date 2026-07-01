@@ -1,0 +1,108 @@
+import React, { useState } from 'react';
+import {
+  Card, Row, Col, Select, Tag, Button, Space, Switch, Checkbox, Popconfirm,
+  Modal, Form, Input, message, Empty, Radio, Spin, Pagination, Alert, Table, Descriptions,
+} from 'antd';
+import { useTranslation } from 'react-i18next';
+import { useAPIClient } from '../hooks/useAPIClientCompat';
+import { NAMESPACE } from '../locale';
+import { useTargetList, useTableList, useViewScope, usePermissions, usePermissionFilter, useTableFields } from '../hooks';
+
+export default function PermissionTab() {
+  const api = useAPIClient();
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
+  const [selectedTarget, setSelectedTarget] = useState<any>(null);
+  const [searchText, setSearchText] = useState('');
+  const [permSearch, setPermSearch] = useState('');
+  const [editModal, setEditModal] = useState<{ open: boolean; perm?: any }>({ open: false });
+  const [detailModal, setDetailModal] = useState<{ open: boolean; perm?: any }>({ open: false });
+  const [form] = Form.useForm();
+  const [formCanImport, setFormCanImport] = useState(true);
+  const [formCanExport, setFormCanExport] = useState(true);
+  const [formMode, setFormMode] = useState<string[]>(['insert']);
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [subTab, setSubTab] = useState('perm');
+  const [inheritedOpen, setInheritedOpen] = useState(true);
+  const [customOpen, setCustomOpen] = useState(true);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [logLoading, setLogLoading] = useState(false);
+  const [auditExpand, setAuditExpand] = useState<number[]>([]);
+
+  const { targets, loading: loadingTargets } = useTargetList(api);
+  const { tables } = useTableList(api);
+  const { viewScope, setViewScope } = useViewScope(api);
+  const { fields, loading: loadingFields, loadFields } = useTableFields(api);
+  const {
+    perms, inheritedPerms, customPerms,
+    loading: loadingPerms, isSystemManaged,
+    toggle, remove, save,
+  } = usePermissions(api, selectedTarget);
+  const filter = usePermissionFilter(perms, tables, permSearch, 10);
+
+  const loadAuditLogs = () => {
+    setLogLoading(true);
+    api.request({ url: 'sjgl02_permission_logs:list', method: 'get', params: { sort: ['-createdAt'], pageSize: 50 } })
+      .then((res: any) => {
+        const rows = res?.data?.data?.rows || res?.data?.data || [];
+        setAuditLogs(Array.isArray(rows) ? rows : []);
+      }).catch(() => setAuditLogs([]))
+      .finally(() => setLogLoading(false));
+  };
+
+  React.useEffect(() => { if (subTab === 'log') loadAuditLogs(); }, [subTab]);
+
+  const userTargets = targets.filter((t: any) => t.type === 'user' && (!searchText || (t.nickname || '').toLowerCase().includes(searchText.toLowerCase())));
+  const roleTargets = targets.filter((t: any) => t.type === 'role' && (!searchText || (t.nickname || '').toLowerCase().includes(searchText.toLowerCase())));
+
+  const groupConfig = [
+    { label: `👤 ${t('User')}`, items: userTargets, color: '#1677ff' },
+    { label: `👥 ${t('Role')}`, items: roleTargets, color: '#52c41a' },
+  ];
+
+  const handleSave = async () => {
+    try { const values = await form.validateFields(); const ok = await save(values, editModal.perm); if (ok) { message.success(t('Saved successfully')); setEditModal({ open: false }); } else message.error(t('Save failed')); }
+    catch { message.error(t('Save failed')); }
+  };
+
+  const auditColumns = [
+    { title: '时间', dataIndex: 'createdAt', width: 140, render: (v: any) => v ? new Date(v).toLocaleString('zh-CN') : '—' },
+    { title: '操作人', dataIndex: 'operator', width: 80, render: (v: any) => v?.nickname || v?.username || '系统' },
+    { title: '操作', dataIndex: 'action', width: 70, render: (v: string) => {
+      const m: any = { create: <Tag color="green">创建</Tag>, update: <Tag color="orange">修改</Tag>, delete: <Tag color="red">删除</Tag>, toggle: <Tag color="blue">切换</Tag> };
+      return m[v] || <Tag>{v}</Tag>;
+    }},
+    { title: '目标', dataIndex: 'targetName', width: 100 },
+    { title: '数据表', dataIndex: 'tableName', width: 100 },
+    { title: '变更概要', dataIndex: 'changes', render: (v: any) => v ? (v.after && !v.before ? '新增权限' : !v.after ? '移除权限' : '修改配置') : '—' },
+  ];
+
+  const renderCard = (perm: any) => (
+    <Card key={perm.tableName + (perm._inherited ? '-i' : '')} size="small" style={{ marginBottom: 10, ...(perm._inherited ? { background: '#f9f9f9', opacity: 0.85 } : {}) }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {!perm._inherited && (
+            <Checkbox checked={selectedRows.has(perm.tableName)} onChange={e => {
+              const next = new Set(selectedRows); e.target.checked ? next.add(perm.tableName) : next.delete(perm.tableName); setSelectedRows(next);
+            }} />
+          )}
+          <strong>{(tables.find((t: any) => t.name === perm.tableName)?.title || perm.tableName) + '(' + perm.tableName + ')'}</strong>
+          {perm._systemManaged && <Tag color="blue" style={{ fontSize: 10 }}>系统管理</Tag>}
+          {perm._inherited && !perm._systemManaged && <Tag color="purple" style={{ fontSize: 10 }}>继承</Tag>}
+        </div>
+        <Space>
+          {perm._inherited ? (
+            <Button size="small" type="link" onClick={() => setDetailModal({ open: true, perm })}>查看详情</Button>
+          ) : (
+            <>
+              <Button size="small" type="link" onClick={() => { form.setFieldsValue(perm); loadFields(perm.tableName); setFormCanImport(perm.canImport !== false); setFormCanExport(perm.canExport !== false); setFormMode(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode || 'insert']); setEditModal({ open: true, perm }); }}>编辑</Button>
+              <Button size="small" type="link" danger onClick={() => remove(perm.tableName)}>删除</Button>
+            </>
+          )}
+        </Space>
+      </div>
+      <Space wrap size={[4, 4]}>
+        <Tag color={perm.canImport ? 'blue' : 'default'}>导入: {perm.canImport ? '是' : '否'}</Tag>
+        <Tag color={perm.canExport ? 'green' : 'default'}>导出: {perm.canExport ? '是' : '否'}</Tag>
+        <Tag color="orange">导入模式: {(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode || 'insert']).map((m: string) => ({ insert: '新增', update: '更新', upsert: '新增+更新' })[m] || m).join(' / ')}</Tag>
+        {perm.uniqueFields?.length > 0 && <Tag color="orange">唯一值: {perm.uniqueFields.join(', ')}</Tag>}
+        {perm.requiredFields?.length > 0 && <Tag color="red">必填: {perm.requiredFields.join(', ')}</Tag>}

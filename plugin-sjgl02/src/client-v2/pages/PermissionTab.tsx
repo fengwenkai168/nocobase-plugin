@@ -4,12 +4,12 @@ import {
   Modal, Form, Input, message, Empty, Radio, Spin, Pagination, Alert, Table, Descriptions,
 } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { useAPIClient } from '../hooks/useAPIClientCompat';
+import { useAPI } from '../utils/api';
 import { NAMESPACE } from '../locale';
 import { useTargetList, useTableList, useViewScope, usePermissions, usePermissionFilter, useTableFields } from '../hooks';
 
 export default function PermissionTab() {
-  const api = useAPIClient();
+  const api = useAPI();
   const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const [selectedTarget, setSelectedTarget] = useState<any>(null);
   const [searchText, setSearchText] = useState('');
@@ -237,4 +237,86 @@ export default function PermissionTab() {
                               {filter.inheritedPerms.length > 0 && (
                                 <div style={{ marginBottom: 10 }}>
                                   <div onClick={() => { setInheritedOpen(!inheritedOpen); filter.setPage(1); }} style={{ cursor: 'pointer', fontWeight: 600, fontSize: 13, color: '#999', marginBottom: 6, userSelect: 'none' }}>
-                                    <span style={{ marginRight: 4, fontSize: 11 }}>{inheritedOpen ? '▼' : '▶'}</span> 📦
+                                    <span style={{ marginRight: 4, fontSize: 11 }}>{inheritedOpen ? '▼' : '▶'}</span> 📦 角色继承的权限（{filter.inheritedPerms.length}条）
+                                  </div>
+                                  {inheritedOpen && pagedInh.map(renderCard)}
+                                </div>
+                              )}
+                              {filter.customPerms.length > 0 && (
+                                <div style={{ marginBottom: 10 }}>
+                                  <div onClick={() => { setCustomOpen(!customOpen); filter.setPage(1); }} style={{ cursor: 'pointer', fontWeight: 600, fontSize: 13, marginBottom: 6, userSelect: 'none' }}>
+                                    <span style={{ marginRight: 4, fontSize: 11 }}>{customOpen ? '▼' : '▶'}</span> ✏️ 用户自定义权限（{filter.customPerms.length}条）
+                                  </div>
+                                  {customOpen && pagedCus.map(renderCard)}
+                                </div>
+                              )}
+                              {visTotal > 10 && <div style={{ textAlign: 'center', marginTop: 8 }}><Pagination size="small" current={safePage} total={visTotal} pageSize={10} onChange={filter.setPage} /></div>}
+                            </>
+                          );
+                        })()}
+                      </>
+                    )}
+                </div>
+              )}
+            </div>
+          )}
+        </Col>
+      </Row>
+
+      {/* 编辑弹窗 */}
+      <Modal title={editModal.perm ? '编辑权限' : t('Add permission')} open={editModal.open} onCancel={() => setEditModal({ open: false })} onOk={handleSave} width={720}>
+        <Form form={form} layout="vertical">
+          <Form.Item label={t('Select table')} name="tableName" rules={[{ required: true }]}>
+            <Select showSearch optionFilterProp="label" placeholder="选择数据表"
+              filterOption={(input, option) => (option?.label as string || '').toLowerCase().includes(input.toLowerCase())}
+              onChange={(val: string) => loadFields(val)}
+              options={tables.filter((t: any) => { if (editModal.perm && editModal.perm.tableName === t.name) return true; return !perms.some((p: any) => p.tableName === t.name && !p._inherited); }).map((item: any) => ({ value: item.name, label: `${item.title} (${item.name})` }))} />
+          </Form.Item>
+          <Space style={{ marginBottom: 12 }}>
+            <Form.Item label={t('Allow import')} name="canImport" valuePropName="checked" noStyle>
+              <Switch onChange={v => { setFormCanImport(v); if (!v) setFormMode([]); }} /></Form.Item>
+            <Form.Item label={t('Allow export')} name="canExport" valuePropName="checked" noStyle>
+              <Switch onChange={v => setFormCanExport(v)} /></Form.Item>
+          </Space>
+          {formCanImport && (
+            <>
+              <Form.Item label={`${t('Import mode')}（可多选）`} name="importMode" rules={[{ required: true, message: '请选择导入模式' }]}>
+                <Select mode="multiple" onChange={v => setFormMode(v || [])} options={[{ value: 'insert', label: '新增(insert)' }, { value: 'update', label: '更新(update)' }, { value: 'upsert', label: '新增+更新(upsert)' }]} /></Form.Item>
+              {formMode.some(m => m === 'update' || m === 'upsert') && (
+                <Form.Item label="唯一值字段" name="uniqueFields" rules={[{ required: true, message: '更新/新增+更新模式必须配置唯一值字段' }]}>
+                  <Select mode="multiple" showSearch placeholder="选择唯一值字段" loading={loadingFields} filterOption={(input, option) => (option?.label as string || '').toLowerCase().includes(input.toLowerCase())} options={fields.map(v => ({ value: v.name, label: v.label }))} /></Form.Item>
+              )}
+              <Form.Item label="必填字段" name="requiredFields">
+                <Select mode="multiple" showSearch placeholder="选择必填字段" loading={loadingFields} filterOption={(input, option) => (option?.label as string || '').toLowerCase().includes(input.toLowerCase())} options={fields.map(v => ({ value: v.name, label: v.label }))} /></Form.Item>
+              <Form.Item label={t('Importable fields')} name="importFields">
+                <Select mode="multiple" showSearch placeholder="空=全部允许" loading={loadingFields} filterOption={(input, option) => (option?.label as string || '').toLowerCase().includes(input.toLowerCase())} options={fields.map(v => ({ value: v.name, label: v.label }))} /></Form.Item>
+            </>
+          )}
+          {formCanExport && (
+            <Form.Item label={t('Exportable fields')} name="exportFields">
+              <Select mode="multiple" showSearch placeholder="空=全部允许" loading={loadingFields} filterOption={(input, option) => (option?.label as string || '').toLowerCase().includes(input.toLowerCase())} options={fields.map(v => ({ value: v.name, label: v.label }))} /></Form.Item>
+          )}
+        </Form>
+      </Modal>
+
+      {/* 查看详情弹窗（只读） */}
+      <Modal title="📋 查看权限详情" open={detailModal.open} onCancel={() => setDetailModal({ open: false })} footer={<Button onClick={() => setDetailModal({ open: false })}>{t('Close')}</Button>} width={680}>
+        {detailModal.perm && (
+          <div>
+            <Alert type="info" showIcon message="此权限为继承权限，不可在此编辑。" style={{ marginBottom: 12 }} />
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="数据表"><b>{detailModal.perm.tableName}</b></Descriptions.Item>
+              <Descriptions.Item label="允许导入">{detailModal.perm.canImport ? <Tag color="blue">是</Tag> : <Tag>否</Tag>}</Descriptions.Item>
+              <Descriptions.Item label="允许导出">{detailModal.perm.canExport ? <Tag color="blue">是</Tag> : <Tag>否</Tag>}</Descriptions.Item>
+              <Descriptions.Item label="导入模式">{(Array.isArray(detailModal.perm.importMode) ? detailModal.perm.importMode : [detailModal.perm.importMode || 'insert']).map((m: string) => <Tag key={m} color="orange">{(m === 'insert' ? '新增' : m === 'update' ? '更新' : '新增+更新')}</Tag>)}</Descriptions.Item>
+              <Descriptions.Item label="唯一值字段">{detailModal.perm.uniqueFields?.length > 0 ? detailModal.perm.uniqueFields.join(', ') : '—'}</Descriptions.Item>
+              <Descriptions.Item label="必填字段">{detailModal.perm.requiredFields?.length > 0 ? detailModal.perm.requiredFields.join(', ') : '—'}</Descriptions.Item>
+              <Descriptions.Item label="可导入字段">{detailModal.perm.importFields?.length > 0 ? detailModal.perm.importFields.join(', ') : '全部字段允许'}</Descriptions.Item>
+              <Descriptions.Item label="可导出字段">{detailModal.perm.exportFields?.length > 0 ? detailModal.perm.exportFields.join(', ') : '全部字段允许'}</Descriptions.Item>
+            </Descriptions>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

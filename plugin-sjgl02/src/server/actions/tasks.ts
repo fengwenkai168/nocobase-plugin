@@ -20,7 +20,7 @@ export async function listTasks(ctx: Context, next: Next) {
     page,
     pageSize,
     sort: ['-createdAt'],
-  });
+  } as any);
   ctx.body = {
     items: rows,
     total,
@@ -68,4 +68,16 @@ async function getTaskViewScope(ctx: Context): Promise<string> {
     const roleNames = (ctx.state.currentUser?.roles || []).map((r: any) => r.name);
     if (roleNames.length > 0) {
       const roleRepo = ctx.db.getRepository('roles');
-      const userRoles = aw
+      const userRoles = await roleRepo.find({ filter: { name: { $in: roleNames } } });
+      if (userRoles.some((r: any) => r.name === 'admin' || r.name === 'root')) return 'all';
+    }
+    const settingRepo = ctx.db.getRepository('sjgl02_settings');
+    const userId = ctx.state.currentUser?.id;
+    const userSetting = await settingRepo.findOne({ filter: { userId } });
+    if (userSetting) return userSetting.taskViewScope || 'own';
+    const globalSetting = await settingRepo.findOne({ filter: { userId: { $is: null } } });
+    return globalSetting?.taskViewScope || 'own';
+  } catch {
+    return 'own';
+  }
+}

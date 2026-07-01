@@ -97,4 +97,21 @@ async function getTaskViewScope(ctx) {
     if (roleNames.length > 0) {
       const roleRepo = ctx.db.getRepository("roles");
       const userRoles = await roleRepo.find({ filter: { name: { $in: roleNames } } });
-      if (userRoles.some((r) => r.name === "admin" || r.name ==
+      if (userRoles.some((r) => r.name === "admin" || r.name === "root")) return "all";
+    }
+    const settingRepo = ctx.db.getRepository("sjgl02_settings");
+    const userId = (_b = ctx.state.currentUser) == null ? void 0 : _b.id;
+    const userSetting = await settingRepo.findOne({ filter: { userId } });
+    if (userSetting) return userSetting.taskViewScope || "own";
+    const globalSetting = await settingRepo.findOne({ filter: { userId: { $is: null } } });
+    return (globalSetting == null ? void 0 : globalSetting.taskViewScope) || "own";
+  } catch {
+    return "own";
+  }
+}
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  cancelTask,
+  getTaskDetail,
+  listTasks
+});

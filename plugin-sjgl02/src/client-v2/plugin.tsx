@@ -13,4 +13,11 @@ export class PluginSjgl02Client extends Plugin {
       title: this.t('Data Management'),
       componentLoader: () => import('./pages/Sjgl02SettingsPage'),
     });
-    th
+    this.flowEngine.registerModelLoaders({
+      SjglBlockModel: {
+        extends: 'BlockModel',
+        loader: () => import('./models/SjglBlockModel'),
+      },
+    });
+  }
+}

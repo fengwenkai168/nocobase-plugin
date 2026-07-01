@@ -1,5 +1,115 @@
 # CHANGELOG
 
+## 1.0.61 (2026-07-01)
+- **重构**：v1/v2 代码统一 — 删除 v2 重复页面（ImportTab/ExportTab/TaskTab，共 ~980 行），v2 设置页和区块模型直接引用 v1 面板
+- **新增**：`src/client-v2/utils/api.ts` — 统一 `useAPI()` hook（兼容 v1/v2 两种运行时上下文）
+- **重构**：3 个 v1 面板的 `useAPIClient()` → `useAPI()`
+- **删除**：`useAPIClientCompat.ts`、`useFilteredTables.ts`（逻辑已内聚到面板中）
+- **删除**：v2 重复页面 ImportTab.tsx (488行)、ExportTab.tsx (292行)、TaskTab.tsx (197行)
+
+## 1.0.60 (2026-07-01)
+- **修复**：v2 区块任务管理列表为空（API 响应数据解析层级错位：NocoBase 3层嵌套 `data.data.data`，少剥离了一层）
+- **修复**：v1 区块注册增加 `RecordBlockInitializers` 和 `mobile:addBlock` 初始化器，覆盖更多 v1 页面场景
+
+## 1.0.59 (2026-07-01)
+- **修复**：v1 页面添加的区块无法移除（`Sjgl02BlockInitializer` 增加 `x-settings: 'blockSettings:block'`）
+- **修复**：v2 区块权限管控不生效 — ImportTab/ExportTab 表列表按用户权限过滤
+- **修复**：`useTablePermission` 增加 API 兜底（`auth:check`），兼容区块上下文中 `useCurrentUserContext()` 为空
+- **新增**：`useFilteredTables` 共享 hook，统一处理表列表权限过滤 + admin/root 判断
+- **优化**：ExportTab「全部数据表」仅 admin/root 可见
+
+## 1.0.58 (2026-07-01)
+- **修复**：v2 区块渲染崩溃（`useCurrentUserContext()` 返回 null 导致 `useTablePermission` 解构报错）
+
+## 1.0.57 (2026-07-01)
+- **新增**：v2 区块页面添加完整内容（导入/导出/任务管理三个 Tab），修复只显示顶部栏无内容的问题
+- **优化**：v1/v2 预览表头改为上下两行显示（蓝灰分色）：「导入字段：xxx」上蓝色 + 「数据表字段：名称(标识)」下灰色，自适应高度
+- **优化**：SjglBlockModel 使用 `lazy()` 按需加载各 Tab 组件，减少初始加载体积
+
+## 1.0.56 (2026-07-01)
+- **修复**：v2 页面「添加区块」菜单不显示"数据管理"区块 — v1 客户端补充 `registerModels({ SjglBlockModel })` 同步注册（参照所有官方 v2 区块插件的双端注册模式）
+- **根因**：`buildSubModelItems` 使用 `getSubclassesOf`（同步方法）搜索 `_modelClasses`，仅 `registerModels` 可同步写入。`registerModelLoaders` 写入 `_modelLoaders` 需异步解析，同步搜索无法发现。
+
+## 1.0.55 (2026-07-01)
+- **修复**：v2 页面「添加区块」不显示"数据管理"区块 — 改用 v2 标准 API `registerModelLoaders`（替代 v1 遗留的 `registerModels`）
+- **修复**：SjglBlockModel 的 `define({ label })` 改用 `tExpr()` 延迟翻译（遵循 v2 插件开发规范）
+- **重构**：`src/client-v2/locale.ts` 新增 `tExpr` 导出，支持延迟翻译
+- **重构**：`src/client-v2/plugin.tsx` 移除 `SjglBlockModel` 直接导入，改为按需加载（`extends: 'BlockModel'` + `loader`）
+
+## 1.0.54 (2026-07-01)
+
+### 界面优化
+- Step2：文件信息、Sheet、表头行合并为一行，界面更紧凑
+- Step3：4 个独立 Statistic Card 合并为 1 个摘要 Card，信息两列对齐
+- 预览列名格式：`导入字段：xxx — 数据表字段：字段标题(field标识)`
+- 预览标题改为「预览确认 — 导入到的数据表：表名称（表标识）」
+- 管理员限制可导入字段显示「字段名称（字段标识）」格式
+- 字段映射表增加「⚠ 必填」红色标签
+- Sheet 下拉宽度自适应长名称
+
+### 修复
+- 自动匹配增强为 5 种匹配规则：精确匹配 / 标题匹配 / 括号提取 `1(field)` / 包含匹配 / 标题包含
+- `doParse()` 保留用户自选的唯一值字段（之前无条件清空为 `[]`）
+- 下一步按钮 update/upsert 强制要求唯一值字段（无论管理员是否配置）
+- 自动匹配结果改为卡片标题内显示 Tag（不再弹出 message）
+
+### 变更
+- 版本号 1.0.53 → 1.0.54
+
+## 1.0.53 (2026-07-01)
+
+### 修复
+- **核心Bug：doParse() 无条件清空唯一值字段** → 修复为保留管理员配置的值
+- **核心Bug：自动匹配通过 setTimeout 读到空 Excel 表头** → 改用 useEffect 监听 excelHeaders 数据就绪后执行
+- **核心Bug：`__custom__` 映射导致下一步按钮永久禁用** → 从禁用条件中移除 `__custom__` 判断
+- **核心Bug：唯一值字段不在 importFields 白名单导致映射表不显示** → 始终包含唯一值和必填字段
+- 导入模式从权限同步（`importMode` 默认值为可用模式中最优的，预览显示正确模式）
+- 自动匹配优先按字段标题匹配 Excel 列名，匹配不到 + 必填 → 设为自定义填写
+- 导出字段列表基于权限 `exportFields` 过滤（只显示管理员允许的字段）
+- admin/root 导入权限短路（直接三种模式全部可用，不再显示红色「无权限」）
+
+### 新增
+- 导入必填字段实时校验提示（绿色 Tag = 已映射，红色 Tag = 未映射）
+- 「🗑 清空」按钮一键清除所有字段映射
+- 字段名称（字段标识）显示格式推广到唯一值字段和必填字段 Tag
+- 导入模式仅 1 种可用时显示橙色 Tag 文字，多种时才显示下拉选择框
+
+### 变更
+- 版本号 1.0.52 → 1.0.53
+
+## 1.0.52 (2026-06-30)
+
+### 修复
+- **v2 client-v2 构建失败**：`useAPIClient` 不存在于 `@nocobase/client-v2` → 创建 `useAPIClientCompat` 兼容 hook
+- v2 添加区块改用 `registerModels` 同步注册 SjglBlockModel
+- v1 添加区块改用初始器组件 `Sjgl02BlockInitializer` + `otherBlocks` 分组
+- 非 admin/root 导出面板隐藏「📦 全部数据表」选项
+
+### 新增
+- 导入/导出面板基于用户权限过滤可选表（ImportPanel 仅显示 `canImport=true` 的表）
+- 全部数据表导出列表格式「表名称（表标识）」
+- 关联数据 Sheet 选项格式「表名称（表标识）」
+- 关联字段显示模式下拉增加英文标签（显示值(Display) / 仅ID(ID only)）
+
+### 变更
+- 版本号 1.0.51 → 1.0.52
+
+## 1.0.51 (2026-06-30)
+
+### 重大变更
+- **taskViewScope 改为按用户配置**：`sjgl02_settings` 新增 `userId` 字段，支持按用户独立读写
+- 角色面板移除任务查看范围 Radio 设置（仅用户面板显示）
+
+### 修复
+- admin/root 始终可查看全部任务（`getTaskViewScope` 增加角色短路判断）
+- `getSettings` GET 请求消除副作用（不再在查询不到时自动创建默认记录）
+- 前端 `useTablePermission` 和 v1 ImportPanel 尊重用户级 `canImport=false` 否定
+- 服务端 admin/root 权限检查优化（直接用 `ctx.state.currentUser.roles` 判断，省掉 DB 查询）
+- `savePermissions` 校验 `importMode` 为空时自动补齐三种模式
+
+### 变更
+- 版本号 1.0.50 → 1.0.51
+
 ## 1.0.50 (2026-06-30)
 
 ### 修复

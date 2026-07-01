@@ -20,4 +20,12 @@ export default defineCollection({
       defaultValue: 1000,
     },
     {
-   
+      type: 'bigInt',
+      name: 'userId',
+      description: '用户ID（null=全局默认）',
+    },
+  ],
+  indexes: [
+    { fields: ['userId'] },
+  ],
+});
