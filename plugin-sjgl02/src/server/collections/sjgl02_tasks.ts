@@ -55,6 +55,8 @@ export default defineCollection({
     { type: 'json', name: 'associationSheetTables' },
     { type: 'json', name: 'associationDisplayMode' },
     { type: 'boolean', name: 'includeAttachments', defaultValue: false },
+    { type: 'string', name: 'blankCellMode', defaultValue: 'update' },
+    { type: 'string', name: 'headerStyle', defaultValue: 'title_id' },
     { type: 'date', name: 'completedAt' },
     { type: 'belongsTo', name: 'createdBy', target: 'users', foreignKey: 'createdById' },
   ],

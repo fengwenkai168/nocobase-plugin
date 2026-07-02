@@ -253,7 +253,8 @@ async function executeImport(ctx, next) {
       uniqueFields: uniqueFields || [],
       totalRows: 0,
       progress: 0,
-      createdById: (_a = ctx.state.currentUser) == null ? void 0 : _a.id
+      createdById: (_a = ctx.state.currentUser) == null ? void 0 : _a.id,
+      blankCellMode: blankCellMode || "update"
     }
   });
   const sequelize = ctx.db.sequelize;
@@ -386,96 +387,125 @@ async function executeImport(ctx, next) {
         }
       }
     }
-    for (let i = 0; i < dataRows.length; i++) {
-      const rowIndex = i + 1;
-      try {
-        const record = makeRecord(dataRows[i]);
+    const BATCH_SIZE = 1e3;
+    for (let batchStart = 0; batchStart < dataRows.length; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, dataRows.length);
+      const batchRows = dataRows.slice(batchStart, batchEnd);
+      const batchRecords = [];
+      for (let bi = 0; bi < batchRows.length; bi++) {
+        const rowData = batchRows[bi];
+        const i = batchStart + bi;
+        const record = makeRecord(rowData);
         for (const fn of dateFieldNames) {
           const v = record[fn];
           if (typeof v === "string") record[fn] = normalizeDateValue(v);
         }
-        if ((importMode === "update" || importMode === "upsert") && uniqueFields.length > 0) {
-          const allFilled = uniqueFields.every((uf) => record[uf] !== void 0 && record[uf] !== "");
-          if (allFilled) {
-            const ufKey = uniqueFields.map((uf) => String(record[uf] || "")).join("||");
-            if (processedUniques.has(ufKey)) {
-              errorLogs.push({
-                row: rowIndex,
-                excelRow: (headerRow || 1) + rowIndex - 1,
-                reason: `\u552F\u4E00\u503C\u5B57\u6BB5\u7EC4\u5408\u91CD\u590D / Duplicate unique fields: ${uniqueFields.join("+")} = ${ufKey}`,
-                snapshot: buildSnapshot(dataRows[i])
-              });
-              continue;
-            }
-            processedUniques.add(ufKey);
+        batchRecords.push({ idx: i, record, rowData });
+      }
+      if ((importMode === "update" || importMode === "upsert") && ((uniqueFields == null ? void 0 : uniqueFields.length) || 0) > 0) {
+        const batchFilters = [];
+        const validIdx = [];
+        for (const br of batchRecords) {
+          const allFilled = (uniqueFields || []).every((uf) => br.record[uf] !== void 0 && br.record[uf] !== "");
+          if (!allFilled) continue;
+          const ufKey = (uniqueFields || []).map((uf) => String(br.record[uf] || "")).join("||");
+          if (processedUniques.has(ufKey)) {
+            errorLogs.push({
+              row: br.idx + 1,
+              excelRow: (headerRow || 1) + br.idx,
+              reason: `\u552F\u4E00\u503C\u5B57\u6BB5\u7EC4\u5408\u91CD\u590D: ${(uniqueFields || []).join("+")} = ${ufKey}`,
+              snapshot: buildSnapshot(br.rowData)
+            });
+            continue;
+          }
+          processedUniques.add(ufKey);
+          const filter = {};
+          for (const uf of uniqueFields || []) {
+            if (br.record[uf] !== void 0 && br.record[uf] !== "") filter[uf] = br.record[uf];
+          }
+          if (Object.keys(filter).length > 0) {
+            batchFilters.push(filter);
+            validIdx.push(br.idx);
           }
         }
-        if (importMode === "update" || importMode === "upsert") {
-          const uFields = uniqueFields || [];
-          if (uFields.length === 0) {
-            if (importMode === "update") {
-              errorLogs.push({
-                row: rowIndex,
-                excelRow: (headerRow || 1) + rowIndex - 1,
-                reason: "\u66F4\u65B0\u6A21\u5F0F\u672A\u914D\u7F6E\u552F\u4E00\u503C\u5B57\u6BB5\uFF0C\u65E0\u6CD5\u5339\u914D\u5DF2\u6709\u8BB0\u5F55",
-                snapshot: buildSnapshot(dataRows[i])
-              });
-              continue;
-            }
-          } else {
-            const filter = {};
-            for (const uf of uFields) {
-              if (record[uf] !== void 0 && record[uf] !== "") filter[uf] = record[uf];
-            }
-            if (Object.keys(filter).length > 0) {
-              const [existingRecords, matchCount] = await targetRepo.findAndCount({ filter, limit: 2, transaction });
-              if (matchCount > 1) {
-                errorLogs.push({
-                  row: rowIndex,
-                  excelRow: (headerRow || 1) + rowIndex - 1,
-                  reason: `\u552F\u4E00\u503C\u5339\u914D\u5230 ${matchCount} \u6761\u8BB0\u5F55\uFF0C\u65E0\u6CD5\u786E\u5B9A\u66F4\u65B0\u76EE\u6807 (Ambiguous: ${matchCount} records matched unique fields)`,
-                  snapshot: buildSnapshot(dataRows[i])
-                });
-                continue;
-              }
-              if (matchCount === 1) {
-                applyBelongsToFK(record, i);
-                await targetRepo.update({ filterByTk: existingRecords[0].id, values: record, transaction, context: ctx });
-                processedRows++;
-                continue;
-              }
-            } else {
-              if (importMode === "update") {
-                errorLogs.push({
-                  row: rowIndex,
-                  excelRow: (headerRow || 1) + rowIndex - 1,
-                  reason: "\u552F\u4E00\u503C\u5B57\u6BB5\u5728\u6570\u636E\u884C\u4E2D\u672A\u627E\u5230\u503C\uFF0C\u65E0\u6CD5\u5339\u914D",
-                  snapshot: buildSnapshot(dataRows[i])
-                });
-                continue;
-              }
-            }
-          }
-        }
-        if (importMode === "insert" || importMode === "upsert") {
-          applyBelongsToFK(record, i);
-          await targetRepo.create({ values: record, transaction, context: ctx });
-          processedRows++;
-        } else if (importMode === "update") {
-          errorLogs.push({
-            row: rowIndex,
-            excelRow: (headerRow || 1) + rowIndex - 1,
-            reason: "\u672A\u5339\u914D\u5230\u5DF2\u6709\u8BB0\u5F55\uFF08\u66F4\u65B0\u6A21\u5F0F\uFF09",
-            snapshot: buildSnapshot(dataRows[i])
+        if (batchFilters.length > 0) {
+          const allExisting = await targetRepo.find({
+            filter: { $or: batchFilters },
+            limit: batchFilters.length * 2,
+            transaction
           });
+          for (let fi = 0; fi < validIdx.length; fi++) {
+            const br = batchRecords.find((b) => b.idx === validIdx[fi]);
+            if (!br) continue;
+            const filter = batchFilters[fi];
+            const matched = allExisting.filter((er) => {
+              return Object.keys(filter).every((k) => er[k] !== void 0 && String(er[k]) === String(filter[k]));
+            });
+            if (matched.length > 1) {
+              errorLogs.push({
+                row: br.idx + 1,
+                excelRow: (headerRow || 1) + br.idx,
+                reason: `\u552F\u4E00\u503C\u5339\u914D\u5230 ${matched.length} \u6761\u8BB0\u5F55`,
+                snapshot: buildSnapshot(br.rowData)
+              });
+            } else if (matched.length === 1) {
+              br.record._existingId = matched[0].id;
+            }
+          }
         }
-      } catch (rowErr) {
-        errorLogs.push({
-          row: rowIndex,
-          excelRow: (headerRow || 1) + rowIndex - 1,
-          reason: rowErr.message || String(rowErr),
-          snapshot: buildSnapshot(dataRows[i])
-        });
+      }
+      const toCreateRows = [];
+      const toUpdatePromises = [];
+      for (const br of batchRecords) {
+        const rowIndex = br.idx + 1;
+        try {
+          const record = br.record;
+          if (record._existingId !== void 0) {
+            const eid = record._existingId;
+            delete record._existingId;
+            applyBelongsToFK(record, br.idx);
+            toUpdatePromises.push((async () => {
+              await targetRepo.update({ filterByTk: eid, values: record, transaction, context: ctx });
+              processedRows++;
+            })());
+            continue;
+          }
+          if ((importMode === "update" || importMode === "upsert") && ((uniqueFields == null ? void 0 : uniqueFields.length) || 0) > 0) {
+            const uFields = uniqueFields || [];
+            if (uFields.length === 0) {
+              if (importMode === "update") {
+                errorLogs.push({ row: rowIndex, excelRow: (headerRow || 1) + br.idx, reason: "\u66F4\u65B0\u6A21\u5F0F\u672A\u914D\u7F6E\u552F\u4E00\u503C\u5B57\u6BB5" });
+                continue;
+              }
+            }
+            if (importMode === "update") {
+              errorLogs.push({ row: rowIndex, excelRow: (headerRow || 1) + br.idx, reason: "\u672A\u5339\u914D\u5230\u5DF2\u6709\u8BB0\u5F55\uFF08\u66F4\u65B0\u6A21\u5F0F\uFF09" });
+              continue;
+            }
+          }
+          if (importMode === "insert" || importMode === "upsert") {
+            applyBelongsToFK(record, br.idx);
+            toCreateRows.push(record);
+            processedRows++;
+          }
+        } catch (rowErr) {
+          errorLogs.push({ row: rowIndex, excelRow: (headerRow || 1) + br.idx, reason: rowErr.message || String(rowErr), snapshot: buildSnapshot(br.rowData) });
+        }
+      }
+      if (toCreateRows.length > 0) {
+        try {
+          await targetRepo.create({ values: toCreateRows, transaction, context: ctx });
+        } catch (createErr) {
+          for (const cr of toCreateRows) {
+            errorLogs.push({ reason: createErr.message || String(createErr) });
+          }
+        }
+      }
+      await Promise.all(toUpdatePromises);
+      const batchProgress = Math.min(100, Math.floor(batchEnd * 100 / dataRows.length));
+      try {
+        await repo.update({ filterByTk: task.id, values: { processedRows, progress: batchProgress }, transaction });
+      } catch {
       }
     }
     if (errorLogs.length > 0) {

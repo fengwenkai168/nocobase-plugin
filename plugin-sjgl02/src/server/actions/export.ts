@@ -43,8 +43,8 @@ function getCollDisplayName(coll: any, style?: string): string {
   return title !== rawName ? `${title}(${rawName})` : rawName;
 }
 
-function ensureUniqueSheetName(workbook: ExcelJS.Workbook, name: string): string {
-  const existing = new Set(workbook.worksheets.map((s: any) => s.name));
+function ensureUniqueSheetName(workbook: any, name: string): string {
+  const existing = new Set((workbook.worksheets || []).map((s: any) => s.name));
   if (!existing.has(name)) return name;
   let i = 1;
   while (existing.has(`${name}_${i}`)) i++;
@@ -209,6 +209,7 @@ export async function executeExport(ctx: Context, next: Next) {
       progress: 0,
       fileName: tableName === '__all__' ? `全部数据表_${new Date().toISOString().slice(0, 10)}.zip` : '',
       createdById: ctx.state.currentUser?.id,
+      headerStyle: headerStyle || 'title_id',
     },
   });
 
@@ -272,152 +273,141 @@ export async function executeExport(ctx: Context, next: Next) {
           }
         }
       } catch {}
-      const queryOpts: any = { filter: exportFilter || {}, limit: 20000 };
-      if (appendFields.length > 0) queryOpts.appends = appendFields;
-      try {
-        const [found, count] = await targetRepo.findAndCount(queryOpts);
-        records = found;
-        collectionTotal = count;
-      } catch {
-        try {
-          records = await targetRepo.find({ filter: exportFilter || {}, limit: 20000 });
-          collectionTotal = records.length;
-        } catch { continue; }
-      }
+      try { const [,c] = await targetRepo.findAndCount({ filter: exportFilter || {}, limit: 1 }); collectionTotal = c; } catch {}
+      if (collectionTotal === 0) continue;
 
       const fieldNames: string[] = (selectedFields && selectedFields.length > 0)
         ? selectedFields
         : getScalarFields(coll);
-
-      if (fieldNames.length === 0 && records[0]) {
-        fieldNames.push(...Object.keys(records[0]).filter(k => !k.startsWith('_')));
-      }
-
-      if (records.length === 0 && fieldNames.length === 0) continue;
-
-      const workbook = new ExcelJS.Workbook();
-      workbook.creator = 'NocoBase @my-project/plugin-sjgl02';
-      const mainSheet = workbook.addWorksheet(ensureUniqueSheetName(workbook, sanitizeSheetName(getCollDisplayName(coll, headerStyle))));
-      mainSheet.columns = fieldNames.map((name: string) => ({
-        header: getFieldDisplayName(coll, name, headerStyle), key: name,
-        width: Math.max(getFieldDisplayName(coll, name, headerStyle).length + 4, 20),
-      }));
-      const headerRow = mainSheet.getRow(1);
-      headerRow.font = { bold: true };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
-
-      const fileIdFilenameMap = new Map<number, string>();
-      const attachedIds = new Set<number>();
-      const attachFieldMap = new Map<number, string>();
-      if (includeAttachments && (attachmentFieldNames.length > 0 || fileIdFieldNames.length > 0)) {
-        for (const record of records) {
-          for (const afName of attachmentFieldNames) {
-            const av = record[afName];
-            if (Array.isArray(av)) {
-              for (const a of av) {
-                if (a?.id && !attachedIds.has(a.id)) {
-                  attachedIds.add(a.id);
-                  attachFieldMap.set(a.id, afName);
-                }
-              }
-            }
-          }
-          for (const ffName of fileIdFieldNames) {
-            const fid = record[ffName];
-            if (fid && !attachedIds.has(fid)) {
-              attachedIds.add(fid);
-              attachFieldMap.set(fid, ffName);
-            }
-          }
-        }
-        if (attachedIds.size > 0) {
-          try {
-            const attachRepo = ctx.db.getRepository('attachments');
-            const attachRecords = await attachRepo.find({ filter: { id: Array.from(attachedIds) } });
-            for (const at of attachRecords) {
-              if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
-            }
-          } catch {}
-        }
-      }
-
-      for (const record of records) {
-        const row: Record<string, any> = {};
-        for (const f of fieldNames) {
-          let val = record[f];
-          if (attachmentFieldNames.includes(f)) {
-            if (Array.isArray(val) && val.length > 0) {
-              val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
-            } else {
-              val = '';
-            }
-          } else if (fileIdFieldNames.includes(f)) {
-            val = fileIdFilenameMap.get(val) || String(val || '');
-          } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
-            val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
-          }
-          row[f] = formatValue(val);
-        }
-        mainSheet.addRow(row);
-        totalRows++;
-        processedRows++;
-      }
-
-      if (includeAssociationSheet) {
-        const assocFields = getAssociationFields(coll);
-        const exportAssocFields = assocFields.filter(af =>
-          !fieldNames || fieldNames.length === 0 || fieldNames.includes(af.name)
-        );
-        for (const af of exportAssocFields) {
-          const assocRepo = ctx.db.getRepository(af.target);
-          if (!assocRepo) continue;
-          let assocRecords: any[] = [];
-          try {
-            assocRecords = await assocRepo.find({ limit: 5000 });
-          } catch { continue; }
-          if (assocRecords.length === 0) continue;
-
-          const assocScalarFields = getScalarFields(ctx.db.getCollection(af.target));
-          if (assocScalarFields.length === 0 && assocRecords[0]) {
-            assocScalarFields.push(...Object.keys(assocRecords[0]).filter(k => !k.startsWith('_')));
-          }
-
-          const assocColl = ctx.db.getCollection(af.target);
-          const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
-          const collDisplay = getCollDisplayName(assocColl, headerStyle);
-          const sheetName = ensureUniqueSheetName(workbook, sanitizeSheetName(fieldDisplay + '-' + collDisplay).substring(0, 31));
-          const assocSheet = workbook.addWorksheet(sheetName);
-          assocSheet.columns = assocScalarFields.map((n: string) => ({
-            header: getFieldDisplayName(assocColl, n, headerStyle), key: n,
-            width: Math.max(getFieldDisplayName(assocColl, n, headerStyle).length + 4, 20),
-          }));
-          const ahRow = assocSheet.getRow(1);
-          ahRow.font = { bold: true };
-          ahRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
-
-          for (const rec of assocRecords) {
-            const row: Record<string, any> = {};
-            for (const f of assocScalarFields) {
-              let val = rec[f];
-              if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
-            val = (val.nickname || val.title || val.name || (val.id !== undefined && val.id !== null ? val.id : JSON.stringify(val)));
-              }
-              row[f] = formatValue(val);
-            }
-            assocSheet.addRow(row);
-            totalRows++;
-            processedRows++;
-          }
-        }
-      }
+      if (!fieldNames || fieldNames.length === 0) continue;
 
       const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, '_');
       const xlsxName = collDisplay + '-' + formatFileName('{日期}.xlsx', '');
       const filePath = path.join(tempDir, xlsxName);
-      await workbook.xlsx.writeFile(filePath);
+
+      const streamWriter = new ExcelJS.stream.xlsx.WorkbookWriter({
+        filename: filePath, useStyles: true, useSharedStrings: true,
+      });
+      streamWriter.creator = 'NocoBase @my-project/plugin-sjgl02';
+      const mainSheet = streamWriter.addWorksheet(
+        ensureUniqueSheetName(streamWriter as any, sanitizeSheetName(getCollDisplayName(coll, headerStyle)))
+      );
+      mainSheet.columns = fieldNames.map((name: string) => ({
+        header: getFieldDisplayName(coll, name, headerStyle), key: name,
+        width: Math.max(getFieldDisplayName(coll, name, headerStyle).length + 4, 20),
+      }));
+      (mainSheet.getRow(1) as any).font = { bold: true };
+      (mainSheet.getRow(1) as any).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+      const PAGE_SIZE = 5000;
+      let offset = 0;
+
+      while (offset < collectionTotal) {
+        const pageRecords = await targetRepo.find({
+          filter: exportFilter || {}, offset, limit: PAGE_SIZE,
+          ...(appendFields.length > 0 ? { appends: appendFields } : {}),
+        });
+        if (pageRecords.length === 0) break;
+
+        for (const record of pageRecords) {
+          const row: Record<string, any> = {};
+          for (const f of fieldNames) {
+            let val = record[f];
+            if (attachmentFieldNames.includes(f)) {
+              if (Array.isArray(val) && val.length > 0) {
+                val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
+              } else val = '';
+            } else if (fileIdFieldNames.includes(f)) {
+              val = val !== null && val !== undefined ? String(val) : '';
+            } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
+              val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
+            }
+            row[f] = formatValue(val);
+          }
+          mainSheet.addRow(row).commit();
+          processedRows++;
+          totalRows++;
+        }
+        offset += PAGE_SIZE;
+        const progress = Math.min(100, Math.floor((offset * 100) / Math.max(1, collectionTotal)));
+        try { await repo.update({ filterByTk: task.id, values: { processedRows, totalRows, progress } }); } catch {}
+      }
+
+      if (includeAssociationSheet) {
+        const assocFields = getAssociationFields(coll);
+        for (const af of assocFields.filter((af: any) => !fieldNames.length || fieldNames.includes(af.name))) {
+          const assocRepo = ctx.db.getRepository(af.target);
+          if (!assocRepo) continue;
+          let assocTotal = 0;
+          try { const [,cnt] = await assocRepo.findAndCount({ limit:1 }); assocTotal = cnt; } catch {}
+          if (assocTotal === 0) continue;
+          const assocColl = ctx.db.getCollection(af.target);
+          const assocScalarFields = getScalarFields(assocColl);
+          if (!assocScalarFields || assocScalarFields.length === 0) continue;
+
+          const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
+          const sheetDisplay = getCollDisplayName(assocColl, headerStyle);
+          const sheetName = ensureUniqueSheetName(streamWriter as any, sanitizeSheetName(fieldDisplay + '-' + sheetDisplay).substring(0,31));
+          const assocSheet = streamWriter.addWorksheet(sheetName);
+          assocSheet.columns = assocScalarFields.map((n: string) => ({
+            header: getFieldDisplayName(assocColl, n, headerStyle), key: n,
+            width: Math.max(getFieldDisplayName(assocColl, n, headerStyle).length + 4, 20),
+          }));
+          (assocSheet.getRow(1) as any).font = { bold: true };
+          (assocSheet.getRow(1) as any).fill = { type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F5F5'}};
+
+          let aOff = 0;
+          while (aOff < assocTotal) {
+            const aRecs = await assocRepo.find({ offset: aOff, limit: PAGE_SIZE });
+            for (const rec of aRecs) {
+              const row: Record<string, any> = {};
+              for (const f of assocScalarFields) {
+                let val = rec[f];
+                if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date))
+                  val = (val.nickname || val.title || val.name || val.id || JSON.stringify(val));
+                row[f] = formatValue(val);
+              }
+              assocSheet.addRow(row).commit();
+              totalRows++; processedRows++;
+            }
+            aOff += PAGE_SIZE;
+            const ap = Math.min(100, Math.floor((aOff * 100) / Math.max(1, assocTotal)));
+            try { await repo.update({ filterByTk: task.id, values: { processedRows, totalRows, progress: Math.max(ap, progress||0) } }); } catch {}
+          }
+          assocSheet.commit();
+        }
+      }
+
+      mainSheet.commit();
+      await streamWriter.commit();
       outputFiles.push(filePath);
 
-      if (includeAttachments && attachedIds.size > 0 && fileIdFilenameMap.size > 0) {
+      if (includeAttachments && (attachmentFieldNames.length > 0 || fileIdFieldNames.length > 0)) {
+        const attachIds = new Set<number>();
+        const attachFieldMap = new Map<number, string>();
+        let aScanOff = 0;
+        while (aScanOff < collectionTotal) {
+          const pr = await targetRepo.find({
+            filter: exportFilter || {}, offset: aScanOff, limit: PAGE_SIZE,
+            ...(appendFields.length > 0 ? { appends: appendFields } : {}),
+          });
+          for (const r of pr) {
+            for (const an of attachmentFieldNames) {
+              if (Array.isArray(r[an])) for (const a of r[an]) if (a?.id && !attachIds.has(a.id)) { attachIds.add(a.id); attachFieldMap.set(a.id, an); }
+            }
+            for (const fn of fileIdFieldNames) {
+              const fid = r[fn]; if (fid && !attachIds.has(fid)) { attachIds.add(fid); attachFieldMap.set(fid, fn); }
+            }
+          }
+          aScanOff += PAGE_SIZE;
+        }
+        if (attachIds.size > 0) {
+          const fileIdFilenameMap = new Map<number, string>();
+          try {
+            const ar = await ctx.db.getRepository('attachments').find({ filter: { id: Array.from(attachIds) } });
+            ar.forEach((at: any) => { if (at.filename) fileIdFilenameMap.set(at.id, at.filename); });
+          } catch {}
+          if (fileIdFilenameMap.size > 0) {
         try {
           const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
           const attachmentFiles: Array<{ entryName: string; diskPath: string }> = [];
@@ -454,6 +444,8 @@ export async function executeExport(ctx: Context, next: Next) {
             outputFiles[outputFiles.indexOf(filePath)] = zipPath;
           }
         } catch {}
+      }
+        }
       }
 
       await repo.update({

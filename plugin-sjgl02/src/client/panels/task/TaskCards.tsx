@@ -138,6 +138,19 @@ export function TaskSummaryCard({ task, api, tableTitles, fieldTitles }: any) {
         </div>
       )}
 
+      {!isImport && (
+        <div style={{ background: '#f0f7ff', borderRadius: 8, padding: 10, marginTop: 8, border: '1px solid #bae0ff' }}>
+          <Descriptions column={2} size="small">
+            <Descriptions.Item label="表头格式">
+              <Tag color="blue">{task.headerStyle === 'id' ? '字段标识' : task.headerStyle === 'title' ? '字段名' : '字段名(字段标识)'}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="包含附件">
+              <Tag color={task.includeAttachments ? '#059669' : '#9ca3af'}>{task.includeAttachments ? '✅ 是' : '— 否'}</Tag>
+            </Descriptions.Item>
+          </Descriptions>
+        </div>
+      )}
+
       {task.status === 'cancelled' && (
         <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6, padding: 12, marginTop: 12 }}>
           <span style={{ color: '#9a3412' }}>文件未生成 — 任务已取消，未生成文件</span>
@@ -269,6 +282,7 @@ export function RelationTablesCard({ task, tableTitles, assocFieldMap, api }: an
 export function ImportConfigCard({ task, fieldTitles }: any) {
   if (task.taskType !== 'import') return null;
   const modeLabels: Record<string, string> = { insert: '📗 新增(insert)', update: '📘 更新(update)', upsert: '📙 新增+更新(upsert)' };
+  const blankLabels: Record<string, string> = { update: '按Excel值更新', null: '按NULL更新', skip: '跳过' };
   const uniqueFields = task.uniqueFields || [];
   const requiredFields = (task.fieldMapping && typeof task.fieldMapping === 'object') ? Object.entries(task.fieldMapping).filter(([k, v]: any) => v && v !== '__ignore__' && v !== '__custom__').slice(0, 5).map(([k]: any) => k).filter((k: string) => k !== 'createdAt' && k !== 'updatedAt') : [];
 
@@ -288,6 +302,9 @@ export function ImportConfigCard({ task, fieldTitles }: any) {
             <Space wrap>{requiredFields.map((f: string) => <span key={f} style={{ color: '#dc2626' }}>⚠ <FieldTag name={f} title={fieldTitles[f]} /></span>)}</Space>
           </Descriptions.Item>
         )}
+        <Descriptions.Item label="空白单元格处理">
+          <Tag color="#1677ff">📝 {blankLabels[task.blankCellMode] || '按Excel值更新'}</Tag>
+        </Descriptions.Item>
       </Descriptions>
     </CardWrap>
   );
@@ -431,7 +448,7 @@ function ExportPreviewCard({ task, api, fieldTitles }: any) {
   const [previewRows, setPreviewRows] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!task.tableName || !api) return;
+    if (!task.tableName || !api || task.tableName === '__all__') return;
     api.request({
       url: `${task.tableName}:list`,
       method: 'get',

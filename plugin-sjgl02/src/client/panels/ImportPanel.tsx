@@ -78,6 +78,21 @@ export default function ImportPanel() {
   }, []);
 
   React.useEffect(() => {
+    if (!selectedTable?.name || !isAdminOrRoot) return;
+    const allOpts = permSourceOptions.length > 0 ? permSourceOptions : [];
+    if (allOpts.length === 0) return;
+    const filtered: any[] = [{ value: 'admin', label: '管理员完整权限', type: 'admin' }];
+    const promises = allOpts.filter(o => o.type !== 'admin').map(async (o) => {
+      try {
+        const res = await apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: o.type, targetId: o.id } });
+        const perms = (res?.custom || []).concat(res?.inherited || []);
+        if (perms.some((p: any) => p.tableName === selectedTable.name && p.canImport)) filtered.push(o);
+      } catch {}
+    });
+    Promise.all(promises).then(() => setPermSourceOptions(filtered));
+  }, [selectedTable?.name, isAdminOrRoot]);
+
+  React.useEffect(() => {
     if (selectedTable?.name) {
       client.request({ url: 'sjgl02Import:tableFields', method: 'get', params: { tableName: selectedTable.name } })
         .then((res: any) => {
@@ -390,7 +405,7 @@ export default function ImportPanel() {
                   {isAdminOrRoot && (
                     <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 8, marginTop: 4 }}>
                       <Space>
-                        <span style={{ color: '#999', fontSize: 12 }}>模拟方案：</span>
+                        <span style={{ color: '#999', fontSize: 12 }}>切换已配置的方案：</span>
                         <Select
                           value={permSource.type === 'admin' ? 'admin' : `${permSource.type}:${permSource.id}`}
                           onChange={handlePermSourceChange} style={{ minWidth: 200 }} size="small"

@@ -3,6 +3,7 @@ import { Tabs, Card } from 'antd';
 import { DatabaseOutlined } from '@ant-design/icons';
 import { BlockModel } from '@nocobase/client-v2';
 import { tExpr } from '../locale';
+import { VERSION } from '../../client/panels/shared';
 
 const ImportPanel = lazy(() => import('../../client/panels/ImportPanel'));
 const ExportPanel = lazy(() => import('../../client/panels/ExportPanel'));
@@ -14,7 +15,7 @@ export class SjglBlockModel extends BlockModel {
       <div style={{ padding: 16 }}>
         <div style={{ background: 'linear-gradient(135deg,#1677ff,#0958d9)', borderRadius: 10, padding: '10px 20px', color: '#fff', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontWeight: 600, fontSize: 16 }}>📊 数据管理</div>
-          <div style={{ opacity: 0.7, fontSize: 11 }}>@my-project/plugin-sjgl02</div>
+          <div style={{ opacity: 0.7, fontSize: 11 }}>@my-project/plugin-sjgl02 {VERSION}</div>
         </div>
         <Card style={{ borderRadius: 10, minHeight: 400 }}>
           <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: '#999' }}>加载中...</div>}>

@@ -212,6 +212,7 @@ export async function executeImport(ctx: Context, next: Next) {
       totalRows: 0,
       progress: 0,
       createdById: ctx.state.currentUser?.id,
+      blankCellMode: blankCellMode || 'update',
     },
   });
 
@@ -350,97 +351,128 @@ export async function executeImport(ctx: Context, next: Next) {
       }
     }
 
-    for (let i = 0; i < dataRows.length; i++) {
-      const rowIndex = i + 1;
-      try {
-        const record = makeRecord(dataRows[i]);
+    const BATCH_SIZE = 1000;
+    for (let batchStart = 0; batchStart < dataRows.length; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, dataRows.length);
+      const batchRows = dataRows.slice(batchStart, batchEnd);
+      const batchRecords: { idx: number; record: Record<string,any>; rowData: any[] }[] = [];
+
+      for (let bi = 0; bi < batchRows.length; bi++) {
+        const rowData = batchRows[bi];
+        const i = batchStart + bi;
+        const record = makeRecord(rowData);
         for (const fn of dateFieldNames) {
           const v = record[fn];
           if (typeof v === 'string') record[fn] = normalizeDateValue(v);
         }
-        if ((importMode === 'update' || importMode === 'upsert') && uniqueFields.length > 0) {
-          const allFilled = uniqueFields.every(uf => record[uf] !== undefined && record[uf] !== '');
-          if (allFilled) {
-            const ufKey = uniqueFields.map(uf => String(record[uf] || '')).join('||');
-            if (processedUniques.has(ufKey)) {
-              errorLogs.push({
-                row: rowIndex,
-                excelRow: (headerRow || 1) + rowIndex - 1,
-                reason: `唯一值字段组合重复 / Duplicate unique fields: ${uniqueFields.join('+')} = ${ufKey}`,
-                snapshot: buildSnapshot(dataRows[i]),
-              });
-              continue;
-            }
-            processedUniques.add(ufKey);
+        batchRecords.push({ idx: i, record, rowData });
+      }
+
+      if ((importMode === 'update' || importMode === 'upsert') && (uniqueFields?.length || 0) > 0) {
+        const batchFilters: Record<string, any>[] = [];
+        const validIdx: number[] = [];
+        for (const br of batchRecords) {
+          const allFilled = (uniqueFields || []).every(uf => br.record[uf] !== undefined && br.record[uf] !== '');
+          if (!allFilled) continue;
+          const ufKey = (uniqueFields || []).map(uf => String(br.record[uf] || '')).join('||');
+          if (processedUniques.has(ufKey)) {
+            errorLogs.push({
+              row: br.idx + 1, excelRow: (headerRow || 1) + br.idx,
+              reason: `唯一值字段组合重复: ${(uniqueFields||[]).join('+')} = ${ufKey}`,
+              snapshot: buildSnapshot(br.rowData),
+            });
+            continue;
           }
-        }
-        if (importMode === 'update' || importMode === 'upsert') {
-          const uFields = uniqueFields || [];
-          if (uFields.length === 0) {
-            if (importMode === 'update') {
-              errorLogs.push({
-                row: rowIndex,
-                excelRow: (headerRow || 1) + rowIndex - 1,
-                reason: '更新模式未配置唯一值字段，无法匹配已有记录',
-                snapshot: buildSnapshot(dataRows[i]),
-              });
-              continue;
-            }
-          } else {
-            const filter: Record<string, any> = {};
-          for (const uf of uFields) {
-            if (record[uf] !== undefined && record[uf] !== '') filter[uf] = record[uf];
+          processedUniques.add(ufKey);
+          const filter: Record<string, any> = {};
+          for (const uf of (uniqueFields || [])) {
+            if (br.record[uf] !== undefined && br.record[uf] !== '') filter[uf] = br.record[uf];
           }
           if (Object.keys(filter).length > 0) {
-            const [existingRecords, matchCount] = await targetRepo.findAndCount({ filter, limit: 2, transaction });
-            if (matchCount > 1) {
-              errorLogs.push({
-                row: rowIndex,
-                excelRow: (headerRow || 1) + rowIndex - 1,
-                reason: `唯一值匹配到 ${matchCount} 条记录，无法确定更新目标 (Ambiguous: ${matchCount} records matched unique fields)`,
-                snapshot: buildSnapshot(dataRows[i]),
-              });
-              continue;
-            }
-            if (matchCount === 1) {
-              applyBelongsToFK(record, i);
-              await targetRepo.update({ filterByTk: existingRecords[0].id, values: record, transaction, context: ctx });
-              processedRows++;
-              continue;
-            }
-          } else {
-            if (importMode === 'update') {
-              errorLogs.push({
-                row: rowIndex,
-                excelRow: (headerRow || 1) + rowIndex - 1,
-                reason: '唯一值字段在数据行中未找到值，无法匹配',
-                snapshot: buildSnapshot(dataRows[i]),
-              });
-              continue;
-            }
-          }
+            batchFilters.push(filter);
+            validIdx.push(br.idx);
           }
         }
-        if (importMode === 'insert' || importMode === 'upsert') {
-          applyBelongsToFK(record, i);
-          await targetRepo.create({ values: record, transaction, context: ctx });
-          processedRows++;
-        } else if (importMode === 'update') {
-          errorLogs.push({
-            row: rowIndex,
-            excelRow: (headerRow || 1) + rowIndex - 1,
-            reason: '未匹配到已有记录（更新模式）',
-            snapshot: buildSnapshot(dataRows[i]),
+        if (batchFilters.length > 0) {
+          const allExisting = await targetRepo.find({
+            filter: { $or: batchFilters },
+            limit: batchFilters.length * 2,
+            transaction,
           });
+          for (let fi = 0; fi < validIdx.length; fi++) {
+            const br = batchRecords.find(b => b.idx === validIdx[fi]);
+            if (!br) continue;
+            const filter = batchFilters[fi];
+            const matched = allExisting.filter(er => {
+              return Object.keys(filter).every(k => er[k] !== undefined && String(er[k]) === String(filter[k]));
+            });
+            if (matched.length > 1) {
+              errorLogs.push({
+                row: br.idx + 1, excelRow: (headerRow || 1) + br.idx,
+                reason: `唯一值匹配到 ${matched.length} 条记录`,
+                snapshot: buildSnapshot(br.rowData),
+              });
+            } else if (matched.length === 1) {
+              br.record._existingId = matched[0].id;
+            }
+          }
         }
-      } catch (rowErr: any) {
-        errorLogs.push({
-          row: rowIndex,
-          excelRow: (headerRow || 1) + rowIndex - 1,
-          reason: rowErr.message || String(rowErr),
-          snapshot: buildSnapshot(dataRows[i]),
-        });
       }
+
+      const toCreateRows: Record<string, any>[] = [];
+      const toUpdatePromises: Promise<void>[] = [];
+
+      for (const br of batchRecords) {
+        const rowIndex = br.idx + 1;
+        try {
+          const record = br.record;
+          if (record._existingId !== undefined) {
+            const eid = record._existingId;
+            delete record._existingId;
+            applyBelongsToFK(record, br.idx);
+            toUpdatePromises.push((async () => {
+              await targetRepo.update({ filterByTk: eid, values: record, transaction, context: ctx });
+              processedRows++;
+            })());
+            continue;
+          }
+
+          if ((importMode === 'update' || importMode === 'upsert') && (uniqueFields?.length || 0) > 0) {
+            const uFields = uniqueFields || [];
+            if (uFields.length === 0) {
+              if (importMode === 'update') {
+                errorLogs.push({ row: rowIndex, excelRow: (headerRow||1)+br.idx, reason: '更新模式未配置唯一值字段' });
+                continue;
+              }
+            }
+            if (importMode === 'update') {
+              errorLogs.push({ row: rowIndex, excelRow: (headerRow||1)+br.idx, reason: '未匹配到已有记录（更新模式）' });
+              continue;
+            }
+          }
+          if (importMode === 'insert' || importMode === 'upsert') {
+            applyBelongsToFK(record, br.idx);
+            toCreateRows.push(record);
+            processedRows++;
+          }
+        } catch (rowErr: any) {
+          errorLogs.push({ row: rowIndex, excelRow: (headerRow||1)+br.idx, reason: rowErr.message || String(rowErr), snapshot: buildSnapshot(br.rowData) });
+        }
+      }
+
+      if (toCreateRows.length > 0) {
+        try {
+          await targetRepo.create({ values: toCreateRows, transaction, context: ctx });
+        } catch (createErr: any) {
+          for (const cr of toCreateRows) {
+            errorLogs.push({ reason: createErr.message || String(createErr) });
+          }
+        }
+      }
+      await Promise.all(toUpdatePromises);
+
+      const batchProgress = Math.min(100, Math.floor((batchEnd * 100) / dataRows.length));
+      try { await repo.update({ filterByTk: task.id, values: { processedRows, progress: batchProgress }, transaction }); } catch {}
     }
 
     if (errorLogs.length > 0) {

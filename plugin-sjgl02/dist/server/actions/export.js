@@ -85,7 +85,7 @@ function getCollDisplayName(coll, style) {
   return title !== rawName ? `${title}(${rawName})` : rawName;
 }
 function ensureUniqueSheetName(workbook, name) {
-  const existing = new Set(workbook.worksheets.map((s) => s.name));
+  const existing = new Set((workbook.worksheets || []).map((s) => s.name));
   if (!existing.has(name)) return name;
   let i = 1;
   while (existing.has(`${name}_${i}`)) i++;
@@ -255,7 +255,8 @@ async function executeExport(ctx, next) {
       totalRows: 0,
       progress: 0,
       fileName: tableName === "__all__" ? `\u5168\u90E8\u6570\u636E\u8868_${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.zip` : "",
-      createdById: (_a = ctx.state.currentUser) == null ? void 0 : _a.id
+      createdById: (_a = ctx.state.currentUser) == null ? void 0 : _a.id,
+      headerStyle: headerStyle || "title_id"
     }
   });
   await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u51FA\u4EFB\u52A1");
@@ -310,184 +311,204 @@ async function executeExport(ctx, next) {
         }
       } catch {
       }
-      const queryOpts = { filter: exportFilter || {}, limit: 2e4 };
-      if (appendFields.length > 0) queryOpts.appends = appendFields;
       try {
-        const [found, count] = await targetRepo.findAndCount(queryOpts);
-        records = found;
-        collectionTotal = count;
+        const [, c] = await targetRepo.findAndCount({ filter: exportFilter || {}, limit: 1 });
+        collectionTotal = c;
       } catch {
-        try {
-          records = await targetRepo.find({ filter: exportFilter || {}, limit: 2e4 });
-          collectionTotal = records.length;
-        } catch {
-          continue;
-        }
       }
+      if (collectionTotal === 0) continue;
       const fieldNames = selectedFields && selectedFields.length > 0 ? selectedFields : getScalarFields(coll);
-      if (fieldNames.length === 0 && records[0]) {
-        fieldNames.push(...Object.keys(records[0]).filter((k) => !k.startsWith("_")));
-      }
-      if (records.length === 0 && fieldNames.length === 0) continue;
-      const workbook = new import_exceljs.default.Workbook();
-      workbook.creator = "NocoBase @my-project/plugin-sjgl02";
-      const mainSheet = workbook.addWorksheet(ensureUniqueSheetName(workbook, sanitizeSheetName(getCollDisplayName(coll, headerStyle))));
+      if (!fieldNames || fieldNames.length === 0) continue;
+      const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, "_");
+      const xlsxName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.xlsx", "");
+      const filePath = import_path.default.join(tempDir, xlsxName);
+      const streamWriter = new import_exceljs.default.stream.xlsx.WorkbookWriter({
+        filename: filePath,
+        useStyles: true,
+        useSharedStrings: true
+      });
+      streamWriter.creator = "NocoBase @my-project/plugin-sjgl02";
+      const mainSheet = streamWriter.addWorksheet(
+        ensureUniqueSheetName(streamWriter, sanitizeSheetName(getCollDisplayName(coll, headerStyle)))
+      );
       mainSheet.columns = fieldNames.map((name) => ({
         header: getFieldDisplayName(coll, name, headerStyle),
         key: name,
         width: Math.max(getFieldDisplayName(coll, name, headerStyle).length + 4, 20)
       }));
-      const headerRow = mainSheet.getRow(1);
-      headerRow.font = { bold: true };
-      headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
-      const fileIdFilenameMap = /* @__PURE__ */ new Map();
-      const attachedIds = /* @__PURE__ */ new Set();
-      const attachFieldMap = /* @__PURE__ */ new Map();
-      if (includeAttachments && (attachmentFieldNames.length > 0 || fileIdFieldNames.length > 0)) {
-        for (const record of records) {
-          for (const afName of attachmentFieldNames) {
-            const av = record[afName];
-            if (Array.isArray(av)) {
-              for (const a of av) {
-                if ((a == null ? void 0 : a.id) && !attachedIds.has(a.id)) {
-                  attachedIds.add(a.id);
-                  attachFieldMap.set(a.id, afName);
-                }
-              }
+      mainSheet.getRow(1).font = { bold: true };
+      mainSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+      const PAGE_SIZE = 5e3;
+      let offset = 0;
+      while (offset < collectionTotal) {
+        const pageRecords = await targetRepo.find({
+          filter: exportFilter || {},
+          offset,
+          limit: PAGE_SIZE,
+          ...appendFields.length > 0 ? { appends: appendFields } : {}
+        });
+        if (pageRecords.length === 0) break;
+        for (const record of pageRecords) {
+          const row = {};
+          for (const f of fieldNames) {
+            let val = record[f];
+            if (attachmentFieldNames.includes(f)) {
+              if (Array.isArray(val) && val.length > 0) {
+                val = val.map((a) => a.filename || a.title || a.id || "").join(", ");
+              } else val = "";
+            } else if (fileIdFieldNames.includes(f)) {
+              val = val !== null && val !== void 0 ? String(val) : "";
+            } else if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
+              val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
             }
+            row[f] = formatValue(val);
           }
-          for (const ffName of fileIdFieldNames) {
-            const fid = record[ffName];
-            if (fid && !attachedIds.has(fid)) {
-              attachedIds.add(fid);
-              attachFieldMap.set(fid, ffName);
-            }
-          }
+          mainSheet.addRow(row).commit();
+          processedRows++;
+          totalRows++;
         }
-        if (attachedIds.size > 0) {
-          try {
-            const attachRepo2 = ctx.db.getRepository("attachments");
-            const attachRecords = await attachRepo2.find({ filter: { id: Array.from(attachedIds) } });
-            for (const at of attachRecords) {
-              if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
-            }
-          } catch {
-          }
+        offset += PAGE_SIZE;
+        const progress2 = Math.min(100, Math.floor(offset * 100 / Math.max(1, collectionTotal)));
+        try {
+          await repo.update({ filterByTk: task.id, values: { processedRows, totalRows, progress: progress2 } });
+        } catch {
         }
-      }
-      for (const record of records) {
-        const row = {};
-        for (const f of fieldNames) {
-          let val = record[f];
-          if (attachmentFieldNames.includes(f)) {
-            if (Array.isArray(val) && val.length > 0) {
-              val = val.map((a) => a.filename || a.title || a.id || "").join(", ");
-            } else {
-              val = "";
-            }
-          } else if (fileIdFieldNames.includes(f)) {
-            val = fileIdFilenameMap.get(val) || String(val || "");
-          } else if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
-            val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
-          }
-          row[f] = formatValue(val);
-        }
-        mainSheet.addRow(row);
-        totalRows++;
-        processedRows++;
       }
       if (includeAssociationSheet) {
         const assocFields = getAssociationFields(coll);
-        const exportAssocFields = assocFields.filter(
-          (af) => !fieldNames || fieldNames.length === 0 || fieldNames.includes(af.name)
-        );
-        for (const af of exportAssocFields) {
+        for (const af of assocFields.filter((af2) => !fieldNames.length || fieldNames.includes(af2.name))) {
           const assocRepo = ctx.db.getRepository(af.target);
           if (!assocRepo) continue;
-          let assocRecords = [];
+          let assocTotal = 0;
           try {
-            assocRecords = await assocRepo.find({ limit: 5e3 });
+            const [, cnt] = await assocRepo.findAndCount({ limit: 1 });
+            assocTotal = cnt;
           } catch {
-            continue;
           }
-          if (assocRecords.length === 0) continue;
-          const assocScalarFields = getScalarFields(ctx.db.getCollection(af.target));
-          if (assocScalarFields.length === 0 && assocRecords[0]) {
-            assocScalarFields.push(...Object.keys(assocRecords[0]).filter((k) => !k.startsWith("_")));
-          }
+          if (assocTotal === 0) continue;
           const assocColl = ctx.db.getCollection(af.target);
+          const assocScalarFields = getScalarFields(assocColl);
+          if (!assocScalarFields || assocScalarFields.length === 0) continue;
           const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
-          const collDisplay2 = getCollDisplayName(assocColl, headerStyle);
-          const sheetName = ensureUniqueSheetName(workbook, sanitizeSheetName(fieldDisplay + "-" + collDisplay2).substring(0, 31));
-          const assocSheet = workbook.addWorksheet(sheetName);
+          const sheetDisplay = getCollDisplayName(assocColl, headerStyle);
+          const sheetName = ensureUniqueSheetName(streamWriter, sanitizeSheetName(fieldDisplay + "-" + sheetDisplay).substring(0, 31));
+          const assocSheet = streamWriter.addWorksheet(sheetName);
           assocSheet.columns = assocScalarFields.map((n) => ({
             header: getFieldDisplayName(assocColl, n, headerStyle),
             key: n,
             width: Math.max(getFieldDisplayName(assocColl, n, headerStyle).length + 4, 20)
           }));
-          const ahRow = assocSheet.getRow(1);
-          ahRow.font = { bold: true };
-          ahRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } };
-          for (const rec of assocRecords) {
-            const row = {};
-            for (const f of assocScalarFields) {
-              let val = rec[f];
-              if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
-                val = val.nickname || val.title || val.name || (val.id !== void 0 && val.id !== null ? val.id : JSON.stringify(val));
+          assocSheet.getRow(1).font = { bold: true };
+          assocSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } };
+          let aOff = 0;
+          while (aOff < assocTotal) {
+            const aRecs = await assocRepo.find({ offset: aOff, limit: PAGE_SIZE });
+            for (const rec of aRecs) {
+              const row = {};
+              for (const f of assocScalarFields) {
+                let val = rec[f];
+                if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date))
+                  val = val.nickname || val.title || val.name || val.id || JSON.stringify(val);
+                row[f] = formatValue(val);
               }
-              row[f] = formatValue(val);
+              assocSheet.addRow(row).commit();
+              totalRows++;
+              processedRows++;
             }
-            assocSheet.addRow(row);
-            totalRows++;
-            processedRows++;
-          }
-        }
-      }
-      const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, "_");
-      const xlsxName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.xlsx", "");
-      const filePath = import_path.default.join(tempDir, xlsxName);
-      await workbook.xlsx.writeFile(filePath);
-      outputFiles.push(filePath);
-      if (includeAttachments && attachedIds.size > 0 && fileIdFilenameMap.size > 0) {
-        try {
-          const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
-          const attachmentFiles = [];
-          for (const [aid, fn] of fileIdFilenameMap) {
-            const diskPath = import_path.default.join(storageDir, fn);
-            let realPath = diskPath;
-            if (!import_fs.default.existsSync(realPath)) {
-              const atRecords = await ctx.db.getRepository("attachments").find({ filter: { id: [aid] } });
-              if (((_d = atRecords[0]) == null ? void 0 : _d.path) !== void 0) {
-                realPath = import_path.default.join(storageDir, atRecords[0].path || "", fn);
-              }
-            }
-            if (!import_fs.default.existsSync(realPath)) continue;
-            const afName = attachFieldMap.get(aid) || "\u9644\u4EF6";
-            const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
-            attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
-          }
-          if (attachmentFiles.length > 0) {
-            const zipName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.zip", "");
-            const zipPath = import_path.default.join(tempDir, zipName);
-            const zipOutput = import_fs.default.createWriteStream(zipPath);
-            const zipArchive = (0, import_archiver.default)("zip", { zlib: { level: 9 } });
-            await new Promise((resolve, reject) => {
-              zipArchive.on("error", reject);
-              zipOutput.on("close", resolve);
-              zipArchive.pipe(zipOutput);
-              zipArchive.file(filePath, { name: import_path.default.basename(filePath) });
-              for (const af of attachmentFiles) {
-                zipArchive.file(af.diskPath, { name: af.entryName });
-              }
-              zipArchive.finalize();
-            });
+            aOff += PAGE_SIZE;
+            const ap = Math.min(100, Math.floor(aOff * 100 / Math.max(1, assocTotal)));
             try {
-              import_fs.default.unlinkSync(filePath);
+              await repo.update({ filterByTk: task.id, values: { processedRows, totalRows, progress: Math.max(ap, progress || 0) } });
             } catch {
             }
-            outputFiles[outputFiles.indexOf(filePath)] = zipPath;
           }
-        } catch {
+          assocSheet.commit();
+        }
+      }
+      mainSheet.commit();
+      await streamWriter.commit();
+      outputFiles.push(filePath);
+      if (includeAttachments && (attachmentFieldNames.length > 0 || fileIdFieldNames.length > 0)) {
+        const attachIds = /* @__PURE__ */ new Set();
+        const attachFieldMap = /* @__PURE__ */ new Map();
+        let aScanOff = 0;
+        while (aScanOff < collectionTotal) {
+          const pr = await targetRepo.find({
+            filter: exportFilter || {},
+            offset: aScanOff,
+            limit: PAGE_SIZE,
+            ...appendFields.length > 0 ? { appends: appendFields } : {}
+          });
+          for (const r of pr) {
+            for (const an of attachmentFieldNames) {
+              if (Array.isArray(r[an])) {
+                for (const a of r[an]) if ((a == null ? void 0 : a.id) && !attachIds.has(a.id)) {
+                  attachIds.add(a.id);
+                  attachFieldMap.set(a.id, an);
+                }
+              }
+            }
+            for (const fn of fileIdFieldNames) {
+              const fid = r[fn];
+              if (fid && !attachIds.has(fid)) {
+                attachIds.add(fid);
+                attachFieldMap.set(fid, fn);
+              }
+            }
+          }
+          aScanOff += PAGE_SIZE;
+        }
+        if (attachIds.size > 0) {
+          const fileIdFilenameMap = /* @__PURE__ */ new Map();
+          try {
+            const ar = await ctx.db.getRepository("attachments").find({ filter: { id: Array.from(attachIds) } });
+            ar.forEach((at) => {
+              if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
+            });
+          } catch {
+          }
+          if (fileIdFilenameMap.size > 0) {
+            try {
+              const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
+              const attachmentFiles = [];
+              for (const [aid, fn] of fileIdFilenameMap) {
+                const diskPath = import_path.default.join(storageDir, fn);
+                let realPath = diskPath;
+                if (!import_fs.default.existsSync(realPath)) {
+                  const atRecords = await ctx.db.getRepository("attachments").find({ filter: { id: [aid] } });
+                  if (((_d = atRecords[0]) == null ? void 0 : _d.path) !== void 0) {
+                    realPath = import_path.default.join(storageDir, atRecords[0].path || "", fn);
+                  }
+                }
+                if (!import_fs.default.existsSync(realPath)) continue;
+                const afName = attachFieldMap.get(aid) || "\u9644\u4EF6";
+                const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
+                attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
+              }
+              if (attachmentFiles.length > 0) {
+                const zipName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.zip", "");
+                const zipPath = import_path.default.join(tempDir, zipName);
+                const zipOutput = import_fs.default.createWriteStream(zipPath);
+                const zipArchive = (0, import_archiver.default)("zip", { zlib: { level: 9 } });
+                await new Promise((resolve, reject) => {
+                  zipArchive.on("error", reject);
+                  zipOutput.on("close", resolve);
+                  zipArchive.pipe(zipOutput);
+                  zipArchive.file(filePath, { name: import_path.default.basename(filePath) });
+                  for (const af of attachmentFiles) {
+                    zipArchive.file(af.diskPath, { name: af.entryName });
+                  }
+                  zipArchive.finalize();
+                });
+                try {
+                  import_fs.default.unlinkSync(filePath);
+                } catch {
+                }
+                outputFiles[outputFiles.indexOf(filePath)] = zipPath;
+              }
+            } catch {
+            }
+          }
         }
       }
       await repo.update({

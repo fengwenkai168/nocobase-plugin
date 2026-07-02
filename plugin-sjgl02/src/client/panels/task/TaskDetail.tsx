@@ -92,7 +92,7 @@ export function TaskDetail({ api, task, open, onClose, tableTitles }: any) {
   if (!open) return null;
 
   return (
-    <Drawer title={detail ? `任务 #${detail.id}` : '任务详情'} open={open} onClose={onClose} width={700} destroyOnClose>
+    <Drawer title={detail ? `任务 #${detail.id}` : '任务详情'} open={open} onClose={onClose} width={1024} destroyOnClose>
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>
       ) : detail ? (
