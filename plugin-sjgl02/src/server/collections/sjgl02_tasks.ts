@@ -12,6 +12,7 @@ export default defineCollection({
       uiSchema: { enum: [{ value: 'import', label: '导入' }, { value: 'export', label: '导出' }] },
     },
     { type: 'string', name: 'tableName' },
+    { type: 'string', name: 'fileName' },
     {
       interface: 'select',
       type: 'string',

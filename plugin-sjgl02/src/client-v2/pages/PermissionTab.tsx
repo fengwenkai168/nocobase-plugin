@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Card, Row, Col, Select, Tag, Button, Space, Switch, Checkbox, Popconfirm,
-  Modal, Form, Input, message, Empty, Radio, Spin, Pagination, Alert, Table, Descriptions,
+  Modal, Form, Input, Empty, Radio, Spin, Pagination, Alert, Table, Descriptions, App,
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useAPI } from '../utils/api';
@@ -10,6 +10,7 @@ import { useTargetList, useTableList, useViewScope, usePermissions, usePermissio
 
 export default function PermissionTab() {
   const api = useAPI();
+  const { message } = App.useApp();
   const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const [selectedTarget, setSelectedTarget] = useState<any>(null);
   const [searchText, setSearchText] = useState('');

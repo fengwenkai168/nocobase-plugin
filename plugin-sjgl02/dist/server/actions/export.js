@@ -50,6 +50,7 @@ var import_path = __toESM(require("path"));
 var import_archiver = __toESM(require("archiver"));
 var import_async_mutex = require("async-mutex");
 var import_permission_check = require("./permission-check");
+var import_taskLogs = require("./taskLogs");
 const exportMutex = new import_async_mutex.Mutex();
 function sanitizeSheetName(name) {
   return name.replace(/[\\\/\*\?\[\]:!@#\$%\^&\(\)]/g, "_").substring(0, 31);
@@ -60,21 +61,27 @@ function formatFileName(template, tableName) {
   const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
   return template.replace(/\{表名\}/g, tableName).replace(/\{日期\}/g, date);
 }
-function getFieldDisplayName(coll, fieldName) {
+function getFieldDisplayName(coll, fieldName, style) {
   var _a, _b;
   try {
     const f = coll.fields instanceof Map ? coll.fields.get(fieldName) : null;
     const title = (_b = (_a = f == null ? void 0 : f.options) == null ? void 0 : _a.uiSchema) == null ? void 0 : _b.title;
-    if (title && !/^\{\{/.test(title)) return `${title}(${fieldName})`;
+    if (title && !/^\{\{/.test(title)) {
+      if (style === "id") return fieldName;
+      if (style === "title") return title;
+      return `${title}(${fieldName})`;
+    }
   } catch {
   }
   return fieldName;
 }
-function getCollDisplayName(coll) {
+function getCollDisplayName(coll, style) {
   var _a;
   const rawName = (coll == null ? void 0 : coll.name) || "";
   let title = ((_a = coll == null ? void 0 : coll.options) == null ? void 0 : _a.title) || rawName;
   if (/^\{\{/.test(title)) title = rawName;
+  if (style === "id") return rawName;
+  if (style === "title") return title;
   return title !== rawName ? `${title}(${rawName})` : rawName;
 }
 function ensureUniqueSheetName(workbook, name) {
@@ -194,7 +201,7 @@ async function previewCount(ctx, next) {
   await next();
 }
 async function executeExport(ctx, next) {
-  var _a, _b, _c, _d, _e;
+  var _a, _b, _c, _d;
   const params = ctx.action.params.values || ctx.action.params;
   const {
     tableName,
@@ -204,7 +211,8 @@ async function executeExport(ctx, next) {
     associationSheetTables,
     filter,
     fileNameTemplate,
-    includeAttachments
+    includeAttachments,
+    headerStyle
   } = params;
   const exportFilter = (() => {
     if (!filter) return {};
@@ -246,9 +254,12 @@ async function executeExport(ctx, next) {
       includeAttachments: includeAttachments || false,
       totalRows: 0,
       progress: 0,
+      fileName: tableName === "__all__" ? `\u5168\u90E8\u6570\u636E\u8868_${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.zip` : "",
       createdById: (_a = ctx.state.currentUser) == null ? void 0 : _a.id
     }
   });
+  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u51FA\u4EFB\u52A1");
+  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}${tableName === "__all__" ? "\uFF08\u5168\u90E8\u6570\u636E\u8868\uFF09" : ""}`);
   const release = await exportMutex.acquire();
   try {
     const isAllTables = tableName === "__all__";
@@ -320,11 +331,11 @@ async function executeExport(ctx, next) {
       if (records.length === 0 && fieldNames.length === 0) continue;
       const workbook = new import_exceljs.default.Workbook();
       workbook.creator = "NocoBase @my-project/plugin-sjgl02";
-      const mainSheet = workbook.addWorksheet(ensureUniqueSheetName(workbook, sanitizeSheetName(getCollDisplayName(coll))));
+      const mainSheet = workbook.addWorksheet(ensureUniqueSheetName(workbook, sanitizeSheetName(getCollDisplayName(coll, headerStyle))));
       mainSheet.columns = fieldNames.map((name) => ({
-        header: getFieldDisplayName(coll, name),
+        header: getFieldDisplayName(coll, name, headerStyle),
         key: name,
-        width: Math.max(getFieldDisplayName(coll, name).length + 4, 20)
+        width: Math.max(getFieldDisplayName(coll, name, headerStyle).length + 4, 20)
       }));
       const headerRow = mainSheet.getRow(1);
       headerRow.font = { bold: true };
@@ -377,8 +388,7 @@ async function executeExport(ctx, next) {
           } else if (fileIdFieldNames.includes(f)) {
             val = fileIdFilenameMap.get(val) || String(val || "");
           } else if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
-            const targetTitleField = ((_d = coll.options) == null ? void 0 : _d.titleField) || "id";
-            val = val[targetTitleField] || val.id || JSON.stringify(val);
+            val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
           }
           row[f] = formatValue(val);
         }
@@ -406,14 +416,14 @@ async function executeExport(ctx, next) {
             assocScalarFields.push(...Object.keys(assocRecords[0]).filter((k) => !k.startsWith("_")));
           }
           const assocColl = ctx.db.getCollection(af.target);
-          const fieldDisplay = getFieldDisplayName(coll, af.name);
-          const collDisplay2 = getCollDisplayName(assocColl);
+          const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
+          const collDisplay2 = getCollDisplayName(assocColl, headerStyle);
           const sheetName = ensureUniqueSheetName(workbook, sanitizeSheetName(fieldDisplay + "-" + collDisplay2).substring(0, 31));
           const assocSheet = workbook.addWorksheet(sheetName);
           assocSheet.columns = assocScalarFields.map((n) => ({
-            header: getFieldDisplayName(assocColl, n),
+            header: getFieldDisplayName(assocColl, n, headerStyle),
             key: n,
-            width: Math.max(getFieldDisplayName(assocColl, n).length + 4, 20)
+            width: Math.max(getFieldDisplayName(assocColl, n, headerStyle).length + 4, 20)
           }));
           const ahRow = assocSheet.getRow(1);
           ahRow.font = { bold: true };
@@ -433,7 +443,7 @@ async function executeExport(ctx, next) {
           }
         }
       }
-      const collDisplay = sanitizeSheetName(getCollDisplayName(coll)).replace(/\s+/g, "_");
+      const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, "_");
       const xlsxName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.xlsx", "");
       const filePath = import_path.default.join(tempDir, xlsxName);
       await workbook.xlsx.writeFile(filePath);
@@ -447,13 +457,13 @@ async function executeExport(ctx, next) {
             let realPath = diskPath;
             if (!import_fs.default.existsSync(realPath)) {
               const atRecords = await ctx.db.getRepository("attachments").find({ filter: { id: [aid] } });
-              if (((_e = atRecords[0]) == null ? void 0 : _e.path) !== void 0) {
+              if (((_d = atRecords[0]) == null ? void 0 : _d.path) !== void 0) {
                 realPath = import_path.default.join(storageDir, atRecords[0].path || "", fn);
               }
             }
             if (!import_fs.default.existsSync(realPath)) continue;
             const afName = attachFieldMap.get(aid) || "\u9644\u4EF6";
-            const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName));
+            const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
             attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
           }
           if (attachmentFiles.length > 0) {
@@ -535,10 +545,14 @@ async function executeExport(ctx, next) {
         processedRows,
         totalRows,
         exportFileId: exportAttachment.id,
+        fileName: exportAttachment.filename || exportAttachment.title || "",
         completedAt: /* @__PURE__ */ new Date()
       }
     });
+    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "SUCC", `\u5BFC\u51FA\u5B8C\u6210\uFF0C\u5171 ${processedRows} \u884C\u6570\u636E`);
   } catch (err) {
+    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "ERROR", `\u5BFC\u51FA\u5931\u8D25: ${err.message || String(err)}`);
+    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "WARN", "\u6587\u4EF6\u672A\u751F\u6210\uFF0C\u6570\u636E\u672A\u4FEE\u6539");
     await repo.update({
       filterByTk: task.id,
       values: {
@@ -598,4 +612,6 @@ async function downloadExport(ctx, next) {
   downloadExport,
   executeExport,
   getExportTableFields,
-  
+  getProgress,
+  previewCount
+});

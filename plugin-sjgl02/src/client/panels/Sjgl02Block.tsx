@@ -1,13 +1,9 @@
 import React from 'react';
-import { useAPIClient } from '@nocobase/client';
-import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, message, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload, Pagination, Alert } from 'antd';
-import { InboxOutlined, TableOutlined } from '@ant-design/icons';
-import { VERSION, apiRequest } from './shared';
+import { Tabs } from 'antd';
+import { VERSION } from './shared';
 import ImportPanel from './ImportPanel';
 import ExportPanel from './ExportPanel';
 import TaskPanel from './TaskPanel';
-
-const { Dragger } = Upload;
 
 export default function Sjgl02Block() {
   return (

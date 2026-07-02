@@ -11,8 +11,8 @@ export interface TablePermission {
   requiredFields: string[];
 }
 
-export async function checkImportPermission(ctx: Context, tableName: string): Promise<TablePermission> {
-  return checkTablePermission(ctx, tableName, 'import');
+export async function checkImportPermission(ctx: Context, tableName: string, permSource?: { type: string; id?: string } | null): Promise<TablePermission> {
+  return checkTablePermission(ctx, tableName, 'import', permSource);
 }
 
 export async function checkExportPermission(ctx: Context, tableName: string): Promise<TablePermission> {
@@ -23,6 +23,7 @@ async function checkTablePermission(
   ctx: Context,
   tableName: string,
   actionType: 'import' | 'export',
+  permSource?: { type: string; id?: string } | null,
 ): Promise<TablePermission> {
   const currentUser = ctx.state.currentUser;
   if (!currentUser) {
@@ -30,6 +31,29 @@ async function checkTablePermission(
   }
 
   const permRepo = ctx.db.getRepository('sjgl02_table_permissions');
+
+  if (permSource && permSource.id) {
+    const targetPerm = await permRepo.findOne({
+      filter: { targetType: permSource.type, targetId: permSource.type === 'user' ? String(permSource.id) : permSource.id, tableName },
+    });
+    if (targetPerm) {
+      const fieldName = actionType === 'import' ? 'canImport' : 'canExport';
+      if (!targetPerm[fieldName]) {
+        ctx.throw(403, `所选权限方案没有对数据表「${tableName}」的${actionType === 'import' ? '导入' : '导出'}权限`);
+      }
+      return {
+        canImport: targetPerm.canImport ?? false,
+        canExport: targetPerm.canExport ?? false,
+        importMode: Array.isArray(targetPerm.importMode) ? targetPerm.importMode : [targetPerm.importMode || 'insert'],
+        importFields: targetPerm.importFields || [],
+        exportFields: targetPerm.exportFields || [],
+        exportFilter: targetPerm.exportFilter || null,
+        uniqueFields: targetPerm.uniqueFields || [],
+        requiredFields: targetPerm.requiredFields || [],
+      };
+    }
+    ctx.throw(403, `所选权限方案没有对数据表「${tableName}」的${actionType === 'import' ? '导入' : '导出'}权限`);
+  }
 
   const userRepo = ctx.db.getRepository('users');
   let user: any = null;

@@ -46,6 +46,7 @@ var XLSX = __toESM(require("xlsx"));
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 var import_permission_check = require("./permission-check");
+var import_taskLogs = require("./taskLogs");
 async function getTableFields(ctx, next) {
   var _a;
   const { tableName } = ctx.action.params;
@@ -80,6 +81,7 @@ async function getTableFields(ctx, next) {
     return {
       name: f.name,
       type: f.type,
+      target: f.target || null,
       uiSchema: { ...((_c = f.options) == null ? void 0 : _c.uiSchema) || {}, title },
       interface: ((_d = f.options) == null ? void 0 : _d.interface) || null,
       isRequired: autoFields.includes(f.name) ? false : ((_e = f.options) == null ? void 0 : _e.allowNull) === false,
@@ -144,11 +146,12 @@ async function uploadParse(ctx, next) {
   await next();
 }
 async function preview(ctx, next) {
-  var _a, _b, _c, _d;
-  const p = ctx.action.params;
-  const fileId = p.fileId || ((_a = ctx.request.query) == null ? void 0 : _a.fileId) || ((_b = ctx.query) == null ? void 0 : _b.fileId);
-  const sheetName = p.sheetName || ((_c = ctx.request.query) == null ? void 0 : _c.sheetName);
-  const headerRow = p.headerRow || ((_d = ctx.request.query) == null ? void 0 : _d.headerRow);
+  var _a, _b, _c, _d, _e;
+  const params = ctx.action.params.values || ctx.action.params;
+  const fileId = params.fileId || ((_a = ctx.request.query) == null ? void 0 : _a.fileId) || ((_b = ctx.query) == null ? void 0 : _b.fileId);
+  const sheetName = params.sheetName || ((_c = ctx.request.query) == null ? void 0 : _c.sheetName);
+  const headerRow = params.headerRow || ((_d = ctx.request.query) == null ? void 0 : _d.headerRow);
+  const previewLimit = parseInt(params.previewLimit || ((_e = ctx.request.query) == null ? void 0 : _e.previewLimit) || "10", 10) || 10;
   if (!fileId) {
     ctx.throw(400, "fileId is required");
   }
@@ -175,7 +178,7 @@ async function preview(ctx, next) {
     const hRow = Math.max(0, (parseInt(String(headerRow), 10) || 1) - 1);
     const headers = (allRows[hRow] || []).map((h) => String(h));
     const dataRows = allRows.slice(hRow + 1).filter((r) => r.some((c) => c !== ""));
-    const previewRows = dataRows.slice(0, 10).map((row) => {
+    const previewRows = dataRows.slice(0, previewLimit).map((row) => {
       const obj = {};
       headers.forEach((h, i) => {
         obj[h] = row[i] !== void 0 ? row[i] : "";
@@ -196,7 +199,7 @@ async function preview(ctx, next) {
 async function executeImport(ctx, next) {
   var _a, _b;
   const params = ctx.action.params.values || ctx.action.params;
-  const { tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields } = params;
+  const { tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields, blankCellMode, permSource } = params;
   if (!tableName || !fileId) {
     ctx.throw(400, "tableName and fileId are required");
   }
@@ -204,7 +207,7 @@ async function executeImport(ctx, next) {
   if (!coll) {
     ctx.throw(404, `Table ${tableName} not found`);
   }
-  const perm = await (0, import_permission_check.checkImportPermission)(ctx, tableName);
+  const perm = await (0, import_permission_check.checkImportPermission)(ctx, tableName, permSource);
   if (perm.importMode.length > 0 && !perm.importMode.includes(importMode)) {
     ctx.throw(403, `\u60A8\u7684\u6743\u9650\u4E0D\u5141\u8BB8\u4F7F\u7528\u300C${importMode}\u300D\u6A21\u5F0F\u5BFC\u5165\u6570\u636E\u8868\u300C${tableName}\u300D\uFF0C\u5141\u8BB8\u7684\u6A21\u5F0F\uFF1A${perm.importMode.join("\u3001")}`);
   }
@@ -246,6 +249,7 @@ async function executeImport(ctx, next) {
       sheetName: sheetName || "Sheet1",
       headerRow: headerRow || 1,
       importFileId: fileId,
+      fileName: attachment.filename || attachment.title || "",
       uniqueFields: uniqueFields || [],
       totalRows: 0,
       progress: 0,
@@ -255,6 +259,9 @@ async function executeImport(ctx, next) {
   const sequelize = ctx.db.sequelize;
   const transaction = await sequelize.transaction();
   await repo.update({ filterByTk: task.id, values: { status: "processing" }, transaction });
+  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u5165\u4EFB\u52A1");
+  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}`);
+  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", `\u5BFC\u5165\u6A21\u5F0F: ${importMode || "insert"}`);
   try {
     const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
     const filePath = import_path.default.join(storageDir, attachment.path || attachment.filename);
@@ -275,6 +282,8 @@ async function executeImport(ctx, next) {
     const custVals = customValues || {};
     const totalRows = dataRows.length;
     await repo.update({ filterByTk: task.id, values: { totalRows }, transaction });
+    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "SUCC", `\u6587\u4EF6\u89E3\u6790\u5B8C\u6210\uFF0C\u5171 ${totalRows} \u884C\u6709\u6548\u6570\u636E`);
+    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", `\u5F00\u59CB\u9010\u884C\u5904\u7406\u6570\u636E...`);
     const targetRepo = ctx.db.getRepository(tableName);
     const errorLogs = [];
     let processedRows = 0;
@@ -307,7 +316,15 @@ async function executeImport(ctx, next) {
         }
         const colIndex = headers.indexOf(excelCol);
         if (colIndex >= 0 && colIndex < row.length) {
-          record[tableField] = String(row[colIndex] !== void 0 && row[colIndex] !== null ? row[colIndex] : "");
+          const raw = row[colIndex];
+          if (raw === void 0 || raw === null || raw === "") {
+            if (blankCellMode === "skip") continue;
+            if (blankCellMode === "null") {
+              record[tableField] = null;
+              continue;
+            }
+          }
+          record[tableField] = String(raw !== void 0 && raw !== null ? raw : "");
         } else {
           record[tableField] = String(excelCol);
         }
@@ -348,6 +365,27 @@ async function executeImport(ctx, next) {
       }
     };
     const processedUniques = /* @__PURE__ */ new Set();
+    if ((importMode === "update" || importMode === "upsert") && ((uniqueFields == null ? void 0 : uniqueFields.length) || 0) > 0) {
+      for (let i = 0; i < dataRows.length; i++) {
+        const testRecord = makeRecord(dataRows[i]);
+        const emptyFields = (uniqueFields || []).filter(
+          (uf) => testRecord[uf] === void 0 || testRecord[uf] === "" || testRecord[uf] === null
+        );
+        if (emptyFields.length > 0) {
+          errorLogs.push({
+            row: i + 1,
+            excelRow: (headerRow || 1) + i,
+            reason: `\u552F\u4E00\u503C\u5B57\u6BB5\u4E3A\u7A7A\uFF08${emptyFields.join(", ")}\uFF09\uFF0C\u6574\u6279\u5BFC\u5165\u5DF2\u53D6\u6D88`,
+            snapshot: buildSnapshot(dataRows[i])
+          });
+          await repo.update({ filterByTk: task.id, values: { status: "failed", errorLogs, processedRows: 0, totalRows: dataRows.length } }, { transaction });
+          await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "ERROR", `\u7B2C ${i + 1} \u884C\u552F\u4E00\u503C\u5B57\u6BB5\uFF08${emptyFields.join(", ")}\uFF09\u4E3A\u7A7A\uFF0C\u5DF2\u56DE\u6EDA\u5168\u90E8 ${dataRows.length} \u884C\u6570\u636E`);
+          await transaction.rollback();
+          ctx.body = { success: false, taskId: task.id, error: `\u552F\u4E00\u503C\u5B57\u6BB5\u4E3A\u7A7A\uFF1A${emptyFields.join(", ")}\uFF08\u7B2C ${i + 1} \u884C\uFF09` };
+          return;
+        }
+      }
+    }
     for (let i = 0; i < dataRows.length; i++) {
       const rowIndex = i + 1;
       try {
@@ -387,7 +425,7 @@ async function executeImport(ctx, next) {
           } else {
             const filter = {};
             for (const uf of uFields) {
-              if (record[uf] !== void 0) filter[uf] = record[uf];
+              if (record[uf] !== void 0 && record[uf] !== "") filter[uf] = record[uf];
             }
             if (Object.keys(filter).length > 0) {
               const [existingRecords, matchCount] = await targetRepo.findAndCount({ filter, limit: 2, transaction });
@@ -442,6 +480,7 @@ async function executeImport(ctx, next) {
     }
     if (errorLogs.length > 0) {
       await transaction.rollback();
+      await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "WARN", `\u5171 ${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u6B63\u5728\u56DE\u6EDA...`);
       await repo.update({
         filterByTk: task.id,
         values: {
@@ -449,12 +488,14 @@ async function executeImport(ctx, next) {
           progress: 0,
           processedRows: 0,
           errorLogs,
-          errorMessage: `${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u4E8B\u52A1\u5DF2\u56DE\u6EDA (${errorLogs.length} row(s) failed, transaction rolled back)`,
+          errorMessage: `${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u4E8B\u52A1\u5DF2\u56DE\u6EDA`,
           completedAt: /* @__PURE__ */ new Date()
         }
       });
+      await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "ERROR", `\u5BFC\u5165\u5931\u8D25: ${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u5DF2\u56DE\u6EDA`);
     } else {
       await transaction.commit();
+      await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "SUCC", `\u5BFC\u5165\u5B8C\u6210\uFF0C\u5171 ${processedRows} \u884C\u6570\u636E`);
       await repo.update({
         filterByTk: task.id,
         values: {
@@ -467,6 +508,8 @@ async function executeImport(ctx, next) {
     }
   } catch (err) {
     await transaction.rollback();
+    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "ERROR", `\u5BFC\u5165\u5F02\u5E38: ${err.message || String(err)}`);
+    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "WARN", "\u4E8B\u52A1\u5DF2\u56DE\u6EDA\uFF0C\u6570\u636E\u5DF2\u8FD8\u539F");
     await repo.update({
       filterByTk: task.id,
       values: {
@@ -482,4 +525,7 @@ async function executeImport(ctx, next) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   executeImport,
-  getTab
+  getTableFields,
+  preview,
+  uploadParse
+});

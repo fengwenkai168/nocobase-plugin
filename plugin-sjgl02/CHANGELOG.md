@@ -1,5 +1,152 @@
 # CHANGELOG
 
+## 1.0.88 (2026-07-02)
+- **新增**：admin/root 导入时模拟权限方案 — 字段映射界面新增下拉，可切换使用其他用户或角色的导入权限配置
+- **重构**：`permission-check.ts` 新增 `permSource` 参数，支持指定用户/角色权限检查
+- **优化**：切换方案后自动重载字段映射和导入模式限制
+
+## 1.0.87 (2026-07-02)
+- **新增**：导入空白单元格处理下拉（按Excel值更新 / 按NULL更新 / 跳过）
+- **新增**：方案C — update/upsert 模式下任意行唯一值字段为空 → 整批回滚，全部不写
+- **重构**：`makeRecord` 按 `blankCellMode` 三路分支处理空值
+
+## 1.0.86 (2026-07-02)
+- **修复**：导出关联字段（belongsTo/hasOne）单元格值显示 ID 而非人名 — 取值链改为 `nickname \|\| username \|\| name \|\| email \|\| id`
+
+## 1.0.85 (2026-07-02)
+- **新增**：导出表头格式三选一配置 — `字段名(字段标识)` / `字段名` / `字段标识`（Radio.Group 在高级选项区）
+- **重构**：`getFieldDisplayName` 和 `getCollDisplayName` 新增 `style` 参数控制输出格式
+
+## 1.0.84 (2026-07-02)
+- **修复**：全插件 5 个文件、16 处 antd 静态调用改为 `App.useApp()` Hook（消除 Antd 5.x 弃用警告）
+  - `ExportPanel.tsx`（3 处）、`TaskCards.tsx`（6 处）、`TaskList.tsx`（3 处）
+  - `PermissionPanel.tsx`（4 处）、`PermissionTab.tsx`（4 处）
+
+## 1.0.83 (2026-07-02)
+- **修复**：导入唯一值字段空值导致匹配失败 — filter 构建排除空字符串（`record[uf] !== ''`）
+- **修复**：ImportPanel Antd 5.x 弃用警告 — `message`/`Modal.confirm` 改用 `App.useApp()` Hook
+- **修复**：导入确认弹窗 `onOk` 补充 `return` Promise，确保 loading 状态正确
+
+## 1.0.82 (2026-07-02)
+- **修复**：关联表导出详情三列修复 — Sheet名称显示实际 Excel Sheet 格式（`字段名-目标表名`），关联表显示目标表信息「表名称(表标识)」，数据量查询真实记录数
+- **重构**：`assocFieldMap` 新增 `targetTable` 字段，`RelationTablesCard` 改为异步加载数据量
+
+## 1.0.81 (2026-07-02)
+- **修复**：关联表 Tab 显示「已导出该表全部字段」文字而非字段标签 — `getTableFields` API 新增 `target` 字段返回
+- **修复**：控制台 `tableFields?tableName=createdBy` 404 报错 — 无 `target` 时跳过无效 API 调用
+
+## 1.0.80 (2026-07-02)
+- **新增**：关联表 Tab 展示该表的全部字段标签（`FieldTag`列表），与主表字段 Tab 样式统一
+- **新增**：关联表 Tab 标签显示主表关联字段信息 `关联字段标题(关联字段名) → 表名称(表标识)`
+- **重构**：`TaskDetail.tsx` 新增 `assocFieldTitles`（按表分组字段标题）和 `assocFieldMap`（关联字段信息）状态
+
+## 1.0.79 (2026-07-02)
+- **修复**：导出字段卡片仅显示「主表字段」Tab，关联表 Tab 缺失 — 改用 `associationSheetTables` 作为关联表数据源
+- **重构**：`TaskDetail.tsx` 关联表查询改用 `associationSheetTables`（取代点号解析 `selectedFields`，因存储格式为扁平数组不含 `.`）
+- **重构**：`ExportFieldsCard` 移除点号解析逻辑，直接读 `task.associationSheetTables` 生成关联表 Tab
+
+## 1.0.78 (2026-07-02)
+- **重构**：预览功能改用微软 Office Web Viewer 直接预览 Office 文件，移除 `pm:list` 插件检测逻辑
+- **原理**：Office 文件（xlsx/xls/docx/doc/pptx/ppt/odt）拼装 `https://view.officeapps.live.com/op/embed.aspx?src=<文件URL>` 在新窗口预览，与 NocoBase 官方预览插件底层一致
+- **清理**：移除 `useRef`、`officeEnabled` 缓存、`pm:list` API 调用
+
+## 1.0.77 (2026-07-02)
+- **新增**：Office 文件预览插件检测 — xlsx/xls/docx/doc/pptx/ppt/csv 预览时自动检查 `@nocobase/plugin-file-previewer-office` 是否启用
+- **优化**：未启用预览插件时弹出提示 + 自动打开文档链接，`useRef` 缓存检查结果避免重复 API 调用
+
+## 1.0.76 (2026-07-02)
+- **修复**：下载 URL 路径重复拼接 bug — `a.path` 已是包含文件名的完整路径，移除多余的 `/${a.filename}` 拼接
+
+## 1.0.75 (2026-07-02)
+- **修复**：下载按钮仍失败 — 增强 `getAttachmentUrl()` 三级 URL 兜底（`url \|\| preview \|\| path+filename`）
+- **修复**：下载改用 `fetch() → blob → URL.createObjectURL()` 模式（参照 v2 `DisplayPreviewFieldModel`）
+- **修复**：预览按钮无反馈 — 空 URL 时新增 `message.warning` 提示
+- **优化**：下载增加 `finally` 清理（dom 移除 + 60s 后 revoke blob URL）
+
+## 1.0.74 (2026-07-02)
+- **修复**：控制台 Card `headStyle` 弃用警告（Ant Design v5 迁移至 `styles.header`）
+- **修复**：详情页下载按钮 404 — `attachments:download` 非 NocoBase 有效 API，改为先调 `attachments:get` 获取文件 URL 再通过 `<a>` 下载
+- **修复**：详情页预览按钮 404 — 同样改为先调 `attachments:get` 获取 URL 再 `window.open`
+
+## 1.0.73 (2026-07-02)
+- **优化**：导出字段卡片关联表 Tab 标签改为「表名称(表标识)」格式（如 `用户(users)`），替代之前的 `关联：users`
+- **修复**：关联表字段标题缺失（仅主表字段有标题，关联表字段只显示 `标识(标识)`）— 补充查询关联表的 `tableFields` API
+- **优化**：`ExportFieldsCard` 增加 `tableTitles` prop 支持
+
+## 1.0.72 (2026-07-02)
+- **修复**：任务列表文件名显示为「附件 #ID」而非真实文件名（导出完成后 `fileName` 未更新到任务记录）
+- **修复**：任务详情缺少数据预览卡片（`DataPreviewCard` 缺少 `api` prop 导致预览 API 静默失败）
+- **修复**：导入预览 API 的 POST 参数读取错误（未兼容 `ctx.action.params.values`）
+- **新增**：导出任务详情新增数据预览卡片（查询前 5 条数据以表格展示）
+- **清理**：删除 `src/client-v2/pages/tmp` 残留文件
+
+## 1.0.71 (2026-07-02)
+- **修复**：v2 导入预览不显示数据（调用 `sjgl02Import:preview` API 展示前 5 条）
+- **修复**：v2 导出字段改为 Tabs 切换（主表字段 / 关联表字段分类展示）
+- **修复**：文件下载失败（下载链接改为 `api.request({ responseType: 'blob' })` + Blob URL 方式）
+- **修复**：文件预览新窗口打开失败（改用 `/api/attachments:download/{id}` 新窗口打开）
+- **修复**：列表列宽不适配（文件名列去掉固定宽度）
+- **修复**：关联表导出详情数据量显示兜底
+- **新增**：`import.ts` 预览 API 支持 `previewLimit` 参数（默认 10 行）
+- **新增**：`migrations/20260702170000-backfill-file-name.ts` — 回填旧任务 file_name
+
+## 1.0.70 (2026-07-02)
+- **新增**：`migrations/20260702160000-add-task-file-name.ts` — `beforeLoad` migration 确保 `file_name` 列存在
+- **修复**：`yarn nocobase upgrade` 自动同步 `file_name` 列到 `sjgl02_tasks` 表
+
+## 1.0.69 (2026-07-02)
+- **新增**：`sjgl02_tasks` 表新增 `fileName` 字段（任务创建时自动存储文件名）
+- **修复**：列表文件名显示附件 ID 而非真实文件名
+- **修复**：创建人 `nickname/username/name` 多字段兜底
+- **修复**：文件下载改用 `<a>` 标签直接下载（不经过 JSON 包裹）
+- **修复**：数据预览卡片显示友好提示；执行日志空时显示友好提示
+
+## 1.0.68 (2026-07-02)
+- **回滚**：install() 中 `sjgl02_` 前缀过滤移除，恢复全部数据表权限
+
+## 1.0.67 (2026-07-02)
+- **修复**：Sjgl02SettingsPage 版本号从 v1.0.53 更新为 v1.0.66
+- **修复**：预计剩余时间计算错误（中文字符串参与数学运算 → 直接用毫秒差计算）
+- **修复**：取消任务按钮缺少错误反馈（加 `try-catch` + `message`）
+- **优化**：Sjgl02Block 清理 25+ 未使用 antd 导入
+- **优化**：install() 批量创建权限从 `for` 循环逐条改为 `Promise.all`
+- **删除**：`plugin-top.txt` 残留旧代码文件（v1.0.47）
+
+## 1.0.66 (2026-07-02)
+- **修复**：查看任务详情报错 Invalid SQL — `createdBy.nickname` 跨表过滤改为两步查询
+- **修复**：文件下载失败 — `window.open()` 不携带认证令牌 → 改用 `api.request()`
+- **修复**：文件预览失败 — 同上，改用 `<a>` 标签直接下载
+
+## 1.0.65 (2026-07-01)
+- **修复**：ZIP 文件预览按钮不应出现（`isZip` 判断增加 `fileExt === 'zip'`）
+- **修复**：任务日志查询改用 `offset/limit`（与 `page/pageSize` 统一）
+- **修复**：任务详情各 API 请求独立 `try/catch`，历史任务容错
+- **修复**：失败数量计算兼容 `errorLogs` 非数组的情况
+- **优化**：执行日志查看器 API 失败静默处理
+
+## 1.0.64 (2026-07-01)
+- **重构**：任务管理模块全面重写 — 列表页 + 侧边详情 Drawer + 7 张信息卡片 + 终端风格执行日志
+- **新增**：`sjgl02_task_logs` 数据模型（记录任务执行全过程日志：INFO/SUCC/WARN/ERROR）
+- **新增**：`sjgl02TaskLogs:list` API + `writeTaskLog` 辅助函数
+- **新增**：导入/导出任务执行时自动写入日志（开始/进度/批次/成功/失败/异常）
+- **新增**：`src/client/panels/task/` 目录，5 个子文件：TaskList + TaskDetail + TaskCards + ExecutionLogViewer + shared
+- **新增**：列表搜索支持任务ID/文件名/表名/创建用户；创建用户列
+- **新增**：详情页侧边 Drawer（700px）：任务摘要/导出字段/关联表/导入配置/字段映射/数据预览/执行日志
+- **新增**：终端风格执行日志查看器（深色背景 #1e293b、按级别着色、自动刷新、可折叠+独立滚动）
+- **新增**：失败导入 — 数据预览显示 Excel 行号 + 错误原因 + 字段快照（最多 10 条）
+- **新增**：字段映射自定义值显示实际填写内容；唯一值/必填标签
+- **新增**：文件预览/下载按钮（导入源文件 + 导出文件，非zip支持预览）
+- **优化**：导出文件元信息显示「完成于」；导入文件显示「上传于」
+- **优化**：任务列表操作简化为查看详情 + 取消任务，其他操作移入详情页
+
+## 1.0.63 (2026-07-01)
+- **修复**：v1 页面区块右键菜单消失 — 新增 `x-toolbar: 'BlockSchemaToolbar'` 激活系统标准工具栏框架
+- **修复**：v1 页面区块右键菜单只有「删除」— `sjgl02BlockSettings` 扩展为系统标准菜单项（修改标题/设置高度/联动规则/分割线/删除），名称保留 `blockSettings:sjgl02`
+- **新增**：引入 @nocobase/client 标准组件 SchemaSettingsBlockTitleItem / SchemaSettingsBlockHeightItem / SchemaSettingsLinkageRules
+
+## 1.0.62 (2026-07-01)
+- **修复**：v1 页面区块右键菜单为空 — 注册自定义 `SchemaSettings`（名称 `blockSettings:sjgl02`，只含移除按钮），修正 `x-settings` 不存在于 NocoBase 内置列表的问题
+
 ## 1.0.61 (2026-07-01)
 - **重构**：v1/v2 代码统一 — 删除 v2 重复页面（ImportTab/ExportTab/TaskTab，共 ~980 行），v2 设置页和区块模型直接引用 v1 面板
 - **新增**：`src/client-v2/utils/api.ts` — 统一 `useAPI()` hook（兼容 v1/v2 两种运行时上下文）

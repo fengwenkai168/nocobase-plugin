@@ -6,6 +6,7 @@ import path from 'path';
 import archiver from 'archiver';
 import { Mutex } from 'async-mutex';
 import { checkExportPermission } from './permission-check';
+import { writeTaskLog } from './taskLogs';
 
 const exportMutex = new Mutex();
 
@@ -20,19 +21,25 @@ function formatFileName(template: string, tableName: string): string {
   return template.replace(/\{表名\}/g, tableName).replace(/\{日期\}/g, date);
 }
 
-function getFieldDisplayName(coll: any, fieldName: string): string {
+function getFieldDisplayName(coll: any, fieldName: string, style?: string): string {
   try {
     const f = (coll.fields instanceof Map ? coll.fields.get(fieldName) : null);
     const title = f?.options?.uiSchema?.title;
-    if (title && !/^\{\{/.test(title)) return `${title}(${fieldName})`;
+    if (title && !/^\{\{/.test(title)) {
+      if (style === 'id') return fieldName;
+      if (style === 'title') return title;
+      return `${title}(${fieldName})`;
+    }
   } catch {}
   return fieldName;
 }
 
-function getCollDisplayName(coll: any): string {
+function getCollDisplayName(coll: any, style?: string): string {
   const rawName = coll?.name || '';
   let title = coll?.options?.title || rawName;
   if (/^\{\{/.test(title)) title = rawName;
+  if (style === 'id') return rawName;
+  if (style === 'title') return title;
   return title !== rawName ? `${title}(${rawName})` : rawName;
 }
 
@@ -154,7 +161,7 @@ export async function executeExport(ctx: Context, next: Next) {
   const params = ctx.action.params.values || ctx.action.params;
   const {
     tableName, selectedFields, associationDisplayMode, includeAssociationSheet,
-    associationSheetTables, filter, fileNameTemplate, includeAttachments,
+    associationSheetTables, filter, fileNameTemplate, includeAttachments, headerStyle,
   } = params;
 
   const exportFilter = (() => {
@@ -200,9 +207,13 @@ export async function executeExport(ctx: Context, next: Next) {
       includeAttachments: includeAttachments || false,
       totalRows: 0,
       progress: 0,
+      fileName: tableName === '__all__' ? `全部数据表_${new Date().toISOString().slice(0, 10)}.zip` : '',
       createdById: ctx.state.currentUser?.id,
     },
   });
+
+  await writeTaskLog(ctx, task.id, 'INFO', '开始执行导出任务');
+  await writeTaskLog(ctx, task.id, 'INFO', `目标数据表: ${tableName}${tableName === '__all__' ? '（全部数据表）' : ''}`);
 
   const release = await exportMutex.acquire();
 
@@ -286,10 +297,10 @@ export async function executeExport(ctx: Context, next: Next) {
 
       const workbook = new ExcelJS.Workbook();
       workbook.creator = 'NocoBase @my-project/plugin-sjgl02';
-      const mainSheet = workbook.addWorksheet(ensureUniqueSheetName(workbook, sanitizeSheetName(getCollDisplayName(coll))));
+      const mainSheet = workbook.addWorksheet(ensureUniqueSheetName(workbook, sanitizeSheetName(getCollDisplayName(coll, headerStyle))));
       mainSheet.columns = fieldNames.map((name: string) => ({
-        header: getFieldDisplayName(coll, name), key: name,
-        width: Math.max(getFieldDisplayName(coll, name).length + 4, 20),
+        header: getFieldDisplayName(coll, name, headerStyle), key: name,
+        width: Math.max(getFieldDisplayName(coll, name, headerStyle).length + 4, 20),
       }));
       const headerRow = mainSheet.getRow(1);
       headerRow.font = { bold: true };
@@ -343,8 +354,7 @@ export async function executeExport(ctx: Context, next: Next) {
           } else if (fileIdFieldNames.includes(f)) {
             val = fileIdFilenameMap.get(val) || String(val || '');
           } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
-            const targetTitleField = coll.options?.titleField || 'id';
-            val = val[targetTitleField] || val.id || JSON.stringify(val);
+            val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
           }
           row[f] = formatValue(val);
         }
@@ -373,13 +383,13 @@ export async function executeExport(ctx: Context, next: Next) {
           }
 
           const assocColl = ctx.db.getCollection(af.target);
-          const fieldDisplay = getFieldDisplayName(coll, af.name);
-          const collDisplay = getCollDisplayName(assocColl);
+          const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
+          const collDisplay = getCollDisplayName(assocColl, headerStyle);
           const sheetName = ensureUniqueSheetName(workbook, sanitizeSheetName(fieldDisplay + '-' + collDisplay).substring(0, 31));
           const assocSheet = workbook.addWorksheet(sheetName);
           assocSheet.columns = assocScalarFields.map((n: string) => ({
-            header: getFieldDisplayName(assocColl, n), key: n,
-            width: Math.max(getFieldDisplayName(assocColl, n).length + 4, 20),
+            header: getFieldDisplayName(assocColl, n, headerStyle), key: n,
+            width: Math.max(getFieldDisplayName(assocColl, n, headerStyle).length + 4, 20),
           }));
           const ahRow = assocSheet.getRow(1);
           ahRow.font = { bold: true };
@@ -401,7 +411,7 @@ export async function executeExport(ctx: Context, next: Next) {
         }
       }
 
-      const collDisplay = sanitizeSheetName(getCollDisplayName(coll)).replace(/\s+/g, '_');
+      const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, '_');
       const xlsxName = collDisplay + '-' + formatFileName('{日期}.xlsx', '');
       const filePath = path.join(tempDir, xlsxName);
       await workbook.xlsx.writeFile(filePath);
@@ -422,7 +432,7 @@ export async function executeExport(ctx: Context, next: Next) {
             }
             if (!fs.existsSync(realPath)) continue;
             const afName = attachFieldMap.get(aid) || '附件';
-            const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName));
+            const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
             attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
           }
           if (attachmentFiles.length > 0) {
@@ -503,10 +513,14 @@ export async function executeExport(ctx: Context, next: Next) {
         processedRows,
         totalRows,
         exportFileId: exportAttachment.id,
+        fileName: exportAttachment.filename || exportAttachment.title || '',
         completedAt: new Date(),
       },
     });
+    await writeTaskLog(ctx, task.id, 'SUCC', `导出完成，共 ${processedRows} 行数据`);
   } catch (err: any) {
+    await writeTaskLog(ctx, task.id, 'ERROR', `导出失败: ${err.message || String(err)}`);
+    await writeTaskLog(ctx, task.id, 'WARN', '文件未生成，数据未修改');
     await repo.update({
       filterByTk: task.id,
       values: {

@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 import { checkImportPermission } from './permission-check';
+import { writeTaskLog } from './taskLogs';
 
 export async function getTableFields(ctx: Context, next: Next) {
   const { tableName } = ctx.action.params;
@@ -35,6 +36,7 @@ export async function getTableFields(ctx: Context, next: Next) {
     return {
       name: f.name,
       type: f.type,
+      target: f.target || null,
       uiSchema: { ...(f.options?.uiSchema || {}), title },
       interface: f.options?.interface || null,
       isRequired: autoFields.includes(f.name) ? false : f.options?.allowNull === false,
@@ -99,10 +101,11 @@ export async function uploadParse(ctx: Context, next: Next) {
 }
 
 export async function preview(ctx: Context, next: Next) {
-  const p = ctx.action.params;
-  const fileId = p.fileId || ctx.request.query?.fileId || ctx.query?.fileId;
-  const sheetName = p.sheetName || ctx.request.query?.sheetName;
-  const headerRow = p.headerRow || ctx.request.query?.headerRow;
+  const params = ctx.action.params.values || ctx.action.params;
+  const fileId = params.fileId || ctx.request.query?.fileId || ctx.query?.fileId;
+  const sheetName = params.sheetName || ctx.request.query?.sheetName;
+  const headerRow = params.headerRow || ctx.request.query?.headerRow;
+  const previewLimit = parseInt(params.previewLimit || ctx.request.query?.previewLimit || '10', 10) || 10;
   if (!fileId) {
     ctx.throw(400, 'fileId is required');
   }
@@ -129,7 +132,7 @@ export async function preview(ctx: Context, next: Next) {
     const hRow = Math.max(0, (parseInt(String(headerRow), 10) || 1) - 1);
     const headers = (allRows[hRow] || []).map((h: any) => String(h));
     const dataRows = allRows.slice(hRow + 1).filter((r: any[]) => r.some((c: any) => c !== ''));
-    const previewRows = dataRows.slice(0, 10).map((row: any[]) => {
+    const previewRows = dataRows.slice(0, previewLimit).map((row: any[]) => {
       const obj: Record<string, any> = {};
       headers.forEach((h, i) => { obj[h] = row[i] !== undefined ? row[i] : ''; });
       return obj;
@@ -148,7 +151,7 @@ export async function preview(ctx: Context, next: Next) {
 
 export async function executeImport(ctx: Context, next: Next) {
   const params = ctx.action.params.values || ctx.action.params;
-  const { tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields } = params;
+  const { tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields, blankCellMode, permSource } = params;
   if (!tableName || !fileId) {
     ctx.throw(400, 'tableName and fileId are required');
   }
@@ -157,7 +160,7 @@ export async function executeImport(ctx: Context, next: Next) {
     ctx.throw(404, `Table ${tableName} not found`);
   }
 
-  const perm = await checkImportPermission(ctx, tableName);
+  const perm = await checkImportPermission(ctx, tableName, permSource);
 
   if (perm.importMode.length > 0 && !perm.importMode.includes(importMode)) {
     ctx.throw(403, `您的权限不允许使用「${importMode}」模式导入数据表「${tableName}」，允许的模式：${perm.importMode.join('、')}`);
@@ -204,6 +207,7 @@ export async function executeImport(ctx: Context, next: Next) {
       sheetName: sheetName || 'Sheet1',
       headerRow: headerRow || 1,
       importFileId: fileId,
+      fileName: attachment.filename || attachment.title || '',
       uniqueFields: uniqueFields || [],
       totalRows: 0,
       progress: 0,
@@ -214,6 +218,10 @@ export async function executeImport(ctx: Context, next: Next) {
   const sequelize = ctx.db.sequelize;
   const transaction = await sequelize.transaction();
   await repo.update({ filterByTk: task.id, values: { status: 'processing' }, transaction });
+
+  await writeTaskLog(ctx, task.id, 'INFO', '开始执行导入任务');
+  await writeTaskLog(ctx, task.id, 'INFO', `目标数据表: ${tableName}`);
+  await writeTaskLog(ctx, task.id, 'INFO', `导入模式: ${importMode || 'insert'}`);
 
   try {
     const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
@@ -237,6 +245,8 @@ export async function executeImport(ctx: Context, next: Next) {
 
     const totalRows = dataRows.length;
     await repo.update({ filterByTk: task.id, values: { totalRows }, transaction });
+    await writeTaskLog(ctx, task.id, 'SUCC', `文件解析完成，共 ${totalRows} 行有效数据`);
+    await writeTaskLog(ctx, task.id, 'INFO', `开始逐行处理数据...`);
 
     const targetRepo = ctx.db.getRepository(tableName);
     const errorLogs: any[] = [];
@@ -272,7 +282,12 @@ export async function executeImport(ctx: Context, next: Next) {
         }
         const colIndex = headers.indexOf(excelCol as string);
         if (colIndex >= 0 && colIndex < row.length) {
-          record[tableField] = String(row[colIndex] !== undefined && row[colIndex] !== null ? row[colIndex] : '');
+          const raw = row[colIndex];
+          if (raw === undefined || raw === null || raw === '') {
+            if (blankCellMode === 'skip') continue;
+            if (blankCellMode === 'null') { record[tableField] = null; continue; }
+          }
+          record[tableField] = String(raw !== undefined && raw !== null ? raw : '');
         } else {
           record[tableField] = String(excelCol);
         }
@@ -313,6 +328,28 @@ export async function executeImport(ctx: Context, next: Next) {
 
     const processedUniques = new Set<string>();
 
+    if ((importMode === 'update' || importMode === 'upsert') && (uniqueFields?.length || 0) > 0) {
+      for (let i = 0; i < dataRows.length; i++) {
+        const testRecord = makeRecord(dataRows[i]);
+        const emptyFields = (uniqueFields || []).filter(
+          (uf: string) => testRecord[uf] === undefined || testRecord[uf] === '' || testRecord[uf] === null
+        );
+        if (emptyFields.length > 0) {
+          errorLogs.push({
+            row: i + 1,
+            excelRow: (headerRow || 1) + i,
+            reason: `唯一值字段为空（${emptyFields.join(', ')}），整批导入已取消`,
+            snapshot: buildSnapshot(dataRows[i]),
+          });
+          await repo.update({ filterByTk: task.id, values: { status: 'failed', errorLogs, processedRows: 0, totalRows: dataRows.length } }, { transaction });
+          await writeTaskLog(ctx, task.id, 'ERROR', `第 ${i + 1} 行唯一值字段（${emptyFields.join(', ')}）为空，已回滚全部 ${dataRows.length} 行数据`);
+          await transaction.rollback();
+          ctx.body = { success: false, taskId: task.id, error: `唯一值字段为空：${emptyFields.join(', ')}（第 ${i + 1} 行）` };
+          return;
+        }
+      }
+    }
+
     for (let i = 0; i < dataRows.length; i++) {
       const rowIndex = i + 1;
       try {
@@ -352,7 +389,7 @@ export async function executeImport(ctx: Context, next: Next) {
           } else {
             const filter: Record<string, any> = {};
           for (const uf of uFields) {
-            if (record[uf] !== undefined) filter[uf] = record[uf];
+            if (record[uf] !== undefined && record[uf] !== '') filter[uf] = record[uf];
           }
           if (Object.keys(filter).length > 0) {
             const [existingRecords, matchCount] = await targetRepo.findAndCount({ filter, limit: 2, transaction });
@@ -408,6 +445,7 @@ export async function executeImport(ctx: Context, next: Next) {
 
     if (errorLogs.length > 0) {
       await transaction.rollback();
+      await writeTaskLog(ctx, task.id, 'WARN', `共 ${errorLogs.length} 行数据失败，正在回滚...`);
       await repo.update({
         filterByTk: task.id,
         values: {
@@ -415,12 +453,14 @@ export async function executeImport(ctx: Context, next: Next) {
           progress: 0,
           processedRows: 0,
           errorLogs,
-          errorMessage: `${errorLogs.length} 行数据失败，事务已回滚 (${errorLogs.length} row(s) failed, transaction rolled back)`,
+          errorMessage: `${errorLogs.length} 行数据失败，事务已回滚`,
           completedAt: new Date(),
         },
       });
+      await writeTaskLog(ctx, task.id, 'ERROR', `导入失败: ${errorLogs.length} 行数据失败，已回滚`);
     } else {
       await transaction.commit();
+      await writeTaskLog(ctx, task.id, 'SUCC', `导入完成，共 ${processedRows} 行数据`);
       await repo.update({
         filterByTk: task.id,
         values: {
@@ -433,6 +473,8 @@ export async function executeImport(ctx: Context, next: Next) {
     }
   } catch (err: any) {
     await transaction.rollback();
+    await writeTaskLog(ctx, task.id, 'ERROR', `导入异常: ${err.message || String(err)}`);
+    await writeTaskLog(ctx, task.id, 'WARN', '事务已回滚，数据已还原');
     await repo.update({
       filterByTk: task.id,
       values: {

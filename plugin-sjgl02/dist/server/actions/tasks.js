@@ -32,16 +32,43 @@ __export(tasks_exports, {
 });
 module.exports = __toCommonJS(tasks_exports);
 async function listTasks(ctx, next) {
-  var _a;
-  const { taskType, status } = ctx.action.params;
+  var _a, _b;
+  const { taskType, status, search } = ctx.action.params;
   const page = Math.max(1, parseInt(ctx.action.params.page || "1", 10) || 1);
   const pageSize = Math.min(200, Math.max(1, parseInt(ctx.action.params.pageSize || "20", 10) || 20));
   const filter = {};
   if (taskType && taskType !== "all") filter.taskType = taskType;
   if (status && status !== "all") filter.status = status;
+  if (search && String(search).trim()) {
+    const kw = String(search).trim();
+    const isNum = /^\d+$/.test(kw);
+    const orConditions = [
+      isNum ? { id: parseInt(kw, 10) } : null,
+      { tableName: { $iLike: `%${kw}%` } }
+    ].filter(Boolean);
+    try {
+      const userRepo = ctx.db.getRepository("users");
+      const matchedUsers = await userRepo.find({
+        filter: { nickname: { $iLike: `%${kw}%` } }
+      });
+      if (matchedUsers.length > 0) {
+        orConditions.push({
+          createdById: { $in: matchedUsers.map((u) => u.id) }
+        });
+      }
+    } catch {
+    }
+    filter.$or = orConditions;
+  }
   const taskViewScope = await getTaskViewScope(ctx);
   if (taskViewScope === "own") {
-    filter.createdById = ((_a = ctx.state.currentUser) == null ? void 0 : _a.id) || -1;
+    if (filter.$or) {
+      const baseFilter = { createdById: ((_a = ctx.state.currentUser) == null ? void 0 : _a.id) || -1 };
+      filter.$and = [baseFilter, { $or: filter.$or }];
+      delete filter.$or;
+    } else {
+      filter.createdById = ((_b = ctx.state.currentUser) == null ? void 0 : _b.id) || -1;
+    }
   }
   const repo = ctx.db.getRepository("sjgl02_tasks");
   const [rows, total] = await repo.findAndCount({

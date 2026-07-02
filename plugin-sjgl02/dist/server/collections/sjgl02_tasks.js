@@ -42,6 +42,7 @@ var sjgl02_tasks_default = (0, import_database.defineCollection)({
       uiSchema: { enum: [{ value: "import", label: "\u5BFC\u5165" }, { value: "export", label: "\u5BFC\u51FA" }] }
     },
     { type: "string", name: "tableName" },
+    { type: "string", name: "fileName" },
     {
       interface: "select",
       type: "string",

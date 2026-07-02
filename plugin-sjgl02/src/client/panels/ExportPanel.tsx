@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React from 'react';
-import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, message, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload, Pagination, Alert } from 'antd';
+import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload, Pagination, Alert, App } from 'antd';
 import { InboxOutlined, TableOutlined } from '@ant-design/icons';
 import { VERSION, apiRequest } from './shared';
 import { useAPI } from '../../client-v2/utils/api';
@@ -9,6 +9,7 @@ const { Dragger } = Upload;
 
 export default function ExportPanel() {
   const client = useAPI();
+  const { message, modal } = App.useApp();
   const [step, setStep] = React.useState(0);
   const [tables, setTables] = React.useState<any[]>([]);
   const [selTable, setSelTable] = React.useState('');
@@ -26,6 +27,7 @@ export default function ExportPanel() {
   const [selectedAssocTables, setSelectedAssocTables] = React.useState<string[]>([]);
   const [includeAttachments, setIncludeAttachments] = React.useState(false);
   const [estimatedRows, setEstimatedRows] = React.useState<number | null>(null);
+  const [headerStyle, setHeaderStyle] = React.useState<string>('title_id');
 
   React.useEffect(() => {
     apiRequest(client, 'sjgl02Permissions:tables').then((data) => {
@@ -90,7 +92,7 @@ export default function ExportPanel() {
   const fkFields = fields.filter(f => f.isForeignKey);
 
   const handleExport = () => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认导出',
       content: isAllTables ? '将导出全部数据表，任务在后台异步执行' : includeAttachments ? '将生成 .zip 压缩包（含附件文件），任务在后台异步执行' : '将生成 .xlsx 文件，任务在后台异步执行',
       onOk: async () => {
@@ -105,6 +107,7 @@ export default function ExportPanel() {
               includeAssociationSheet: includeAssocSheet,
               associationSheetTables: selectedAssocTables,
               includeAttachments,
+              headerStyle,
             },
           });
           message.success('导出任务已提交，请在任务管理中查看进度和下载');
@@ -215,6 +218,14 @@ export default function ExportPanel() {
               <Input style={{ width: 280 }} value={fileName} onChange={e => setFileName(e.target.value)} />
             </Space>
             <div style={{ fontSize: 11, color: '#999' }}>支持 {`{表名}`} {`{日期}`} 占位符</div>
+            <Space style={{ marginTop: 8 }}>
+              <span style={{ color: '#999' }}>表头格式：</span>
+              <Radio.Group value={headerStyle} onChange={e => setHeaderStyle(e.target.value)} size="small">
+                <Radio.Button value="title_id">字段名(字段标识)</Radio.Button>
+                <Radio.Button value="title">字段名</Radio.Button>
+                <Radio.Button value="id">字段标识</Radio.Button>
+              </Radio.Group>
+            </Space>
             <Space style={{ marginTop: 8 }}>
               <Switch checked={includeAttachments} onChange={setIncludeAttachments} />
               <span>包含附件文件</span>

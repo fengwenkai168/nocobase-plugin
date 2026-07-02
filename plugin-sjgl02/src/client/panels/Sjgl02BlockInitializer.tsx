@@ -13,6 +13,7 @@ export const Sjgl02BlockInitializer = () => {
       onClick={() => {
         insert({
           type: 'void',
+          'x-toolbar': 'BlockSchemaToolbar',
           'x-settings': 'blockSettings:sjgl02',
           'x-component': 'SjglBlock',
           'x-decorator': 'CardItem',

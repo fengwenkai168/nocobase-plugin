@@ -1,5 +1,10 @@
-import { Plugin, SchemaSettings } from '@nocobase/client';
+import { Plugin } from '@nocobase/client';
+import { SchemaSettings } from '@nocobase/client';
+import { SchemaSettingsBlockTitleItem } from '@nocobase/client';
+import { SchemaSettingsBlockHeightItem } from '@nocobase/client';
+import { SchemaSettingsLinkageRules, LinkageRuleCategory } from '@nocobase/client';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, Tabs } from 'antd';
 import ImportPanel from './panels/ImportPanel';
 import ExportPanel from './panels/ExportPanel';
@@ -13,6 +18,28 @@ import { SjglBlockModel } from '../client-v2/models/SjglBlockModel';
 const sjgl02BlockSettings = new SchemaSettings({
   name: 'blockSettings:sjgl02',
   items: [
+    {
+      name: 'setBlockTitle',
+      Component: SchemaSettingsBlockTitleItem,
+    },
+    {
+      name: 'setBlockHeight',
+      Component: SchemaSettingsBlockHeightItem,
+    },
+    {
+      name: 'blockLinkageRules',
+      Component: SchemaSettingsLinkageRules,
+      useComponentProps() {
+        const { t } = useTranslation();
+        return {
+          category: LinkageRuleCategory.block,
+        };
+      },
+    },
+    {
+      name: 'divider',
+      type: 'divider',
+    },
     {
       name: 'remove',
       type: 'remove',
@@ -59,4 +86,14 @@ export class PluginSjgl02Client extends Plugin {
     this.pluginSettingsManager.add('sjgl02', {
       title: '数据管理',
       icon: 'DatabaseOutlined',
-      Component: Sjg
+      Component: Sjgl02SettingsPageV1,
+    });
+    this.app.addComponents({ SjglBlock: Sjgl02Block, Sjgl02BlockInitializer });
+    this.app.schemaInitializerManager.addItem('page:addBlock', 'otherBlocks.sjgl02Block', { title: '{{t("数据管理")}}', Component: 'Sjgl02BlockInitializer' });
+    this.app.schemaInitializerManager.addItem('popup:common:addBlock', 'otherBlocks.sjgl02Block', { title: '{{t("数据管理")}}', Component: 'Sjgl02BlockInitializer' });
+    this.app.schemaInitializerManager.addItem('RecordBlockInitializers', 'otherBlocks.sjgl02Block', { title: '{{t("数据管理")}}', Component: 'Sjgl02BlockInitializer' });
+    this.app.schemaInitializerManager.addItem('mobile:addBlock', 'otherBlocks.sjgl02Block', { title: '{{t("数据管理")}}', Component: 'Sjgl02BlockInitializer' });
+  }
+}
+
+export default PluginSjgl02Client;

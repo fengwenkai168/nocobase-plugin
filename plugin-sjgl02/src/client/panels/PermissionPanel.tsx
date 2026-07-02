@@ -1,11 +1,12 @@
 // @ts-nocheck
 import React from 'react';
 import { useAPIClient } from '@nocobase/client';
-import { Card, Button, Space, Select, Tag, Row, Col, Input, message, Checkbox, Switch, Empty, Modal, Form, Radio, Pagination, Alert, Table, Descriptions, Popconfirm } from 'antd';
+import { Card, Button, Space, Select, Tag, Row, Col, Input, Checkbox, Switch, Empty, Modal, Form, Radio, Pagination, Alert, Table, Descriptions, Popconfirm, App } from 'antd';
 import { apiRequest } from './shared';
 
 export default function PermissionPanel() {
   const client = useAPIClient();
+  const { message } = App.useApp();
   const [targets, setTargets] = React.useState<any[]>([]);
   const [selTarget, setSelTarget] = React.useState<any>(null);
   const [perms, setPerms] = React.useState<any[]>([]);

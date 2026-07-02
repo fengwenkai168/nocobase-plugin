@@ -1,16 +1,45 @@
 import { Context, Next } from '@nocobase/actions';
 
 export async function listTasks(ctx: Context, next: Next) {
-  const { taskType, status } = ctx.action.params;
+  const { taskType, status, search } = ctx.action.params;
   const page = Math.max(1, parseInt(ctx.action.params.page || '1', 10) || 1);
   const pageSize = Math.min(200, Math.max(1, parseInt(ctx.action.params.pageSize || '20', 10) || 20));
   const filter: any = {};
   if (taskType && taskType !== 'all') filter.taskType = taskType;
   if (status && status !== 'all') filter.status = status;
 
+  if (search && String(search).trim()) {
+    const kw = String(search).trim();
+    const isNum = /^\d+$/.test(kw);
+    const orConditions: any[] = [
+      isNum ? { id: parseInt(kw, 10) } : null,
+      { tableName: { $iLike: `%${kw}%` } },
+    ].filter(Boolean);
+
+    try {
+      const userRepo = ctx.db.getRepository('users');
+      const matchedUsers = await userRepo.find({
+        filter: { nickname: { $iLike: `%${kw}%` } },
+      });
+      if (matchedUsers.length > 0) {
+        orConditions.push({
+          createdById: { $in: matchedUsers.map((u: any) => u.id) },
+        });
+      }
+    } catch {}
+
+    filter.$or = orConditions;
+  }
+
   const taskViewScope = await getTaskViewScope(ctx);
   if (taskViewScope === 'own') {
-    filter.createdById = ctx.state.currentUser?.id || -1;
+    if (filter.$or) {
+      const baseFilter = { createdById: ctx.state.currentUser?.id || -1 };
+      filter.$and = [baseFilter, { $or: filter.$or }];
+      delete filter.$or;
+    } else {
+      filter.createdById = ctx.state.currentUser?.id || -1;
+    }
   }
 
   const repo = ctx.db.getRepository('sjgl02_tasks');

@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React from 'react';
-import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, message, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload, Pagination, Alert } from 'antd';
+import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload, Pagination, Alert, App } from 'antd';
 import { InboxOutlined, TableOutlined } from '@ant-design/icons';
 import { VERSION, apiRequest } from './shared';
 import { useAPI } from '../../client-v2/utils/api';
@@ -9,6 +9,7 @@ const { Dragger } = Upload;
 
 export default function ImportPanel() {
   const client = useAPI();
+  const { message, modal } = App.useApp();
   const [step, setStep] = React.useState(0);
   const [selectedTable, setSelectedTable] = React.useState<any>(null);
   const [importMode, setImportMode] = React.useState('insert');
@@ -25,6 +26,10 @@ export default function ImportPanel() {
   const [headerRow, setHeaderRow] = React.useState(1);
   const [availSheets, setAvailSheets] = React.useState<string[]>(['Sheet1']);
   const [previewModal, setPreviewModal] = React.useState(false);
+  const [blankCellMode, setBlankCellMode] = React.useState('update');
+  const [isAdminOrRoot, setIsAdminOrRoot] = React.useState(false);
+  const [permSource, setPermSource] = React.useState<{ type: string; id?: string; label?: string }>({ type: 'admin' });
+  const [permSourceOptions, setPermSourceOptions] = React.useState<any[]>([]);
   const [previewMeta, setPreviewMeta] = React.useState<any>(null);
 
   const doParse = () => {
@@ -52,6 +57,17 @@ export default function ImportPanel() {
       const allTables = data.map((t: any) => ({ name: t.name, title: t.title || t.name }));
       apiRequest(client, 'auth:check').then((userData: any) => {
         const uid = userData?.data?.id || userData?.id;
+        const roles = (userData?.data?.roles || userData?.roles || []).map((r: any) => r.name || '');
+        const isAdmin = roles.includes('admin') || roles.includes('root');
+        setIsAdminOrRoot(isAdmin);
+        if (isAdmin) {
+          apiRequest(client, 'sjgl02Permissions:userRoleList').then((list: any) => {
+            const opts: any[] = [{ value: 'admin', label: '管理员完整权限', type: 'admin' }];
+            (list?.users || []).forEach((u: any) => { opts.push({ value: `user:${u.id}`, label: `👤 ${u.nickname || u.username || u.id} — 用户方案`, type: 'user', id: String(u.id) }); });
+            (list?.roles || []).forEach((r: any) => { opts.push({ value: `role:${r.name}`, label: `👥 ${r.title || r.name} — 角色方案`, type: 'role', id: r.name }); });
+            setPermSourceOptions(opts);
+          }).catch(() => {});
+        }
         if (!uid) { setTables(allTables); return; }
         apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: 'user', targetId: String(uid) } }).then((permData: any) => {
           const allowedNames = new Set([...(permData?.custom || []), ...(permData?.inherited || [])].filter((p: any) => p.canImport).map((p: any) => p.tableName));
@@ -78,55 +94,82 @@ export default function ImportPanel() {
   const [autoMatchFlag, setAutoMatchFlag] = React.useState(false);
   const [matchInfo, setMatchInfo] = React.useState('');
 
-  React.useEffect(() => {
-    if (selectedTable?.name) {
-      apiRequest(client, 'auth:check').then((userData: any) => {
-        const currentUserId = userData?.data?.id || userData?.id;
-        const roles = (userData?.roles || userData?.data?.roles || []).map((r: any) => r.name || '');
-        if (roles.includes('admin') || roles.includes('root')) {
+  const loadPermissions = () => {
+    if (!selectedTable?.name) return;
+    apiRequest(client, 'auth:check').then((userData: any) => {
+      const currentUserId = userData?.data?.id || userData?.id;
+      const roles = (userData?.roles || userData?.data?.roles || []).map((r: any) => r.name || '');
+      if (roles.includes('admin') || roles.includes('root')) {
+        if (permSource.type !== 'admin' && permSource.id) {
+          apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: permSource.type, targetId: permSource.id } }).then((permData: any) => {
+            const perm = (permData?.custom || []).find((p: any) => p.tableName === selectedTable.name);
+            if (perm?.canImport && perm.importMode) {
+              setAllowedModes(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode]);
+            } else {
+              setAllowedModes(['insert', 'update', 'upsert']);
+            }
+            const modes = perm?.importMode || ['insert', 'update', 'upsert'];
+            const modeList = Array.isArray(modes) ? modes : [modes];
+            setImportMode(modeList.includes('upsert') ? 'upsert' : modeList.includes('update') ? 'update' : 'insert');
+            setPermUniqueFields(perm?.uniqueFields || []);
+            setPermRequiredFields(perm?.requiredFields || []);
+            setPermImportFields(perm?.importFields || []);
+            if (perm?.uniqueFields?.length > 0) setUniqueFields(perm.uniqueFields);
+          }).catch(() => { setAllowedModes(['insert', 'update', 'upsert']); setPermUniqueFields([]); setPermRequiredFields([]); setPermImportFields([]); });
+        } else {
           setAllowedModes(['insert', 'update', 'upsert']);
           setImportMode('upsert');
           setPermUniqueFields([]); setPermRequiredFields([]); setPermImportFields([]);
-          return;
         }
-        if (!currentUserId) { setAllowedModes(['insert', 'update', 'upsert']); return; }
-        apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: 'user', targetId: String(currentUserId) } }).then((permData: any) => {
-          const userPerm = (permData?.custom || []).find((p: any) => p.tableName === selectedTable.name);
-          const rolePerm = (permData?.inherited || []).find((p: any) => p.tableName === selectedTable.name && p.canImport);
-          const effectivePerm = userPerm || rolePerm;
-          if (userPerm) {
-            if (userPerm.canImport && userPerm.importMode) {
-              setAllowedModes(Array.isArray(userPerm.importMode) ? userPerm.importMode : [userPerm.importMode]);
-            } else {
-              setAllowedModes([]);
-            }
-          } else if (rolePerm) {
-            const modes = rolePerm.importMode;
-            setAllowedModes(Array.isArray(modes) && modes.length > 0 ? modes : ['insert', 'update', 'upsert']);
+        return;
+      }
+      if (!currentUserId) { setAllowedModes(['insert', 'update', 'upsert']); return; }
+      apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: 'user', targetId: String(currentUserId) } }).then((permData: any) => {
+        const userPerm = (permData?.custom || []).find((p: any) => p.tableName === selectedTable.name);
+        const rolePerm = (permData?.inherited || []).find((p: any) => p.tableName === selectedTable.name && p.canImport);
+        const effectivePerm = userPerm || rolePerm;
+        if (userPerm) {
+          if (userPerm.canImport && userPerm.importMode) {
+            setAllowedModes(Array.isArray(userPerm.importMode) ? userPerm.importMode : [userPerm.importMode]);
           } else {
-            setAllowedModes(['insert', 'update', 'upsert']);
+            setAllowedModes([]);
           }
-          const modes = userPerm?.importMode || rolePerm?.importMode || ['insert', 'update', 'upsert'];
-          const modeList = Array.isArray(modes) ? modes : [modes];
-          const pickMode = (list: string[]) => {
-            if (list.includes('upsert')) return 'upsert';
-            if (list.includes('update')) return 'update';
-            if (list.includes('insert')) return 'insert';
-            return 'insert';
-          };
-          setImportMode(pickMode(modeList));
-          if (effectivePerm) {
-            setPermUniqueFields(effectivePerm.uniqueFields || []);
-            setPermRequiredFields(effectivePerm.requiredFields || []);
-            setPermImportFields(effectivePerm.importFields || []);
-            if (effectivePerm.uniqueFields?.length > 0) setUniqueFields(effectivePerm.uniqueFields);
-          } else {
-            setPermUniqueFields([]); setPermRequiredFields([]); setPermImportFields([]);
-          }
-        }).catch(() => { setAllowedModes(['insert', 'update', 'upsert']); setPermUniqueFields([]); setPermRequiredFields([]); setPermImportFields([]); });
-      }).catch(() => setAllowedModes(['insert', 'update', 'upsert']));
-    }
-  }, [selectedTable?.name]);
+        } else if (rolePerm) {
+          const modes = rolePerm.importMode;
+          setAllowedModes(Array.isArray(modes) && modes.length > 0 ? modes : ['insert', 'update', 'upsert']);
+        } else {
+          setAllowedModes(['insert', 'update', 'upsert']);
+        }
+        const modes = userPerm?.importMode || rolePerm?.importMode || ['insert', 'update', 'upsert'];
+        const modeList = Array.isArray(modes) ? modes : [modes];
+        const pickMode = (list: string[]) => {
+          if (list.includes('upsert')) return 'upsert';
+          if (list.includes('update')) return 'update';
+          if (list.includes('insert')) return 'insert';
+          return 'insert';
+        };
+        setImportMode(pickMode(modeList));
+        if (effectivePerm) {
+          setPermUniqueFields(effectivePerm.uniqueFields || []);
+          setPermRequiredFields(effectivePerm.requiredFields || []);
+          setPermImportFields(effectivePerm.importFields || []);
+          if (effectivePerm.uniqueFields?.length > 0) setUniqueFields(effectivePerm.uniqueFields);
+        } else {
+          setPermUniqueFields([]); setPermRequiredFields([]); setPermImportFields([]);
+        }
+      }).catch(() => { setAllowedModes(['insert', 'update', 'upsert']); setPermUniqueFields([]); setPermRequiredFields([]); setPermImportFields([]); });
+    }).catch(() => setAllowedModes(['insert', 'update', 'upsert']));
+  };
+
+  React.useEffect(() => { loadPermissions(); }, [selectedTable?.name, permSource]);
+
+  const handlePermSourceChange = (val: string) => {
+    if (val === 'admin') { setPermSource({ type: 'admin' }); return; }
+    const [type, id] = val.split(':');
+    const option = permSourceOptions.find(o => o.value === val);
+    setPermSource({ type, id, label: option?.label });
+    setFieldMapping({}); setCustomValues({});
+  };
 
   const handleFileSelect = (info: any) => {
     if (info.file.status === 'done') {
@@ -212,11 +255,11 @@ export default function ImportPanel() {
   }, [excelHeaders, tableFields, autoMatchFlag]);
 
   const handleExecute = () => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认导入',
       content: '导入在事务中执行，任一行失败则整批回滚。关联字段通过主键ID匹配，匹配失败则整批回滚。',
       onOk: () => {
-        client.request({
+        return client.request({
           url: 'sjgl02Import:execute',
           method: 'post',
           data: {
@@ -228,6 +271,8 @@ export default function ImportPanel() {
             customValues,
             importMode,
             uniqueFields,
+            blankCellMode,
+            permSource: permSource.type === 'admin' ? null : permSource,
           },
         }).then(() => {
           message.success('导入任务已提交，可在任务管理中查看进度');
@@ -342,7 +387,18 @@ export default function ImportPanel() {
                       )}
                     </Space>
                   </div>
-               </Card>
+                  {isAdminOrRoot && (
+                    <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 8, marginTop: 4 }}>
+                      <Space>
+                        <span style={{ color: '#999', fontSize: 12 }}>模拟方案：</span>
+                        <Select
+                          value={permSource.type === 'admin' ? 'admin' : `${permSource.type}:${permSource.id}`}
+                          onChange={handlePermSourceChange} style={{ minWidth: 200 }} size="small"
+                          options={permSourceOptions} />
+                      </Space>
+                    </div>
+                  )}
+                </Card>
               {(importMode === 'update' || importMode === 'upsert') && (
                 <Card size="small" style={{ marginBottom: 12 }}>
                   <div style={{ fontWeight: 600, color: '#fa8c16', marginBottom: 8 }}>🔑 唯一值字段</div>
@@ -358,6 +414,15 @@ export default function ImportPanel() {
                   )}
                 </Card>
               )}
+              <Card size="small" style={{ marginBottom: 12 }}>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>📝 空白单元格处理</div>
+                <Select value={blankCellMode} onChange={setBlankCellMode} style={{ width: '100%' }}
+                  options={[
+                    { value: 'update', label: '按Excel值更新（空单元格不处理，保持原Excel值）' },
+                    { value: 'null', label: '按NULL更新（空单元格写入数据库 NULL）' },
+                    { value: 'skip', label: '跳过（空单元格不动，保留数据库原有数据）' },
+                  ]} />
+              </Card>
               {excelHeaders.length > 0 && (
                 <Card size="small" title={<span>📊 字段映射 · {matchInfo && <Tag color={matchInfo.includes('0未匹配') ? 'green' : 'orange'} style={{ fontSize: 11 }}>⚡{matchInfo}</Tag>}<Button size="small" style={{ marginLeft: 12 }} onClick={handleAutoMatch}>⚡ 自动匹配</Button><Button size="small" style={{ marginLeft: 6 }} onClick={handleClearMapping}>🗑 清空</Button></span>} style={{ marginBottom: 12 }}>
                   {permRequiredFields.length > 0 && (

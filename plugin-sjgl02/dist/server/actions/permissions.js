@@ -272,4 +272,12 @@ async function saveSettings(ctx, next) {
   ctx.body = { success: true };
   await next();
 }
-// Annotate t
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  getPermissions,
+  getSettings,
+  getTables,
+  getUserRoleList,
+  savePermissions,
+  saveSettings
+});

@@ -35,6 +35,7 @@ var import_import = require("./actions/import");
 var import_export = require("./actions/export");
 var import_tasks = require("./actions/tasks");
 var import_permissions = require("./actions/permissions");
+var import_taskLogs = require("./actions/taskLogs");
 class PluginSjgl02Server extends import_server.Plugin {
   async load() {
     this.defineCustomResources();
@@ -79,6 +80,12 @@ class PluginSjgl02Server extends import_server.Plugin {
         saveSettings: import_permissions.saveSettings
       }
     });
+    this.app.resourceManager.define({
+      name: "sjgl02TaskLogs",
+      actions: {
+        list: import_taskLogs.listTaskLogs
+      }
+    });
   }
   setupACL() {
     const acl = this.app.acl;
@@ -90,6 +97,8 @@ class PluginSjgl02Server extends import_server.Plugin {
     acl.allow("sjgl02_table_permissions", "*", "loggedIn");
     acl.allow("sjgl02_settings", "*", "loggedIn");
     acl.allow("sjgl02_permission_logs", "*", "loggedIn");
+    acl.allow("sjgl02TaskLogs", "*", "loggedIn");
+    acl.allow("sjgl02_task_logs", "*", "loggedIn");
   }
   async install() {
     const settingRepo = this.db.getRepository("sjgl02_settings");
@@ -133,9 +142,7 @@ class PluginSjgl02Server extends import_server.Plugin {
         }
       }
       if (tablePermissions.length > 0) {
-        for (const perm of tablePermissions) {
-          await permRepo.create({ values: perm });
-        }
+        await Promise.all(tablePermissions.map((perm) => permRepo.create({ values: perm })));
       }
     }
   }

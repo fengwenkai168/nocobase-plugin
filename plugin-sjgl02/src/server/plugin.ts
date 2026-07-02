@@ -25,6 +25,9 @@ import {
   getSettings,
   saveSettings,
 } from './actions/permissions';
+import {
+  listTaskLogs,
+} from './actions/taskLogs';
 
 export class PluginSjgl02Server extends Plugin {
   async load() {
@@ -74,6 +77,13 @@ export class PluginSjgl02Server extends Plugin {
         saveSettings,
       },
     });
+
+    this.app.resourceManager.define({
+      name: 'sjgl02TaskLogs',
+      actions: {
+        list: listTaskLogs,
+      },
+    });
   }
 
   private setupACL() {
@@ -86,6 +96,8 @@ export class PluginSjgl02Server extends Plugin {
     acl.allow('sjgl02_table_permissions', '*', 'loggedIn');
     acl.allow('sjgl02_settings', '*', 'loggedIn');
     acl.allow('sjgl02_permission_logs', '*', 'loggedIn');
+    acl.allow('sjgl02TaskLogs', '*', 'loggedIn');
+    acl.allow('sjgl02_task_logs', '*', 'loggedIn');
   }
 
   async install() {
@@ -131,9 +143,7 @@ export class PluginSjgl02Server extends Plugin {
         }
       }
       if (tablePermissions.length > 0) {
-        for (const perm of tablePermissions) {
-          await permRepo.create({ values: perm });
-        }
+        await Promise.all(tablePermissions.map(perm => permRepo.create({ values: perm })));
       }
     }
   }

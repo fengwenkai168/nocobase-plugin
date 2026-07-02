@@ -30,18 +30,40 @@ __export(permission_check_exports, {
   checkImportPermission: () => checkImportPermission
 });
 module.exports = __toCommonJS(permission_check_exports);
-async function checkImportPermission(ctx, tableName) {
-  return checkTablePermission(ctx, tableName, "import");
+async function checkImportPermission(ctx, tableName, permSource) {
+  return checkTablePermission(ctx, tableName, "import", permSource);
 }
 async function checkExportPermission(ctx, tableName) {
   return checkTablePermission(ctx, tableName, "export");
 }
-async function checkTablePermission(ctx, tableName, actionType) {
+async function checkTablePermission(ctx, tableName, actionType, permSource) {
   const currentUser = ctx.state.currentUser;
   if (!currentUser) {
     ctx.throw(401, "\u8BF7\u5148\u767B\u5F55");
   }
   const permRepo = ctx.db.getRepository("sjgl02_table_permissions");
+  if (permSource && permSource.id) {
+    const targetPerm = await permRepo.findOne({
+      filter: { targetType: permSource.type, targetId: permSource.type === "user" ? String(permSource.id) : permSource.id, tableName }
+    });
+    if (targetPerm) {
+      const fieldName = actionType === "import" ? "canImport" : "canExport";
+      if (!targetPerm[fieldName]) {
+        ctx.throw(403, `\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C${tableName}\u300D\u7684${actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA"}\u6743\u9650`);
+      }
+      return {
+        canImport: targetPerm.canImport ?? false,
+        canExport: targetPerm.canExport ?? false,
+        importMode: Array.isArray(targetPerm.importMode) ? targetPerm.importMode : [targetPerm.importMode || "insert"],
+        importFields: targetPerm.importFields || [],
+        exportFields: targetPerm.exportFields || [],
+        exportFilter: targetPerm.exportFilter || null,
+        uniqueFields: targetPerm.uniqueFields || [],
+        requiredFields: targetPerm.requiredFields || []
+      };
+    }
+    ctx.throw(403, `\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C${tableName}\u300D\u7684${actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA"}\u6743\u9650`);
+  }
   const userRepo = ctx.db.getRepository("users");
   let user = null;
   let roleNames = [];
@@ -130,4 +152,5 @@ async function checkTablePermission(ctx, tableName, actionType) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   checkExportPermission,
-  c
+  checkImportPermission
+});
