@@ -201,7 +201,7 @@ async function previewCount(ctx, next) {
   await next();
 }
 async function executeExport(ctx, next) {
-  var _a, _b, _c, _d;
+  var _a;
   const params = ctx.action.params.values || ctx.action.params;
   const {
     tableName,
@@ -240,12 +240,25 @@ async function executeExport(ctx, next) {
       }
     }
   }
+  let allowedTableList = null;
+  if (tableName === "__all__") {
+    const names = [];
+    const collections = ctx.db.collections;
+    for (const [name] of collections) {
+      try {
+        const permCheck = await (0, import_permission_check.checkExportPermission)(ctx, name);
+        if (permCheck.canExport) names.push(name);
+      } catch {
+      }
+    }
+    allowedTableList = names;
+  }
   const repo = ctx.db.getRepository("sjgl02_tasks");
   const task = await repo.create({
     values: {
       taskType: "export",
       tableName,
-      status: "processing",
+      status: "pending",
       selectedFields: selectedFields || [],
       exportFilter: exportFilter || {},
       associationDisplayMode: associationDisplayMode || {},
@@ -259,47 +272,67 @@ async function executeExport(ctx, next) {
       headerStyle: headerStyle || "title_id"
     }
   });
-  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u51FA\u4EFB\u52A1");
-  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}${tableName === "__all__" ? "\uFF08\u5168\u90E8\u6570\u636E\u8868\uFF09" : ""}`);
+  const db = ctx.db;
+  const taskId = task.id;
+  ctx.body = { taskId };
+  await next();
+  setImmediate(() => {
+    processExportAsync(db, taskId, {
+      tableName,
+      selectedFields,
+      associationDisplayMode,
+      includeAssociationSheet,
+      associationSheetTables,
+      exportFilter,
+      fileNameTemplate,
+      includeAttachments,
+      headerStyle,
+      allowedTableList
+    });
+  });
+}
+async function processExportAsync(db, taskId, params) {
+  var _a, _b, _c;
+  const {
+    tableName,
+    selectedFields,
+    associationDisplayMode,
+    includeAssociationSheet,
+    associationSheetTables,
+    exportFilter,
+    fileNameTemplate,
+    includeAttachments,
+    headerStyle,
+    allowedTableList
+  } = params;
+  const repo = db.getRepository("sjgl02_tasks");
   const release = await exportMutex.acquire();
   try {
+    await repo.update({ filterByTk: taskId, values: { status: "processing" } });
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u51FA\u4EFB\u52A1");
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}${tableName === "__all__" ? "\uFF08\u5168\u90E8\u6570\u636E\u8868\uFF09" : ""}`);
     const isAllTables = tableName === "__all__";
-    const tableList = isAllTables ? (() => {
-      const names = [];
-      const collections = ctx.db.collections;
-      for (const [name] of collections) {
-        names.push(name);
-      }
-      return names;
-    })() : [tableName];
+    const tableList = isAllTables ? allowedTableList || [] : [tableName];
     const tempDir = import_path.default.join(process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads", "exports");
     if (!import_fs.default.existsSync(tempDir)) import_fs.default.mkdirSync(tempDir, { recursive: true });
     let totalRows = 0;
     let processedRows = 0;
     const outputFiles = [];
     for (const tblName of tableList) {
-      const coll = ctx.db.getCollection(tblName);
+      const coll = db.getCollection(tblName);
       if (!coll) continue;
-      const targetRepo = ctx.db.getRepository(tblName);
+      const targetRepo = db.getRepository(tblName);
       if (!targetRepo) continue;
-      if (tableName === "__all__") {
-        try {
-          const permCheck = await (0, import_permission_check.checkExportPermission)(ctx, tblName);
-          if (!permCheck.canExport) continue;
-        } catch {
-          continue;
-        }
-      }
       let records = [];
       let collectionTotal = 0;
       const appendFields = [];
       const attachmentFieldNames = [];
       const fileIdFieldNames = [];
       try {
-        for (const f of Array.from(((_b = coll.fields) == null ? void 0 : _b.values()) || coll.fields || [])) {
+        for (const f of Array.from(((_a = coll.fields) == null ? void 0 : _a.values()) || coll.fields || [])) {
           if (f.type === "belongsTo") appendFields.push(f.name);
           if (includeAttachments && f.type === "belongsToMany") {
-            const interfaceName = (_c = f.options) == null ? void 0 : _c.interface;
+            const interfaceName = (_b = f.options) == null ? void 0 : _b.interface;
             if (interfaceName === "attachment" && !appendFields.includes(f.name)) {
               appendFields.push(f.name);
               attachmentFieldNames.push(f.name);
@@ -368,16 +401,16 @@ async function executeExport(ctx, next) {
           totalRows++;
         }
         offset += PAGE_SIZE;
-        const progress2 = Math.min(100, Math.floor(offset * 100 / Math.max(1, collectionTotal)));
+        const progress = Math.min(100, Math.floor(offset * 100 / Math.max(1, collectionTotal)));
         try {
-          await repo.update({ filterByTk: task.id, values: { processedRows, totalRows, progress: progress2 } });
+          await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
         } catch {
         }
       }
       if (includeAssociationSheet) {
         const assocFields = getAssociationFields(coll);
         for (const af of assocFields.filter((af2) => !fieldNames.length || fieldNames.includes(af2.name))) {
-          const assocRepo = ctx.db.getRepository(af.target);
+          const assocRepo = db.getRepository(af.target);
           if (!assocRepo) continue;
           let assocTotal = 0;
           try {
@@ -386,7 +419,7 @@ async function executeExport(ctx, next) {
           } catch {
           }
           if (assocTotal === 0) continue;
-          const assocColl = ctx.db.getCollection(af.target);
+          const assocColl = db.getCollection(af.target);
           const assocScalarFields = getScalarFields(assocColl);
           if (!assocScalarFields || assocScalarFields.length === 0) continue;
           const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
@@ -418,7 +451,7 @@ async function executeExport(ctx, next) {
             aOff += PAGE_SIZE;
             const ap = Math.min(100, Math.floor(aOff * 100 / Math.max(1, assocTotal)));
             try {
-              await repo.update({ filterByTk: task.id, values: { processedRows, totalRows, progress: Math.max(ap, progress || 0) } });
+              await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress: Math.max(ap, 0) } });
             } catch {
             }
           }
@@ -461,7 +494,7 @@ async function executeExport(ctx, next) {
         if (attachIds.size > 0) {
           const fileIdFilenameMap = /* @__PURE__ */ new Map();
           try {
-            const ar = await ctx.db.getRepository("attachments").find({ filter: { id: Array.from(attachIds) } });
+            const ar = await db.getRepository("attachments").find({ filter: { id: Array.from(attachIds) } });
             ar.forEach((at) => {
               if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
             });
@@ -475,8 +508,8 @@ async function executeExport(ctx, next) {
                 const diskPath = import_path.default.join(storageDir, fn);
                 let realPath = diskPath;
                 if (!import_fs.default.existsSync(realPath)) {
-                  const atRecords = await ctx.db.getRepository("attachments").find({ filter: { id: [aid] } });
-                  if (((_d = atRecords[0]) == null ? void 0 : _d.path) !== void 0) {
+                  const atRecords = await db.getRepository("attachments").find({ filter: { id: [aid] } });
+                  if (((_c = atRecords[0]) == null ? void 0 : _c.path) !== void 0) {
                     realPath = import_path.default.join(storageDir, atRecords[0].path || "", fn);
                   }
                 }
@@ -512,13 +545,13 @@ async function executeExport(ctx, next) {
         }
       }
       await repo.update({
-        filterByTk: task.id,
+        filterByTk: taskId,
         values: { progress: Math.min(100, Math.floor(processedRows / Math.max(totalRows, 1) * 100)), processedRows, totalRows }
       });
     }
     let finalFilePath;
     if (outputFiles.length === 0) {
-      throw new Error("No data to export");
+      throw new Error("\u6CA1\u6709\u6570\u636E\u53EF\u5BFC\u51FA");
     } else if (outputFiles.length === 1) {
       finalFilePath = outputFiles[0];
     } else {
@@ -547,7 +580,7 @@ async function executeExport(ctx, next) {
       }
     }
     const stats = await import_promises.default.stat(finalFilePath);
-    const attachRepo = ctx.db.getRepository("attachments");
+    const attachRepo = db.getRepository("attachments");
     const exportAttachment = await attachRepo.create({
       values: {
         title: import_path.default.basename(finalFilePath),
@@ -559,7 +592,7 @@ async function executeExport(ctx, next) {
       }
     });
     await repo.update({
-      filterByTk: task.id,
+      filterByTk: taskId,
       values: {
         status: "completed",
         progress: 100,
@@ -570,23 +603,24 @@ async function executeExport(ctx, next) {
         completedAt: /* @__PURE__ */ new Date()
       }
     });
-    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "SUCC", `\u5BFC\u51FA\u5B8C\u6210\uFF0C\u5171 ${processedRows} \u884C\u6570\u636E`);
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", `\u5BFC\u51FA\u5B8C\u6210\uFF0C\u5171 ${processedRows} \u884C\u6570\u636E`);
   } catch (err) {
-    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "ERROR", `\u5BFC\u51FA\u5931\u8D25: ${err.message || String(err)}`);
-    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "WARN", "\u6587\u4EF6\u672A\u751F\u6210\uFF0C\u6570\u636E\u672A\u4FEE\u6539");
-    await repo.update({
-      filterByTk: task.id,
-      values: {
-        status: "failed",
-        errorMessage: err.message || String(err),
-        completedAt: /* @__PURE__ */ new Date()
-      }
-    });
+    try {
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u5BFC\u51FA\u5931\u8D25: ${err.message || String(err)}`);
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", "\u6587\u4EF6\u672A\u751F\u6210\uFF0C\u6570\u636E\u672A\u4FEE\u6539");
+      await repo.update({
+        filterByTk: taskId,
+        values: {
+          status: "failed",
+          errorMessage: err.message || String(err),
+          completedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    } catch {
+    }
   } finally {
     release();
   }
-  ctx.body = { taskId: task.id };
-  await next();
 }
 async function getProgress(ctx, next) {
   const { taskId } = ctx.action.params;

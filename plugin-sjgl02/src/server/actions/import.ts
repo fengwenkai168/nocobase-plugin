@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { checkImportPermission } from './permission-check';
 import { writeTaskLog } from './taskLogs';
+import type { Database } from '@nocobase/database';
 
 export async function getTableFields(ctx: Context, next: Next) {
   const { tableName } = ctx.action.params;
@@ -216,25 +217,58 @@ export async function executeImport(ctx: Context, next: Next) {
     },
   });
 
-  const sequelize = ctx.db.sequelize;
-  const transaction = await sequelize.transaction();
-  await repo.update({ filterByTk: task.id, values: { status: 'processing' }, transaction });
+  const db = ctx.db;
+  const taskId = task.id;
 
-  await writeTaskLog(ctx, task.id, 'INFO', '开始执行导入任务');
-  await writeTaskLog(ctx, task.id, 'INFO', `目标数据表: ${tableName}`);
-  await writeTaskLog(ctx, task.id, 'INFO', `导入模式: ${importMode || 'insert'}`);
+  ctx.body = { taskId };
+  await next();
+
+  setImmediate(() => {
+    processImportAsync(db, taskId, {
+      tableName, fileId, sheetName, headerRow, fieldMapping, customValues,
+      importMode, uniqueFields, blankCellMode,
+      attachmentPath: attachment.path || attachment.filename,
+    });
+  });
+}
+
+interface ImportAsyncParams {
+  tableName: string;
+  fileId: number;
+  sheetName?: string;
+  headerRow?: number;
+  fieldMapping?: Record<string, string>;
+  customValues?: Record<string, any>;
+  importMode?: string;
+  uniqueFields?: string[];
+  blankCellMode?: string;
+  attachmentPath: string;
+}
+
+async function processImportAsync(db: Database, taskId: number, params: ImportAsyncParams) {
+  const { tableName, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields, blankCellMode, attachmentPath } = params;
+
+  const repo = db.getRepository('sjgl02_tasks');
+  const sequelize = db.sequelize;
+  const transaction = await sequelize.transaction();
+
+  await repo.update({ filterByTk: taskId, values: { status: 'processing' }, transaction });
+
+  await writeTaskLog(db, taskId, 'INFO', '开始执行导入任务');
+  await writeTaskLog(db, taskId, 'INFO', `目标数据表: ${tableName}`);
+  await writeTaskLog(db, taskId, 'INFO', `导入模式: ${importMode || 'insert'}`);
 
   try {
     const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
-    const filePath = path.join(storageDir, attachment.path || attachment.filename);
+    const filePath = path.join(storageDir, attachmentPath);
     if (!fs.existsSync(filePath)) {
-      throw new Error('File not found on disk: ' + filePath);
+      throw new Error('文件未找到: ' + filePath);
     }
     const workbook = XLSX.readFile(filePath, { type: 'file' });
     const targetSheetName = sheetName || workbook.SheetNames[0];
     const sheet = workbook.Sheets[targetSheetName];
     if (!sheet) {
-      throw new Error(`Sheet "${targetSheetName}" not found`);
+      throw new Error(`Sheet "${targetSheetName}" 未找到`);
     }
     const allRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
     const hRow = Math.max(0, (parseInt(String(headerRow), 10) || 1) - 1);
@@ -245,13 +279,14 @@ export async function executeImport(ctx: Context, next: Next) {
     const custVals = customValues || {};
 
     const totalRows = dataRows.length;
-    await repo.update({ filterByTk: task.id, values: { totalRows }, transaction });
-    await writeTaskLog(ctx, task.id, 'SUCC', `文件解析完成，共 ${totalRows} 行有效数据`);
-    await writeTaskLog(ctx, task.id, 'INFO', `开始逐行处理数据...`);
+    await repo.update({ filterByTk: taskId, values: { totalRows }, transaction });
+    await writeTaskLog(db, taskId, 'SUCC', `文件解析完成，共 ${totalRows} 行有效数据`);
+    await writeTaskLog(db, taskId, 'INFO', '开始逐行处理数据...');
 
-    const targetRepo = ctx.db.getRepository(tableName);
+    const targetRepo = db.getRepository(tableName);
     const errorLogs: any[] = [];
     let processedRows = 0;
+    const coll: any = db.getCollection(tableName);
 
     const normalizeDateValue = (val: string): string => {
       if (!val || !val.trim()) return val;
@@ -342,10 +377,9 @@ export async function executeImport(ctx: Context, next: Next) {
             reason: `唯一值字段为空（${emptyFields.join(', ')}），整批导入已取消`,
             snapshot: buildSnapshot(dataRows[i]),
           });
-          await repo.update({ filterByTk: task.id, values: { status: 'failed', errorLogs, processedRows: 0, totalRows: dataRows.length } }, { transaction });
-          await writeTaskLog(ctx, task.id, 'ERROR', `第 ${i + 1} 行唯一值字段（${emptyFields.join(', ')}）为空，已回滚全部 ${dataRows.length} 行数据`);
+          await repo.update({ filterByTk: taskId, values: { status: 'failed', errorLogs, processedRows: 0, totalRows: dataRows.length } }, { transaction });
+          await writeTaskLog(db, taskId, 'ERROR', `第 ${i + 1} 行唯一值字段（${emptyFields.join(', ')}）为空，已回滚全部 ${dataRows.length} 行数据`);
           await transaction.rollback();
-          ctx.body = { success: false, taskId: task.id, error: `唯一值字段为空：${emptyFields.join(', ')}（第 ${i + 1} 行）` };
           return;
         }
       }
@@ -431,7 +465,7 @@ export async function executeImport(ctx: Context, next: Next) {
             delete record._existingId;
             applyBelongsToFK(record, br.idx);
             toUpdatePromises.push((async () => {
-              await targetRepo.update({ filterByTk: eid, values: record, transaction, context: ctx });
+              await targetRepo.update({ filterByTk: eid, values: record, transaction });
               processedRows++;
             })());
             continue;
@@ -462,7 +496,7 @@ export async function executeImport(ctx: Context, next: Next) {
 
       if (toCreateRows.length > 0) {
         try {
-          await targetRepo.create({ values: toCreateRows, transaction, context: ctx });
+          await targetRepo.create({ values: toCreateRows, transaction });
         } catch (createErr: any) {
           for (const cr of toCreateRows) {
             errorLogs.push({ reason: createErr.message || String(createErr) });
@@ -472,14 +506,14 @@ export async function executeImport(ctx: Context, next: Next) {
       await Promise.all(toUpdatePromises);
 
       const batchProgress = Math.min(100, Math.floor((batchEnd * 100) / dataRows.length));
-      try { await repo.update({ filterByTk: task.id, values: { processedRows, progress: batchProgress }, transaction }); } catch {}
+      try { await repo.update({ filterByTk: taskId, values: { processedRows, progress: batchProgress }, transaction }); } catch {}
     }
 
     if (errorLogs.length > 0) {
       await transaction.rollback();
-      await writeTaskLog(ctx, task.id, 'WARN', `共 ${errorLogs.length} 行数据失败，正在回滚...`);
+      await writeTaskLog(db, taskId, 'WARN', `共 ${errorLogs.length} 行数据失败，正在回滚...`);
       await repo.update({
-        filterByTk: task.id,
+        filterByTk: taskId,
         values: {
           status: 'failed',
           progress: 0,
@@ -489,12 +523,12 @@ export async function executeImport(ctx: Context, next: Next) {
           completedAt: new Date(),
         },
       });
-      await writeTaskLog(ctx, task.id, 'ERROR', `导入失败: ${errorLogs.length} 行数据失败，已回滚`);
+      await writeTaskLog(db, taskId, 'ERROR', `导入失败: ${errorLogs.length} 行数据失败，已回滚`);
     } else {
       await transaction.commit();
-      await writeTaskLog(ctx, task.id, 'SUCC', `导入完成，共 ${processedRows} 行数据`);
+      await writeTaskLog(db, taskId, 'SUCC', `导入完成，共 ${processedRows} 行数据`);
       await repo.update({
-        filterByTk: task.id,
+        filterByTk: taskId,
         values: {
           status: 'completed',
           progress: 100,
@@ -504,19 +538,18 @@ export async function executeImport(ctx: Context, next: Next) {
       });
     }
   } catch (err: any) {
-    await transaction.rollback();
-    await writeTaskLog(ctx, task.id, 'ERROR', `导入异常: ${err.message || String(err)}`);
-    await writeTaskLog(ctx, task.id, 'WARN', '事务已回滚，数据已还原');
-    await repo.update({
-      filterByTk: task.id,
-      values: {
-        status: 'failed',
-        errorMessage: err.message || String(err),
-        completedAt: new Date(),
-      },
-    });
+    try { await transaction.rollback(); } catch {}
+    try {
+      await writeTaskLog(db, taskId, 'ERROR', `导入异常: ${err.message || String(err)}`);
+      await writeTaskLog(db, taskId, 'WARN', '事务已回滚，数据已还原');
+      await repo.update({
+        filterByTk: taskId,
+        values: {
+          status: 'failed',
+          errorMessage: err.message || String(err),
+          completedAt: new Date(),
+        },
+      });
+    } catch {}
   }
-
-  ctx.body = { taskId: task.id };
-  await next();
 }

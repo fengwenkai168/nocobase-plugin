@@ -7,6 +7,7 @@ import archiver from 'archiver';
 import { Mutex } from 'async-mutex';
 import { checkExportPermission } from './permission-check';
 import { writeTaskLog } from './taskLogs';
+import type { Database } from '@nocobase/database';
 
 const exportMutex = new Mutex();
 
@@ -193,12 +194,25 @@ export async function executeExport(ctx: Context, next: Next) {
     }
   }
 
+  let allowedTableList: string[] | null = null;
+  if (tableName === '__all__') {
+    const names: string[] = [];
+    const collections = ctx.db.collections;
+    for (const [name] of collections) {
+      try {
+        const permCheck = await checkExportPermission(ctx, name);
+        if (permCheck.canExport) names.push(name);
+      } catch { }
+    }
+    allowedTableList = names;
+  }
+
   const repo = ctx.db.getRepository('sjgl02_tasks');
   const task = await repo.create({
     values: {
       taskType: 'export',
       tableName,
-      status: 'processing',
+      status: 'pending',
       selectedFields: selectedFields || [],
       exportFilter: exportFilter || {},
       associationDisplayMode: associationDisplayMode || {},
@@ -213,22 +227,54 @@ export async function executeExport(ctx: Context, next: Next) {
     },
   });
 
-  await writeTaskLog(ctx, task.id, 'INFO', '开始执行导出任务');
-  await writeTaskLog(ctx, task.id, 'INFO', `目标数据表: ${tableName}${tableName === '__all__' ? '（全部数据表）' : ''}`);
+  const db = ctx.db;
+  const taskId = task.id;
+
+  ctx.body = { taskId };
+  await next();
+
+  setImmediate(() => {
+    processExportAsync(db, taskId, {
+      tableName, selectedFields, associationDisplayMode, includeAssociationSheet,
+      associationSheetTables, exportFilter, fileNameTemplate, includeAttachments, headerStyle,
+      allowedTableList,
+    });
+  });
+}
+
+interface ExportAsyncParams {
+  tableName: string;
+  selectedFields?: string[];
+  associationDisplayMode?: Record<string, string>;
+  includeAssociationSheet?: boolean;
+  associationSheetTables?: string[];
+  exportFilter?: Record<string, any>;
+  fileNameTemplate?: string;
+  includeAttachments?: boolean;
+  headerStyle?: string;
+  allowedTableList: string[] | null;
+}
+
+async function processExportAsync(db: Database, taskId: number, params: ExportAsyncParams) {
+  const {
+    tableName, selectedFields, associationDisplayMode, includeAssociationSheet,
+    associationSheetTables, exportFilter, fileNameTemplate, includeAttachments, headerStyle,
+    allowedTableList,
+  } = params;
+
+  const repo = db.getRepository('sjgl02_tasks');
 
   const release = await exportMutex.acquire();
 
   try {
+    await repo.update({ filterByTk: taskId, values: { status: 'processing' } });
+
+    await writeTaskLog(db, taskId, 'INFO', '开始执行导出任务');
+    await writeTaskLog(db, taskId, 'INFO', `目标数据表: ${tableName}${tableName === '__all__' ? '（全部数据表）' : ''}`);
+
     const isAllTables = tableName === '__all__';
     const tableList: string[] = isAllTables
-      ? (() => {
-          const names: string[] = [];
-          const collections = ctx.db.collections;
-          for (const [name] of collections) {
-            names.push(name);
-          }
-          return names;
-        })()
+      ? (allowedTableList || [])
       : [tableName];
 
     const tempDir = path.join(process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads', 'exports');
@@ -239,19 +285,10 @@ export async function executeExport(ctx: Context, next: Next) {
     const outputFiles: string[] = [];
 
     for (const tblName of tableList) {
-      const coll = ctx.db.getCollection(tblName);
+      const coll: any = db.getCollection(tblName);
       if (!coll) continue;
-      const targetRepo = ctx.db.getRepository(tblName);
+      const targetRepo = db.getRepository(tblName);
       if (!targetRepo) continue;
-
-      if (tableName === '__all__') {
-        try {
-          const permCheck = await checkExportPermission(ctx, tblName);
-          if (!permCheck.canExport) continue;
-        } catch {
-          continue;
-        }
-      }
 
       let records: any[] = [];
       let collectionTotal = 0;
@@ -330,18 +367,18 @@ export async function executeExport(ctx: Context, next: Next) {
         }
         offset += PAGE_SIZE;
         const progress = Math.min(100, Math.floor((offset * 100) / Math.max(1, collectionTotal)));
-        try { await repo.update({ filterByTk: task.id, values: { processedRows, totalRows, progress } }); } catch {}
+        try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } }); } catch {}
       }
 
       if (includeAssociationSheet) {
         const assocFields = getAssociationFields(coll);
         for (const af of assocFields.filter((af: any) => !fieldNames.length || fieldNames.includes(af.name))) {
-          const assocRepo = ctx.db.getRepository(af.target);
+          const assocRepo = db.getRepository(af.target);
           if (!assocRepo) continue;
           let assocTotal = 0;
           try { const [,cnt] = await assocRepo.findAndCount({ limit:1 }); assocTotal = cnt; } catch {}
           if (assocTotal === 0) continue;
-          const assocColl = ctx.db.getCollection(af.target);
+          const assocColl = db.getCollection(af.target);
           const assocScalarFields = getScalarFields(assocColl);
           if (!assocScalarFields || assocScalarFields.length === 0) continue;
 
@@ -372,7 +409,7 @@ export async function executeExport(ctx: Context, next: Next) {
             }
             aOff += PAGE_SIZE;
             const ap = Math.min(100, Math.floor((aOff * 100) / Math.max(1, assocTotal)));
-            try { await repo.update({ filterByTk: task.id, values: { processedRows, totalRows, progress: Math.max(ap, progress||0) } }); } catch {}
+            try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress: Math.max(ap, 0) } }); } catch {}
           }
           assocSheet.commit();
         }
@@ -404,59 +441,59 @@ export async function executeExport(ctx: Context, next: Next) {
         if (attachIds.size > 0) {
           const fileIdFilenameMap = new Map<number, string>();
           try {
-            const ar = await ctx.db.getRepository('attachments').find({ filter: { id: Array.from(attachIds) } });
+            const ar = await db.getRepository('attachments').find({ filter: { id: Array.from(attachIds) } });
             ar.forEach((at: any) => { if (at.filename) fileIdFilenameMap.set(at.id, at.filename); });
           } catch {}
           if (fileIdFilenameMap.size > 0) {
-        try {
-          const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
-          const attachmentFiles: Array<{ entryName: string; diskPath: string }> = [];
-          for (const [aid, fn] of fileIdFilenameMap) {
-            const diskPath = path.join(storageDir, fn);
-            let realPath = diskPath;
-            if (!fs.existsSync(realPath)) {
-              const atRecords = await ctx.db.getRepository('attachments').find({ filter: { id: [aid] } });
-              if (atRecords[0]?.path !== undefined) {
-                realPath = path.join(storageDir, atRecords[0].path || '', fn);
+            try {
+              const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
+              const attachmentFiles: Array<{ entryName: string; diskPath: string }> = [];
+              for (const [aid, fn] of fileIdFilenameMap) {
+                const diskPath = path.join(storageDir, fn);
+                let realPath = diskPath;
+                if (!fs.existsSync(realPath)) {
+                  const atRecords = await db.getRepository('attachments').find({ filter: { id: [aid] } });
+                  if (atRecords[0]?.path !== undefined) {
+                    realPath = path.join(storageDir, atRecords[0].path || '', fn);
+                  }
+                }
+                if (!fs.existsSync(realPath)) continue;
+                const afName = attachFieldMap.get(aid) || '附件';
+                const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
+                attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
               }
-            }
-            if (!fs.existsSync(realPath)) continue;
-            const afName = attachFieldMap.get(aid) || '附件';
-            const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
-            attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
-          }
-          if (attachmentFiles.length > 0) {
-            const zipName = collDisplay + '-' + formatFileName('{日期}.zip', '');
-            const zipPath = path.join(tempDir, zipName);
-            const zipOutput = fs.createWriteStream(zipPath);
-            const zipArchive = archiver('zip', { zlib: { level: 9 } });
-            await new Promise<void>((resolve, reject) => {
-              zipArchive.on('error', reject);
-              zipOutput.on('close', resolve);
-              zipArchive.pipe(zipOutput);
-              zipArchive.file(filePath, { name: path.basename(filePath) });
-              for (const af of attachmentFiles) {
-                zipArchive.file(af.diskPath, { name: af.entryName });
+              if (attachmentFiles.length > 0) {
+                const zipName = collDisplay + '-' + formatFileName('{日期}.zip', '');
+                const zipPath = path.join(tempDir, zipName);
+                const zipOutput = fs.createWriteStream(zipPath);
+                const zipArchive = archiver('zip', { zlib: { level: 9 } });
+                await new Promise<void>((resolve, reject) => {
+                  zipArchive.on('error', reject);
+                  zipOutput.on('close', resolve);
+                  zipArchive.pipe(zipOutput);
+                  zipArchive.file(filePath, { name: path.basename(filePath) });
+                  for (const af of attachmentFiles) {
+                    zipArchive.file(af.diskPath, { name: af.entryName });
+                  }
+                  zipArchive.finalize();
+                });
+                try { fs.unlinkSync(filePath); } catch {}
+                outputFiles[outputFiles.indexOf(filePath)] = zipPath;
               }
-              zipArchive.finalize();
-            });
-            try { fs.unlinkSync(filePath); } catch {}
-            outputFiles[outputFiles.indexOf(filePath)] = zipPath;
+            } catch {}
           }
-        } catch {}
-      }
         }
       }
 
       await repo.update({
-        filterByTk: task.id,
+        filterByTk: taskId,
         values: { progress: Math.min(100, Math.floor((processedRows / Math.max(totalRows, 1)) * 100)), processedRows, totalRows },
       });
     }
 
     let finalFilePath: string;
     if (outputFiles.length === 0) {
-      throw new Error('No data to export');
+      throw new Error('没有数据可导出');
     } else if (outputFiles.length === 1) {
       finalFilePath = outputFiles[0];
     } else {
@@ -483,7 +520,7 @@ export async function executeExport(ctx: Context, next: Next) {
     }
 
     const stats = await fsp.stat(finalFilePath);
-    const attachRepo = ctx.db.getRepository('attachments');
+    const attachRepo = db.getRepository('attachments');
     const exportAttachment = await attachRepo.create({
       values: {
         title: path.basename(finalFilePath),
@@ -498,7 +535,7 @@ export async function executeExport(ctx: Context, next: Next) {
     });
 
     await repo.update({
-      filterByTk: task.id,
+      filterByTk: taskId,
       values: {
         status: 'completed',
         progress: 100,
@@ -509,24 +546,23 @@ export async function executeExport(ctx: Context, next: Next) {
         completedAt: new Date(),
       },
     });
-    await writeTaskLog(ctx, task.id, 'SUCC', `导出完成，共 ${processedRows} 行数据`);
+    await writeTaskLog(db, taskId, 'SUCC', `导出完成，共 ${processedRows} 行数据`);
   } catch (err: any) {
-    await writeTaskLog(ctx, task.id, 'ERROR', `导出失败: ${err.message || String(err)}`);
-    await writeTaskLog(ctx, task.id, 'WARN', '文件未生成，数据未修改');
-    await repo.update({
-      filterByTk: task.id,
-      values: {
-        status: 'failed',
-        errorMessage: err.message || String(err),
-        completedAt: new Date(),
-      },
-    });
+    try {
+      await writeTaskLog(db, taskId, 'ERROR', `导出失败: ${err.message || String(err)}`);
+      await writeTaskLog(db, taskId, 'WARN', '文件未生成，数据未修改');
+      await repo.update({
+        filterByTk: taskId,
+        values: {
+          status: 'failed',
+          errorMessage: err.message || String(err),
+          completedAt: new Date(),
+        },
+      });
+    } catch {}
   } finally {
     release();
   }
-
-  ctx.body = { taskId: task.id };
-  await next();
 }
 
 export async function getProgress(ctx: Context, next: Next) {

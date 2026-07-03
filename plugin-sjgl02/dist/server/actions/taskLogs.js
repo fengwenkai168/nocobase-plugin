@@ -44,12 +44,11 @@ async function listTaskLogs(ctx, next) {
   ctx.body = { items: rows, total, page, pageSize };
   await next();
 }
-async function writeTaskLog(ctx, taskId, level, message) {
+async function writeTaskLog(db, taskId, level, message) {
   try {
-    const repo = ctx.db.getRepository("sjgl02_task_logs");
+    const repo = db.getRepository("sjgl02_task_logs");
     await repo.create({ values: { taskId, level, message, timestamp: /* @__PURE__ */ new Date() } });
   } catch (e) {
-    console.error("[sjgl02] writeTaskLog failed:", e);
   }
 }
 // Annotate the CommonJS export names for ESM import in node:

@@ -1,4 +1,5 @@
 import { Context, Next } from '@nocobase/actions';
+import type { Database } from '@nocobase/database';
 
 export async function listTaskLogs(ctx: Context, next: Next) {
   const { taskId } = ctx.action.params;
@@ -15,11 +16,11 @@ export async function listTaskLogs(ctx: Context, next: Next) {
   await next();
 }
 
-export async function writeTaskLog(ctx: Context, taskId: number, level: string, message: string) {
+export async function writeTaskLog(db: Database, taskId: number, level: string, message: string) {
   try {
-    const repo = ctx.db.getRepository('sjgl02_task_logs');
+    const repo = db.getRepository('sjgl02_task_logs');
     await repo.create({ values: { taskId, level, message, timestamp: new Date() } });
   } catch (e) {
-    console.error('[sjgl02] writeTaskLog failed:', e);
+    // 静默处理日志写入失败，避免影响主流程
   }
 }

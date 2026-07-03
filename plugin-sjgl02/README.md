@@ -1,672 +1,592 @@
 # @my-project/plugin-sjgl02 — 数据管理插件
 
-NocoBase 全栈插件，提供 **Excel 导入、导出、任务管理、表级权限控制** 四大功能。
+NocoBase 全栈插件，提供 **Excel 导入、导出、任务管理、表级权限控制、审计日志** 五大功能模块。
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | 1.0.91 |
+| 版本 | 1.0.95 |
 | 兼容 | NocoBase 2.x |
-| 入口 | 设置 → 数据管理 |
-| 依赖 | xlsx, exceljs, async-mutex, archiver |
+| 核心入口 | 设置 → 数据管理（v1: `/admin/settings/sjgl02` / v2: `/v2/admin/settings/sjgl02`） |
+| 区块入口 | v2 页面 → 添加区块 → 其他 → 数据管理 |
+| 运行时依赖 | xlsx（解析）、exceljs（流式写入）、async-mutex（防重入）、archiver（ZIP打包） |
+| 国际化 | zh-CN / en-US，共 115 个翻译键 |
+| 默认状态 | 默认关闭，需手动启用 |
 
 ---
 
-## 目录
-
-1. [功能概述](#功能概述)
-2. [目录结构](#目录结构)
-3. [导入功能](#导入功能)
-4. [导出功能](#导出功能)
-5. [任务管理](#任务管理)
-6. [权限管理](#权限管理)
-7. [API 端点](#api-端点)
-8. [数据模型](#数据模型)
-9. [访问入口](#访问入口)
-10. [安装与使用](#安装与使用)
-
----
-
-## 功能概述
-
-| # | 功能 | Tab | 说明 |
-|---|------|-----|------|
-| 1 | Excel 导入 | 导入 | 3 步向导：选表 → 上传文件 + 字段映射 → 预览 + 执行 |
-| 2 | Excel 导出 | 导出 | 3 步向导：选表 → 选字段/配置 → 执行 + 下载；支持 .xlsx / .zip |
-| 3 | 任务管理 | 任务管理 | 所有导入/导出任务列表、筛选、日志查看、下载文件、取消 |
-| 4 | 表级权限 | 权限管理 | 按用户/角色为每张表配置导入/导出权限、字段范围、导入模式 |
-
-### 两个入口
-
-| 入口 | 路由 | 包含 Tab |
-|------|------|----------|
-| 设置菜单（v1 管理后台） | `/admin/settings/sjgl02` | 导入 / 导出 / 任务管理 / 权限管理 |
-| 设置菜单（v2 管理后台） | `/v2/admin/settings/sjgl02` | 导入 / 导出 / 任务管理 / 权限管理 |
-| 页面区块 | v2 页面「添加区块 → 其他 → 数据管理」 | 导入 / 导出 / 任务管理 |
-
----
-
-## 目录结构
+## 1. 目录结构
 
 ```
 plugin-sjgl02/
-├── package.json                          # 插件元数据
-├── server.js / client.js / client-v2.js  # 运行时 shim
-├── README.md                             # 本文件
-├── CHANGELOG.md                          # 变更日志
-├── sjgl02-ui.html                        # 交互原型（设计稿）
-├── sjgl02-产品文档.html                   # 产品需求规格说明书
+├── package.json                                  # 插件元数据（@my-project/plugin-sjgl02）
+├── server.js / client.js / client-v2.js          # NocoBase 框架运行时 shim
 ├── src/
-│   ├── index.ts                          # 主入口
+│   ├── index.ts                                  # 根入口 → export { default } from './server'
 │   ├── server/
-│   │   ├── index.ts                      # 服务端入口
-│   │   ├── plugin.ts                     # 插件主类（注册资源 + ACL）
+│   │   ├── index.ts                              # 服务端入口
+│   │   ├── plugin.ts                             # 插件主类 PluginSjgl02Server
 │   │   ├── collections/
-│   │   │   ├── sjgl02_tasks.ts           # 任务表
-│   │   │   ├── sjgl02_table_permissions.ts # 权限表
-│   │   │   └── sjgl02_settings.ts        # 设置表
-│   │   └── actions/
-│   │       ├── import.ts                 # 导入端点
-│   │       ├── export.ts                 # 导出端点
-│   │       ├── tasks.ts                  # 任务管理端点
-│   │       ├── permissions.ts            # 权限管理端点
-│   │       └── permission-check.ts       # 权限强制校验工具
+│   │   │   ├── sjgl02_tasks.ts                   # 导入导出任务表
+│   │   │   ├── sjgl02_table_permissions.ts       # 表级权限配置表
+│   │   │   ├── sjgl02_settings.ts               # 全局/用户设置表
+│   │   │   ├── sjgl02_permission_logs.ts         # 权限操作审计日志表
+│   │   │   └── sjgl02_task_logs.ts               # 任务执行日志表
+│   │   ├── actions/
+│   │   │   ├── import.ts                         # 导入端点（~522 行）
+│   │   │   ├── export.ts                         # 导出端点（~572 行）
+│   │   │   ├── tasks.ts                          # 任务管理端点（~112 行）
+│   │   │   ├── permissions.ts                    # 权限管理端点（~226 行）
+│   │   │   ├── permission-check.ts               # 权限强制校验工具（~153 行）
+│   │   │   └── taskLogs.ts                       # 任务日志读写（~25 行）
+│   │   └── migrations/
+│   │       ├── 20260702160000-add-task-file-name.ts   # file_name 列添加
+│   │       └── 20260702170000-backfill-file-name.ts   # 旧数据 fileName 回填
 │   ├── client/
-│   │   ├── index.ts                      # v1 客户端入口
-│   │   └── plugin.tsx                    # v1 客户端：设置页 + 区块组件 + 区块初始化器注册
+│   │   ├── index.ts                              # v1 客户端入口
+│   │   ├── plugin.tsx                            # v1 客户端注册（设置页+区块+SchemaSettings）
+│   │   └── panels/
+│   │       ├── shared.ts                         # VERSION 常量 + apiRequest 工具函数
+│   │       ├── ImportPanel.tsx                   # 导入向导面板（3 步）
+│   │       ├── ExportPanel.tsx                   # 导出向导面板（3 步）
+│   │       ├── TaskPanel.tsx                     # 任务管理面板（列表+详情抽屉）
+│   │       ├── PermissionPanel.tsx               # 权限管理面板（左侧列表+右侧卡片）
+│   │       ├── Sjgl02Block.tsx                   # v1 页面区块组件
+│   │       ├── Sjgl02BlockInitializer.tsx        # v1 区块添加菜单注册
+│   │       └── task/
+│   │           ├── shared.tsx                    # 状态配色/工具函数
+│   │           ├── TaskList.tsx                  # 任务列表（筛选+搜索+轮询）
+│   │           ├── TaskDetail.tsx                # 任务详情 Drawer（1024px）
+│   │           ├── TaskCards.tsx                 # 7 张信息卡片
+│   │           └── ExecutionLogViewer.tsx        # 终端风格日志查看器
 │   ├── client-v2/
-│   │   ├── index.tsx                     # 客户端入口
-│   │   ├── plugin.tsx                    # v2 设置菜单注册（addMenuItem + addPageTabItem）
-│   │   ├── locale.ts                     # i18n 命名空间
-│   │   └── pages/
-│   │       ├── Sjgl02SettingsPage.tsx     # 主页面（LazyTab 按需懒加载 4 个 Tab）
-│   │       ├── ImportTab.tsx             # 导入向导（动态表列表 + 文件校验 + 字段映射）
-│   │       ├── ExportTab.tsx             # 导出向导（动态表字段 + 文件名模板 + 进度轮询）
-│   │       ├── TaskTab.tsx               # 任务管理
-│   │       └── PermissionTab.tsx         # 权限管理
+│   │   ├── index.tsx                             # v2 客户端入口
+│   │   ├── plugin.tsx                            # v2 客户端注册（菜单+懒加载+BlockModel）
+│   │   ├── locale.ts                             # i18n 命名空间
+│   │   ├── models/
+│   │   │   └── SjglBlockModel.tsx                # v2 区块模型（lazy 加载3个Tab面板）
+│   │   ├── pages/
+│   │   │   ├── Sjgl02SettingsPage.tsx            # v2 设置主页（LazyTab 懒加载）
+│   │   │   └── PermissionTab.tsx                 # v2 权限管理 Tab（使用共享 hooks）
+│   │   ├── hooks/
+│   │   │   ├── index.ts                          # 桶导出
+│   │   │   ├── usePermissions.ts                 # 权限 CRUD hook
+│   │   │   ├── usePermissionFilter.ts            # 权限搜索过滤+分页
+│   │   │   ├── useTablePermission.ts             # 表级导入权限查询（用户级>角色级）
+│   │   │   ├── useTargetList.ts                  # 用户/角色列表加载
+│   │   │   ├── useTableList.ts                   # 数据表列表加载
+│   │   │   ├── useTableFields.ts                 # 表字段按需加载
+│   │   │   └── useViewScope.ts                   # 任务查看范围读写
+│   │   ├── types/
+│   │   │   └── permission.ts                     # 类型定义
+│   │   └── utils/
+│   │       └── api.ts                            # 统一 useAPI() hook（兼容 v1/v2）
 │   └── locale/
-│       ├── zh-CN.json                    # 中文（115 键）
-│       └── en-US.json                    # 英文（115 键）
-└── dist/                                 # 编译产物
+│       ├── zh-CN.json                            # 中文翻译（115 键）
+│       └── en-US.json                            # 英文翻译（115 键）
+├── dist/                                         # 编译产物
+├── README.md                                     # 本文件
+└── CHANGELOG.md                                  # 完整变更日志
 ```
 
 ---
 
-## 导入功能
+## 2. 功能概述
 
-### 数据表说明
-- 所有数据表从 `sjgl02Permissions:tables` API **动态加载**（数据库实际表），非写死
-- 选表后自动调用 `tableFields` API 加载该表真实字段
+| # | 模块 | 核心功能 |
+|---|------|----------|
+| 1 | 导入 | 3 步向导（选表→上传+字段映射→预览+执行），支持 xlsx/xls/csv，事务回滚 |
+| 2 | 导出 | 3 步向导（选表→字段配置→执行+下载），流式写入无行数上限，支持单表/全表/含附件 |
+| 3 | 任务管理 | 任务列表（筛选/搜索/轮询）+ 详情 Drawer（7张卡片+终端日志），取消任务 |
+| 4 | 权限管理 | 用户/角色维度表级权限 + 字段级白名单 + 导入模式限制 + 审计日志（操作记录） |
+| 5 | 全局设置 | 任务查看范围（自己/全部）、文件大小上限、批处理大小 |
 
-### 3 步向导
+### 两个入口
 
-**Step 1 — 选择数据表**
-- 下拉选择器，显示有导入权限的数据表
-- 支持搜索过滤
-- 右侧导入说明面板
-
-**Step 2 — 上传文件 & 字段映射**
-- 通过标准 `attachments:create` 上传，拖拽上传 .xlsx / .xls / .csv（最大 50MB）
-- 上传成功后自动调用 `uploadParse` 解析，显示：
-  - Sheet 选择器（仅 1 个 Sheet 时禁用）
-  - 表头行号（1-100，默认 1）
-  - 📋 预览表头按钮（弹框显示表头列和前 10 行数据）
-  - 导入模式：新增(insert) / 更新(update) / 新增+更新(upsert)
-  - 唯一值字段选择器（update/upsert 模式下显示）
-- 字段映射表：
-  - Excel 列 → 映射方式（只读）→ 工作表字段
-  - 映射方式自动推导：选 Excel 列 → "Excel列"；选自定义 → "固定值"；未选择 → "忽略"
-  - 去重联动：已选的 Excel 列在其他行自动禁用
-  - "自动匹配"按钮按名称自动对应
-  - 标题栏统计：已映射/忽略/未映射数量
-
-**Step 3 — 预览 & 执行**
-- 4 个统计卡片：预计行数 / 错误行数 / 导入模式 / Sheet 名称
-- update/upsert 模式显示唯一值匹配提示
-- 预览数据表（前 10 行）
-- 确认弹窗后提交任务
-
-### 导入规则
-- 任何数据行失败 → **整批回滚**，不写入任何数据
-- 必填字段未映射 → 后端校验返回错误
-- 关联字段匹配不到 → 记录行级错误日志
-- 同一 Excel 列不可重复选择
-- 事务回滚：导入在单一 sequelize 事务中执行
+| 入口 | 路由 | 包含模块 |
+|------|------|----------|
+| 设置菜单（v1/v2） | v1: `/admin/settings/sjgl02` / v2: `/v2/admin/settings/sjgl02` | 导入、导出、任务管理、权限管理（含操作日志） |
+| 页面区块 | v2 页面 → 添加区块 → 其他 → 数据管理 | 导入、导出、任务管理（不含权限管理） |
 
 ---
 
-## 导出功能
+## 3. 导入功能
 
-### 3 步向导
+### 3.1 3 步向导流程
 
 **Step 1 — 选择数据表**
-- 下拉首选项「全部数据表（含系统表）」蓝色分隔
-- 选全部数据表 → Step 2 切换为全部导出模式
+- 下拉选择器动态加载所有有导入权限的数据表
+- 支持搜索过滤，右侧显示导入说明
+
+**Step 2 — 上传文件 & 字段映射**
+- 通过 `attachments:create` 标准 API 上传，支持拖拽，限制最大 50MB
+- 上传后自动调用 `uploadParse` 解析，显示：
+  - Sheet 选择器（多 Sheet 文件，仅 1 个 Sheet 时禁用）
+  - 表头行号选择（1-100，默认 1）
+  - 「预览表头」按钮（弹框显示表头列 + 前 10 行数据）
+  - 导入模式选择：新增 / 更新 / 新增+更新（受权限限制）
+  - update/upsert 模式强制要求选择「唯一值字段」
+  - 空白单元格处理：按Excel值更新 / 按NULL更新 / 跳过
+- 字段映射表：
+  - 3 列结构：Excel 列（下拉） → 映射方式（只读标签） → 工作表字段（下拉）
+  - 自动匹配（5 种规则）：精确匹配 / 标题匹配 / 括号提取 / 包含匹配 / 标题包含
+  - 去重联动：已选的 Excel 列在后续行自动禁用
+  - 「清空」按钮一键清除所有映射
+  - 必填字段标注红色 ⚠ 标签
+  - 标题栏统计：已映射/忽略/未映射数量
+- admin/root 可切换「模拟权限方案」下拉，预览不同权限下导入效果
+
+**Step 3 — 预览 & 执行**
+- 统计摘要卡片：预计行数 / 错误行数 / 导入模式 / Sheet 名
+- update/upsert 显示唯一值匹配提示
+- 预览数据表（前 10 行）
+- 确认弹窗后提交任务
+
+### 3.2 服务端导入规则
+
+- **事务回滚**：任何数据行失败 → 整个批次全部回滚，不写入任何数据
+- **空值唯一值预检**：update/upsert 模式下，任意行唯一值字段为空 → 整批回滚
+- **批次处理**：1000 行/批，批量查询 + `createMany` 批量写入
+- **字段级权限**：校验映射字段是否在 `importFields` 白名单内
+- **导入模式校验**：校验请求 importMode 是否在权限允许列表内
+- **必填字段校验**：必须至少 1 个且全部已映射
+- **日期自动转换**：ISO 格式 → `YYYY-MM-DD HH:mm:ss`
+- **关联字段映射**：belongsTo 外键通过 `applyBelongsToFK` 查目标表获取 ID
+- **同批次去重**：update/upsert 模式下同批次唯一值去重检测
+
+### 3.3 导入端点（4 个）
+
+| 端点 | 方法 | 参数 | 返回 | 说明 |
+|------|------|------|------|------|
+| `sjgl02Import:tableFields` | GET | `?tableName=` | `{ name, title, type, interface, isRequired, target }` | 获取目标表字段列表 |
+| `sjgl02Import:uploadParse` | POST | `{ fileId, sheetName?, headerRow? }` | `{ sheets, headerColumns, previewRows, totalRows, fileName }` | 解析 Excel 文件 |
+| `sjgl02Import:preview` | GET | `?fileId=&sheetName=&headerRow=&previewLimit=` | `[{ rows }]` | 获取前 N 行预览数据 |
+| `sjgl02Import:execute` | POST | `{ tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields, blankCellMode, permSource? }` | `{ taskId }` | 提交导入任务并开始执行 |
+
+---
+
+## 4. 导出功能
+
+### 4.1 3 步向导流程
+
+**Step 1 — 选择数据表**
+- 下拉首选项「全部数据表（含系统表）」，仅 admin/root 可见
+- 非 admin/root 只显示有导出权限的单表
 
 **Step 2 — 配置（单表 / 全表）**
 
-**单表模式：**
+单表模式配置项：
 
 | 配置项 | 说明 |
 |--------|------|
-| 字段选择 | 复选框分组：常规 / 关联(紫色) / 附件(青色)，支持全选 + 已选计数 |
-| 关联字段显示 | 每个关联字段可选「显示值」/「仅ID」 |
-| 关联数据 Sheet | Switch 开关，开启可包含关联表数据 |
-| 数据范围 | 「全部数据」/「自定义条件」 |
-| 高级选项 | 文件名模板（默认 `{表名}_{日期}.xlsx`，支持 `{表名}` `{日期}` 占位符） + 包含附件文件开关 |
+| 字段选择 | 复选框分组：常规 / 关联（紫色） / 附件（青色），全选 + 已选计数 |
+| 关联字段显示 | 每个关联字段可选「显示值(Display)」/「仅ID(ID only)」 |
+| 关联数据 Sheet | Switch 开关，开启后关联表数据单独建 Sheet |
+| 数据范围 | 「全部数据」/「自定义条件筛选」 |
+| 高级选项 | 文件名模板（`{表名}_{日期}.xlsx`，支持 `{表名}` `{日期}` 占位符）、包含附件文件、表头格式（字段名(字段标识) / 字段名 / 字段标识） |
 
-**全部数据表模式：**
-- 蓝色警告：将导出全部表（含系统表）
-- 导出标签列表，含附件标注
+全表模式：
+- 蓝色警告提示将导出全部表
+- 标签列表显示所有导出表名，含附件标注
 - 最终打包为 ZIP
 
 **Step 3 — 执行导出**
 - 统计卡片 + 已选字段标签列表
-- 提交后 2 秒轮询真实进度（通过 `sjgl02Export:progress` API）
+- 提交后 2 秒轮询实时进度
 - 完成后显示下载按钮
 
-### 文件格式
+### 4.2 服务端导出规则
+
+- **流式写入**：`ExcelJS.stream.xlsx.WorkbookWriter`，分页查询（5000 行/批），无行数上限
+- **关联字段取值**：belongsTo/hasOne 取值链 `nickname || username || name || email || id`
+- **关联 Sheet**：遍历 belongsTo/hasOne/hasMany/belongsToMany，单独建 Sheet
+- **附件打包**：扫描 attachment 字段，收集文件路径，用 archiver 打包 ZIP
+- **全表模式**：逐表检查 export 权限，无权限的表自动跳过
+- **字段级过滤**：校验 selectedFields 是否在 `exportFields` 白名单内
+- **互斥锁**：`async-mutex` 防止并发导出
+- **多文件合并**：多表导出生成多个文件 → archiver 打包为单一 ZIP
+
+### 4.3 文件格式
 
 | 场景 | 格式 |
 |------|------|
-| 单表 + 无附件 | .xlsx |
-| 单表 + 含附件 | .zip |
-| 全部数据表 | .zip |
+| 单表 + 无附件 | .xlsx（Excel 流式文件） |
+| 单表 + 含附件 | .zip（Excel + 按字段分文件夹存放附件） |
+| 全部数据表 | .zip（每表一个 Excel + 附件） |
 
-### 附件导出
-- 勾选「包含附件文件」后，服务端自动识别 `belongsToMany` 且 `interface='attachment'` 的字段
-- Excel 中附件列显示为系统文件名（逗号分隔）
-- ZIP 中附件按字段名分文件夹存放，文件名一致可对应
+### 4.4 导出端点（5 个）
+
+| 端点 | 方法 | 参数 | 返回 | 说明 |
+|------|------|------|------|------|
+| `sjgl02Export:tableFields` | GET | `?tableName=` | `{ name, title, type, interface, target }` | 获取表字段列表 |
+| `sjgl02Export:previewCount` | POST | `{ tableName, filter }` | `{ count }` | 预估导出行数 |
+| `sjgl02Export:execute` | POST | `{ tableName, selectedFields, associationDisplayMode, includeAssociationSheet, associationSheetTables, filter, fileNameTemplate, includeAttachments, headerStyle }` | `{ taskId }` | 提交导出任务并开始执行 |
+| `sjgl02Export:progress` | GET | `?taskId=` | `{ progress, status, exportFileId }` | 实时查询导出进度 |
+| `sjgl02Export:download` | GET | `?taskId=` | 文件流（`Content-Disposition: attachment`） | 下载导出文件 |
 
 ---
 
-## 任务管理
+## 5. 任务管理
 
-### 筛选栏
+### 5.1 任务列表
 
 | 筛选 | 选项 |
 |------|------|
 | 任务类型 | 全部 / 导入 / 导出 |
 | 状态 | 全部 / 排队中 / 进行中 / 已完成 / 失败 / 已取消 |
-
-### 表格列
+| 搜索 | 支持按任务ID / 文件名 / 表名 / 创建用户搜索 |
 
 | 列 | 说明 |
 |----|------|
-| 任务ID | #1001 格式 |
-| 类型 | 导入(蓝) / 导出(绿) |
-| 目标表 | 表名 |
-| 状态 | 排队中(橙) / 进行中(蓝) / 已完成(绿) / 失败(红) / 已取消(灰) |
+| 任务ID | `#1001` 格式 |
+| 类型 | 导入（蓝色标签）/ 导出（绿色标签） |
+| 目标表 | 表名称（表标识），`__all__` 显示为"全部数据表" |
+| 状态 | 排队中（橙色）/ 进行中（蓝色）/ 已完成（绿色）/ 失败（红色）/ 已取消（灰色） |
 | 进度 | 进度条 + 百分比 |
-| 数据量 | 已处理/总数 |
-| 创建人 | 用户名 |
+| 数据量 | 已处理 / 总数 |
+| 创建人 | 用户名（nickname / username / name 三层兜底） |
 | 创建时间 | 日期时间 |
 | 完成时间 | 日期时间，未完成显示 — |
-| 操作 | 查看(打开日志抽屉) / 取消(仅 pending/processing) |
+| 操作 | 「查看」打开详情 Drawer / 「取消」（仅 pending/processing 状态可见） |
 
-### 日志抽屉（右侧 680px）
-- 任务摘要：ID、类型、目标表、创建人、时间、文件名、状态、数据量
-- 下载区域：已完成任务显示绿色提示 + 下载按钮（导入/导出分别下载对应文件）
-- 字段详情：导入→字段映射表 / 导出→字段选择标签
-- 错误日志：行号 / 错误原因 / 字段值快照，无错误显示空状态
+- 轮询刷新：进行中的任务每 2 秒自动刷新
+- 任务查看范围：admin/root 始终可查看全部，其他用户按 `sjgl02_settings.taskViewScope` 配置（用户级 > 全局级，默认 `own`）
+
+### 5.2 任务详情 Drawer（1024px）
+
+加载 7 张信息卡片：
+
+| # | 卡片 | 内容 |
+|---|------|------|
+| 1 | 任务摘要 | ID、类型、目标表、创建人、时间、文件名、状态、数据量、完成于/上传于 |
+| 2 | 导出字段 | 所选字段标签列表（主表字段 / 关联表字段 Tabs） |
+| 3 | 关联表 | 关联 Sheet 详情（Sheet名 / 关联表 / 关联字段 / 数据量） |
+| 4 | 导入配置 | 导入模式、唯一值字段、必填字段、空白单元格处理模式 |
+| 5 | 字段映射 | 导入的字段映射表（Excel列 → 映射方式 → 工作表字段），含自定义值 |
+| 6 | 数据预览 | 前 5-10 行数据表格；失败任务显示错误行号+原因+字段快照 |
+| 7 | 执行日志 | 终端风格深色背景（#1e293b），按级别着色（INFO/SUCC/WARN/ERROR），可折叠+自动刷新 |
+
+### 5.3 任务管理端点（3 个）
+
+| 端点 | 方法 | 参数 | 返回 | 说明 |
+|------|------|------|------|------|
+| `sjgl02Tasks:list` | GET | `?taskType=&status=&search=&page=&pageSize=` | `{ items, total, page, pageSize }` | 分页列表（含 createdBy） |
+| `sjgl02Tasks:detail` | GET | `?taskId=` | 任务完整对象（含 createdBy） | 任务详情 |
+| `sjgl02Tasks:cancel` | POST | `{ taskId }` | `{ success: true }` | 取消任务（仅 pending/processing） |
+
+### 5.4 任务日志端点（1 个）
+
+| 端点 | 方法 | 参数 | 返回 | 说明 |
+|------|------|------|------|------|
+| `sjgl02TaskLogs:list` | GET | `?taskId=&page=&pageSize=` | `{ items, total, page, pageSize }` | 分页查询执行日志（默认 100 条/页） |
 
 ---
 
-## 权限管理
+## 6. 权限管理
 
-### 布局
-- 左侧栏（span=6）：用户 / 角色列表
-- 右侧卡片（span=18）：权限卡片列表
+### 6.1 权限架构
 
-### 左侧列表
-- 用户（蓝色头像 + 名字）在上，角色（绿色头像 + 名字）在下
-- 点击切换高亮（蓝色背景）
+```
+权限优先级：用户级权限 > 角色级权限 > 拒绝
+             ↑                ↑
+         canImport=false    多角色取最宽松
+         → 直接拒绝        （canImport=true优先）
+                            importMode 合并去重
+```
 
-### 右侧权限卡片
-- 每条权限一张卡片：表名 + 导入/导出开关 + 编辑/删除按钮
-- 标签行：导入是否 / 导出是否 / 导入模式 / 唯一值字段 / 必填字段 / 可导入数 / 可导出数
-- 开关点击实时保存到 API
+- **admin/root 角色短路**：直接返回全权限（三种导入模式全部可用，所有字段开放），不查询数据库
+- **用户级优先**：存在用户级权限时，直接使用用户级权限，不再查找角色权限
+- **角色级最宽松**：用户有多个角色时，`canImport=true` 优先，`importMode` 合并去重
+- **_inherited 标记**：通过 `toJSON()` 转纯对象后设置属性（Sequelize 模型实例上直接设置会丢失）
+- **_systemManaged 标记**：admin/root 角色自动补齐的权限标记为 `_systemManaged=true`，不可编辑/删除
 
-### 权限编辑弹窗（Modal 720px）
+### 6.2 权限字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `canImport` | boolean | 是否允许导入 |
+| `canExport` | boolean | 是否允许导出 |
+| `importMode` | json(数组) | 允许的导入模式（insert/update/upsert 自由组合） |
+| `importFields` | json(数组) | 可导入字段白名单（空=全部） |
+| `exportFields` | json(数组) | 可导出字段白名单（空=全部） |
+| `exportFilter` | json | 导出条件筛选 |
+| `uniqueFields` | json(数组) | 唯一值字段列表 |
+| `requiredFields` | json(数组) | 必填字段列表 |
+
+### 6.3 权限面板 UI
+
+**左侧栏（span=6）**：用户列表（蓝色头像）+ 角色列表（绿色头像），搜索过滤，点击切换
+
+**右侧主体（span=18）**：
+- 头部：目标名称标签（格式「名称(标识)」）
+- 子Tab：[✓ 权限配置] / [📋 操作日志]
+- 权限分区：「自定义权限」（橙色 ✏️ 标签）、「继承权限」（紫色 📦 标签），支持收起/展开
+- 自定义权限卡片：表名 + 标签行（导入/导出/模式/唯一值/必填/可导入数/可导出数）+ 编辑/删除按钮
+- 继承权限卡片：表名 + 标签行 + 「查看详情」只读弹窗
+- 系统管理权限（admin/root）：蓝色「系统管理」标签，不可编辑/删除
+- 批量操作：全选 + 批量删除（Popconfirm 确认）
+- 继承权限内按 `tableName` 去重（多角色同表权限只显示一条）
+
+### 6.4 权限编辑弹窗（Modal 720px）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| 选择数据表 | 下拉搜索 | 必填，过滤已有自定义权限的表（继承的允许覆盖） |
+| 允许导入/导出 | Switch | 分别控制下方配置区显隐 |
+| 导入模式 | 多选 | 新增 / 更新 / 新增+更新 |
+| 唯一值字段 | 多选 | 仅当导入模式含 update/upsert 时必填 |
+| 必填字段 | 多选 | — |
+| 可导入字段 | 多选 | 空=全部允许 |
+| 可导出字段 | 多选 | 空=全部允许 |
+| 导出筛选 | 条件构建器 | — |
+
+### 6.5 审计日志
+
+`sjgl02_permission_logs` 表自动记录每次权限变更：
 
 | 字段 | 说明 |
 |------|------|
-| 选择数据表 | 必填，搜索过滤，选后自动加载字段列表 |
-| 允许导入/导出 | Switch 开关，分别控制下方区域显隐 |
-| 导入模式 | 新增 / 更新 / 新增+更新 |
-| 唯一值字段 | 多选 |
-| 必填字段 | 多选 |
-| 可导入字段 | 多选，空 = 全部允许 |
-| 可导出字段 | 多选，空 = 全部允许 |
-| 导出筛选 | 条件构建器 |
+| `action` | create / update / delete / toggle |
+| `targetType` / `targetId` / `targetName` | 目标信息 |
+| `tableName` | 被变更的数据表 |
+| `changes` | 变更前后快照（JSON） |
+| `operatorId` | 操作人 |
+| `createdAt` | 操作时间 |
+
+### 6.6 权限管理端点（6 个）
+
+| 端点 | 方法 | 参数 | 返回 | 说明 |
+|------|------|------|------|------|
+| `sjgl02Permissions:userRoleList` | GET | — | `{ users: [], roles: [] }` | 获取用户+角色列表（用户含关联角色） |
+| `sjgl02Permissions:tables` | GET | — | `[{ name, title }]` | 获取所有数据表（排除 through 表） |
+| `sjgl02Permissions:get` | GET | `?targetType=&targetId=` | `{ custom: [], inherited: [] }` | 获取某用户/角色的权限（含继承） |
+| `sjgl02Permissions:save` | POST | `{ permissions: [] }` | `{ success: true }` | 全量保存权限（upsert+删除+审计） |
+| `sjgl02Permissions:settings` | GET | `?userId=` | 设置对象 | 获取全局/用户设置（无副作用） |
+| `sjgl02Permissions:saveSettings` | POST | `{ taskViewScope?, userId? }` | `{ success: true }` | 保存全局/用户设置 |
 
 ---
 
-## API 端点
+## 7. 数据模型
 
-### 导入（4 个）
+### 7.1 sjgl02_tasks（导入导出任务）
 
-| 端点 | 方法 | 参数 |
-|------|------|------|
-| `sjgl02Import:tableFields` | GET | `tableName` → 字段列表 |
-| `sjgl02Import:uploadParse` | POST | `{ fileId, sheetName?, headerRow? }` → `{ sheets, headerColumns, previewRows, totalRows, fileName }`（需先通过 `attachments:create` 上传文件） |
-| `sjgl02Import:preview` | GET | `fileId, sheetName, headerRow` → 前 10 行预览 |
-| `sjgl02Import:execute` | POST | `{ tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields }` → `{ taskId }` |
+| 字段 | 类型 | 默认值 | 约束 | 说明 |
+|------|------|--------|------|------|
+| id | integer | 自增 | PK | 任务ID |
+| taskType | string | import | select | import / export |
+| tableName | string | — | — | 目标表名（`__all__` 表示全表导出） |
+| fileName | string | — | — | 上传/导出文件名 |
+| status | string | pending | select | pending / processing / completed / failed / cancelled |
+| fieldMapping | json | — | — | 导入字段映射配置 |
+| customValues | json | — | — | 导入固定值配置 |
+| selectedFields | json | — | — | 导出选中字段列表 |
+| exportFilter | json | — | — | 导出筛选条件 |
+| errorLogs | json | — | — | 失败行错误日志数组 |
+| progress | integer | 0 | — | 进度百分比（0-100） |
+| totalRows | integer | 0 | — | 总行数 |
+| processedRows | integer | 0 | — | 已处理行数 |
+| importMode | string | insert | select | insert / update / upsert |
+| sheetName | string | — | — | Excel Sheet 名称 |
+| headerRow | integer | 1 | — | 表头行号（1-100） |
+| uniqueFields | json | — | — | 唯一值字段列表 |
+| importFileId | integer | — | — | 导入源文件附件 ID |
+| exportFileId | integer | — | — | 导出文件附件 ID |
+| errorMessage | text | — | — | 失败错误信息 |
+| includeAssociationSheet | boolean | false | — | 是否包含关联 Sheet |
+| includeAttachments | boolean | false | — | 是否包含附件文件 |
+| associationSheetTables | json | — | — | 关联表列表 |
+| associationDisplayMode | json | — | — | 关联字段显示模式 |
+| blankCellMode | string | update | — | 空白单元格处理（update / null / skip） |
+| headerStyle | string | title_id | — | 表头格式（title_id / title / id） |
+| completedAt | date | — | — | 完成时间 |
+| createdById | integer | — | FK→users | 创建人 |
 
-### 导出（5 个）
+### 7.2 sjgl02_table_permissions（表级权限配置）
 
-| 端点 | 方法 | 参数 |
-|------|------|------|
-| `sjgl02Export:tableFields` | GET | `tableName` → 字段列表 |
-| `sjgl02Export:previewCount` | POST | `{ tableName, filter }` → 预估行数 |
-| `sjgl02Export:execute` | POST | `{ tableName, selectedFields, associationDisplayMode, includeAssociationSheet, associationSheetTables, filter, fileNameTemplate, includeAttachments }` → `{ taskId }` |
-| `sjgl02Export:progress` | GET | `taskId` → `{ progress, status, exportFileId }` |
-| `sjgl02Export:download` | GET | `taskId` → 文件流 |
+| 字段 | 类型 | 默认值 | 约束 | 说明 |
+|------|------|--------|------|------|
+| id | integer | 自增 | PK | — |
+| targetType | string | — | select | user / role |
+| targetId | string | — | — | 用户ID（字符串）或角色 name |
+| targetName | string | — | — | 冗余名称 |
+| tableName | string | — | — | 数据表名 |
+| canImport | boolean | false | — | 允许导入 |
+| canExport | boolean | false | — | 允许导出 |
+| importMode | json | `['insert','update','upsert']` | — | 允许的导入模式数组 |
+| uniqueFields | json | — | — | 唯一值字段列表 |
+| requiredFields | json | — | — | 必填字段列表 |
+| importFields | json | — | — | 可导入字段白名单（空=全部） |
+| exportFields | json | — | — | 可导出字段白名单（空=全部） |
+| exportFilter | json | — | — | 导出筛选条件 |
+| permissions | json | — | — | 扩展权限 JSON |
+| priority | integer | 0 | — | 优先级 |
+| createdById | integer | — | FK→users | 创建人 |
+| createdAt | date | — | — | 创建时间（自动） |
+| updatedAt | date | — | — | 更新时间（自动） |
 
-### 任务管理（3 个）
+**唯一索引**：`UNIQUE(targetType, targetId, tableName)` — 名称 `sjgl02_perms_unique_target_table`
 
-| 端点 | 方法 | 参数 |
-|------|------|------|
-| `sjgl02Tasks:list` | GET | `{ page, pageSize, taskType?, status? }` → `{ items, total, page, pageSize }` |
-| `sjgl02Tasks:detail` | GET | `taskId` → 任务详情（含 createdBy） |
-| `sjgl02Tasks:cancel` | POST | `{ taskId }` → `{ success: true }` |
+### 7.3 sjgl02_settings（全局/用户设置）
 
-### 权限管理（6 个）
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| id | bigint | 自增 | PK |
+| taskViewScope | string | own | 任务查看范围（own / all） |
+| maxFileSize | integer | 50 | 最大文件大小（MB） |
+| batchSize | integer | 1000 | 批处理大小 |
+| userId | bigInt | null | 用户ID（null=全局默认） |
 
-| 端点 | 方法 | 参数 |
-|------|------|------|
-| `sjgl02Permissions:userRoleList` | GET | — → `{ users, roles }` |
-| `sjgl02Permissions:tables` | GET | — → 所有数据表列表 |
-| `sjgl02Permissions:get` | GET | `targetType, targetId` → 权限列表 |
-| `sjgl02Permissions:save` | POST | `{ permissions }` → 全量 upsert（同时删除不在提交列表中的旧记录） |
-| `sjgl02Permissions:settings` | GET | — → 全局设置 |
-| `sjgl02Permissions:saveSettings` | POST | `{ taskViewScope?, maxFileSize?, batchSize? }` |
+**索引**：`userId`
 
----
-
-## 数据模型
-
-### sjgl02_tasks（导入导出任务）
+### 7.4 sjgl02_permission_logs（权限操作日志）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | integer PK | 自增 |
-| taskType | string(select) | import / export |
-| tableName | string | 目标表名 |
-| status | string(select) | pending / processing / completed / failed / cancelled |
-| fieldMapping | json | 字段映射配置 |
-| customValues | json | 自定义固定值 |
-| selectedFields | json | 导出选中字段 |
-| exportFilter | json | 导出筛选条件 |
-| errorLogs | json | 错误日志数组 |
-| progress | integer | 0-100 |
-| totalRows | integer | 总行数 |
-| processedRows | integer | 已处理行数 |
-| importMode | string(select) | insert / update / upsert |
-| sheetName | string | Sheet 名称 |
-| headerRow | integer | 表头行号，默认 1 |
-| uniqueFields | json | 唯一值字段列表 |
-| importFileId | integer | 导入源文件附件 ID |
-| exportFileId | integer | 导出文件附件 ID |
-| errorMessage | text | 失败错误信息 |
-| includeAssociationSheet | boolean | 是否包含关联 Sheet |
-| includeAttachments | boolean | 是否含附件文件，默认 false |
-| associationSheetTables | json | 关联表列表 |
-| associationDisplayMode | json | 关联字段显示模式 |
-| completedAt | datetime | 完成时间 |
-| createdById | integer | 创建人 ID（belongsTo users） |
+| id | integer | PK |
+| action | string(select) | create / update / delete / toggle |
+| targetType | string | 用户/角色 |
+| targetId | string | 目标ID |
+| targetName | string | 目标名称 |
+| tableName | string | 被操作的数据表 |
+| changes | json | 变更前后快照 |
+| operatorId | integer | 操作人（FK→users） |
+| createdAt | date | 操作时间 |
 
-### sjgl02_table_permissions（表级权限）
+**索引**：`(targetType, targetId)`、`(createdAt)`
+
+### 7.5 sjgl02_task_logs（任务执行日志）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| id | integer PK | 自增 |
-| targetType | string(select) | user / role |
-| targetId | **string** | 目标 ID（角色以 name 为主键） |
-| targetName | string | 冗余名称 |
-| tableName | string | 数据表名 |
-| canImport | boolean | 默认 false |
-| canExport | boolean | 默认 false |
-| importMode | string(select) | insert / update / upsert |
-| uniqueFields | json | 唯一值字段列表 |
-| requiredFields | json | 必填字段列表 |
-| importFields | json | 可导入字段（空=全部） |
-| exportFields | json | 可导出字段（空=全部） |
-| exportFilter | json | 导出筛选 |
+| id | integer | PK |
+| taskId | integer | 关联任务ID（FK→sjgl02_tasks） |
+| level | string(select) | INFO / SUCC / WARN / ERROR |
+| message | text | 日志内容 |
+| timestamp | date | 时间戳 |
 
-### sjgl02_settings（全局设置）
-
-| 字段 | 类型 | 默认值 |
-|------|------|--------|
-| taskViewScope | string | own |
-| maxFileSize | integer | 50 (MB) |
-| batchSize | integer | 1000 |
+**索引**：`(taskId)`、`(timestamp)`
 
 ---
 
-## 访问入口
+## 8. 权限检查逻辑（permission-check.ts）
 
-插件启用后有两种访问方式：
-
-### 1. 设置菜单入口（完整功能，含权限管理）
+### 8.1 检查优先级
 
 ```
-登录 → 设置 → 数据管理
-v1 路径: /admin/settings/sjgl02
-v2 路径: /v2/admin/settings/sjgl02
+checkTablePermission(tableName, actionType, permSource?)
+  ├── 未登录 → 401
+  ├── permSource 指定 → 使用指定用户/角色的权限（admin/root 模拟方案功能）
+  ├── admin/root 角色 → 返回全权限（短路，跳过所有 DB 查询）
+  ├── 用户级权限存在 → 使用用户级权限
+  │   └── canImport/canExport=false → 403 拒绝
+  ├── 角色级权限存在（多角色取最宽松）→ 使用角色级权限
+  │   └── canImport/canExport=false → 403 拒绝
+  └── 都不存在 → 403 拒绝
 ```
 
-包含 4 个 Tab：导入 / 导出 / 任务管理 / 权限管理
+### 8.2 返回结构 `TablePermission`
 
-### 2. 页面区块入口（不含权限管理）
-
+```typescript
+{
+  canImport: boolean;
+  canExport: boolean;
+  importMode: string[];        // 允许的导入模式
+  importFields: string[];      // 可导入字段白名单（空=全部）
+  exportFields: string[];      // 可导出字段白名单（空=全部）
+  exportFilter: object | null; // 导出筛选条件
+  uniqueFields: string[];      // 唯一值字段
+  requiredFields: string[];    // 必填字段
+}
 ```
-v2 页面 → 添加区块 → 其他区块 → 数据管理
-```
-
-包含 3 个 Tab：导入 / 导出 / 任务管理
 
 ---
 
-## 安装与使用
+## 9. 全局配置（sjgl02_settings）
 
-### 安装依赖
+| 配置项 | 范围 | 默认值 | 说明 |
+|--------|------|--------|------|
+| taskViewScope | 用户级 > 全局 | own | own=仅看自己的任务 / all=查看全部任务 |
+| maxFileSize | 全局 | 50 | 上传文件大小上限（MB），前端校验 |
+| batchSize | 全局 | 1000 | 导入批次大小 |
+
+- admin/root 角色始终为 `taskViewScope='all'`
+- 用户级设置（`userId` 不为 null）优先级高于全局设置（`userId` 为 null）
+- GET 请求无副作用（查不到返回默认值，不自动创建记录）
+
+---
+
+## 10. 安装与使用
+
+### 10.1 安装依赖
 
 ```bash
 cd nocobase-2.1.9
 yarn install
 ```
 
-### 启用插件
+### 10.2 构建与启用
 
 ```bash
-yarn nocobase pm enable @my-project/plugin-sjgl02
-```
-
-### 构建插件
-
-```bash
+# 构建插件
 yarn build
+
+# 启用插件（install() 自动创建默认设置 + admin/root 全表权限）
+yarn nocobase pm enable @my-project/plugin-sjgl02
+
+# 数据库升级（自动运行 migrations）
+yarn nocobase upgrade
 ```
 
-### 开发模式
+### 10.3 开发模式
 
 ```bash
 yarn dev
 ```
 
-### 访问
+### 10.4 访问
 
 ```
-http://localhost:13000 → 登录 → 设置 → 数据管理
+http://localhost:13000 → 登录（nocobase / admin123）→ 设置 → 数据管理
 ```
 
 ---
 
-## 技术要点
+## 11. 技术实现要点
 
-- **客户端**：v1 + v2 双客户端。v2 使用 `@nocobase/client-v2`（懒加载 Tab + react-i18next），v1 使用 `@nocobase/client`（`this.app.apiClient` 认证 + Ant Design v5 完整组件）
-- **动态数据**：所有表列表、字段列表、用户/角色列表均从 API 动态加载，无任何硬编码
-- **服务端**：4 个自定义资源（`sjgl02Import` / `sjgl02Export` / `sjgl02Tasks` / `sjgl02Permissions`），通过 `resourceManager.define()` 注册
-- **权限**：所有自定义 API 需要 `loggedIn` 权限；导入/导出操作额外校验 `sjgl02_table_permissions` 表级权限（含字段级过滤和导入模式限制）
-- **国际化**：中文 `zh-CN` / 英文 `en-US`，共 115 个翻译键
-- **事务规则**：导入在单一事务中执行，任何数据行失败则整批回滚
-- **懒加载**：v2 的 4 个 Tab 采用 LazyTab 按需加载，切换时重新挂载，首次显示加载中占位
-- **文件校验**：上传前校验扩展名（.xlsx/.xls/.csv）和大小（≤50MB）
-- **防重入**：导出执行中禁止重复点击，完成后才可再次操作
-- **认证**：v1 客户端通过 `this.app.apiClient.request()` 自动注入 auth token
-- **文件上传**：通过标准 `attachments:create` API 上传，然后 `uploadParse` 解析
+| 要点 | 说明 |
+|------|------|
+| **双客户端** | v1（`@nocobase/client`）+ v2（`@nocobase/client-v2`）。v1/v2 面板统一复用，v2 通过 `LazyTab` + `useAPI()` 兼容两种运行时 |
+| **动态数据** | 所有表列表、字段列表、用户/角色列表均从 API 动态加载，无任何硬编码 |
+| **服务端资源** | 5 个自定义资源（Import / Export / Tasks / Permissions / TaskLogs），通过 `resourceManager.define()` 注册 |
+| **ACL** | 所有自定义 API 需 `loggedIn` 权限；导入/导出额外校验 `sjgl02_table_permissions` 表级权限 |
+| **流式导出** | `ExcelJS.stream.xlsx.WorkbookWriter` + 分页查询，无行数上限，内存 ~200MB |
+| **批量导入** | 1000 行/批 + 批量查询 + `createMany` 批量写入 + 同批次唯一值去重 |
+| **事务回滚** | 导入在单一 Sequelize 事务中执行，任何行失败则全部回滚 |
+| **混合执行** | 导入/导出异步执行 — 任务创建后立即返回 taskId，数据处理在后台 `setImmediate` 中执行，不阻塞 HTTP 请求 |
+| **互斥锁** | `async-mutex` 防止并发导出互相干扰 |
+| **ZIP 打包** | `archiver` 打包 Excel + 附件文件，按字段名分文件夹 |
+| **i18n** | zh-CN / en-US，共 115 个翻译键，`tExpr()` 支持延迟翻译 |
+| **认证** | v1 通过 `this.app.apiClient.request()` 自动注入 auth token；v2 通过 `useAPI()` 统一客户端 |
+| **文件上传** | 通过标准 `attachments:create` API 上传，然后 `uploadParse` 解析内容 |
+| **Migrations** | 2 个 migration 文件，`beforeLoad` 自动执行，`yarn nocobase upgrade` 触发 |
 
 ---
 
-## 更新日志
+## 12. 版本历史
 
-### v1.0.94（2026-07-02）
-- **重构**：导出流式写入 + 分页循环（去行数限制），导入批次批量操作
+详见 [CHANGELOG.md](./CHANGELOG.md)
 
-### v1.0.88（2026-07-02）
-- **新增**：导入权限模拟方案切换（admin/root 专用）
-
-### v1.0.87（2026-07-02）
-- **新增**：空白单元格处理 + 唯一值空值整批回滚
-
-### v1.0.86（2026-07-02）
-- **修复**：导出关联字段显示人名而非 ID
-
-### v1.0.85（2026-07-02）
-- **新增**：导出表头格式三选一（字段名(字段标识) / 字段名 / 字段标识）
-
-### v1.0.84（2026-07-02）
-- **修复**：全插件 antd 静态调用改为 `App.useApp()` Hook
-
-### v1.0.83（2026-07-02）
-- **修复**：导入唯一值空值匹配 + ImportPanel Antd 5 弃用警告
-
-### v1.0.82（2026-07-02）
-- **修复**：关联表导出详情 — Sheet名称/关联表/数据量三列修复
-
-### v1.0.81（2026-07-02）
-- **修复**：关联表 Tab 显示字段标签（`getTableFields` 新增 `target` 返回）
-
-### v1.0.80（2026-07-02）
-- **新增**：关联表 Tab 显示字段标签列表 + Tab 标签含主表关联字段信息
-
-### v1.0.79（2026-07-02）
-- **修复**：导出字段卡片关联表 Tab 缺失 — 改用 `associationSheetTables` 数据源
-
-### v1.0.78（2026-07-02）
-- **重构**：Office 文件预览直接使用微软在线服务，不依赖 NocoBase Office 预览插件是否安装
-
-### v1.0.77（2026-07-02）
-- **新增**：Office 文件预览插件检测 — 点击预览自动检测插件是否启用，未启用提示用户安装
-
-### v1.0.76（2026-07-02）
-- **修复**：下载 URL `path+filename` 重复拼接 → `a.path` 已是完整路径，移除多余文件名拼接
-
-### v1.0.75（2026-07-02）
-- **修复**：下载/预览再次加固 — 三级 URL 兜底 + `fetch→blob→createObjectURL` 下载模式
-- **优化**：预览失败有 `message.warning` 提示；下载资源自动清理
-
-### v1.0.74（2026-07-02）
-- **修复**：Antd Card `headStyle` 弃用警告 → `styles.header`
-- **修复**：详情页下载/预览按钮 404 — 调整为先调用 `attachments:get` 获取文件静态 URL 后再下载/预览
-
-### v1.0.73（2026-07-02）
-- **优化**：导出字段详情关联表 Tab 标签改为 `表名称(表标识)` 格式
-- **修复**：关联表字段显示 `标识(标识)` 缺失中文标题 — 补充关联表字段 API 查询
-- **优化**：`ExportFieldsCard` 传入 `tableTitles` 实现表名映射
-
-### v1.0.72（2026-07-02）
-- **修复**：任务列表文件名显示为「附件 #ID」而非真实文件名
-- **修复**：任务详情缺少数据预览卡片（导入+导出均恢复折叠表格卡片）
-- **修复**：预览 API POST 参数读取兼容 NocoBase 框架的 `params.values` 层级
-- **新增**：导出任务详情新增前 5 条数据预览卡片
-- **清理**：残留 `tmp` 文件删除
-
-### v1.0.71（2026-07-02）
-- **修复**：导入预览调用 API 展示前 5 条；导出字段改为 Tabs；下载用 Blob URL；列宽自适应
-
-### v1.0.70（2026-07-02）
-- **新增**：2 个 migration 确保 `file_name` 列存在 + 回填旧数据
-
-### v1.0.69（2026-07-02）
-- **新增**：`fileName` 字段；列表文件名显示；创建人多字段兜底
-
-### v1.0.68（2026-07-02）
-- **回滚**：install() 恢复所有表权限
-
-### v1.0.67（2026-07-02）
-- **修复**：版本号、预计时间、取消按钮；优化安装速度、清理残留文件
-
-### v1.0.66（2026-07-02）
-- **修复**：SQL 错误 + 文件下载/预览失败
-
-### v1.0.65（2026-07-01）
-- **修复**：ZIP 判断、日志分页、历史任务容错、失败统计
-
-### v1.0.64（2026-07-01）
-- **重构**：任务管理模块全面重写 — 列表页 + 侧边详情 Drawer + 7 张卡片 + 终端日志
-- **新增**：`sjgl02_task_logs` 模型 + 执行日志实时刷新 API
-
-### v1.0.63（2026-07-01）
-- **修复**：v1 区块右键菜单 — 新增 `x-toolbar: 'BlockSchemaToolbar'` + 扩展 `blockSettings:sjgl02` 为系统标准菜单（修改标题/设置高度/联动规则/删除）
-
-### v1.0.62（2026-07-01）
-- **修复**：v1 区块右键菜单为空 — 注册自定义 SchemaSettings `blockSettings:sjgl02`
-
-### v1.0.61（2026-07-01）
-- **重构**：v1/v2 代码统一 — 删除 v2 重复页面（~980行），v2 直接引用 v1 面板
-- **新增**：统一 `useAPI()` hook（`src/client-v2/utils/api.ts`），兼容两种运行时上下文
-
-### v1.0.60（2026-07-01）
-- **修复**：v2 区块任务管理列表为空（API 响应数据解析层级修正：`data?.data?.data`）
-- **修复**：v1 区块注册增加 `RecordBlockInitializers` 和 `mobile:addBlock`，覆盖更多 v1 页面场景
-
-### v1.0.59（2026-07-01）
-- **修复**：v1 区块无法移除（增加 `x-settings: 'blockSettings:block'`）
-- **修复**：v2 区块权限管控不生效（表列表按权限过滤 + `useFilteredTables` hook）
-- **修复**：`useTablePermission` 兼容区块上下文（`useCurrentUserContext` 为空时用 `auth:check` API 兜底）
-- **新增**：`useFilteredTables` 共享 hook + ExportTab 「全部数据表」仅 admin/root 可见
-
-### v1.0.58（2026-07-01）
-- **修复**：v2 区块渲染崩溃（`useCurrentUserContext()` 返回 null 导致 `useTablePermission` 解构报错）
-
-### v1.0.57（2026-07-01）
-- **新增**：v2 区块页面添加完整内容（导入/导出/任务管理 Tab），修复只显示顶部栏的问题
-- **优化**：预览表头改为上下两行蓝灰分色显示
-
-### v1.0.56（2026-07-01）
-- **修复**：v2 页面「添加区块 → 其他区块」不显示"数据管理"区块（v1 客户端补充 `registerModels({ SjglBlockModel })` 同步注册，参照官方双端注册模式）
-
-### v1.0.55（2026-07-01）
-- **修复**：v2 页面「添加区块」不显示"数据管理"区块（改用 `registerModelLoaders` + `extends: 'BlockModel'`，替代 v1 遗留的 `registerModels`）
-- **重构**：SjglBlockModel 的 `define({ label })` 改用 `tExpr()` 延迟翻译
-- **重构**：插件入口改用按需加载（`loader: () => import()`），遵循 v2 插件开发规范
-
-### v1.0.54（2026-07-01）
-- **界面重构**：Step2 文件信息+Sheet+表头行合并一行；Step3 摘要 Card 替代4个独立 Card
-- **预览列名**：改为「导入字段：xxx — 数据表字段：字段标题(field标识)」格式
-- **自动匹配**：增强为 5 种匹配规则（支持 `1(f_xxx)` 括号提取 + 包含匹配）
-- **修复**：doParse 保留用户自选的唯一值字段；update/upsert 强制要求唯一值
-- **新增**：字段映射表「⚠ 必填」红色标签
-- **文档**：CHANGELOG.md 重写 1.0.51~1.0.54 条目（补充分类和详细描述）
-
-### v1.0.53（2026-06-30）
-- **修复**：自动匹配后下一步按钮被禁用（`__custom__` 映射不再判为无效）
-- **修复**：导入模式从权限同步（预览显示正确模式，唯一值区块正常出现）
-- **修复**：自动匹配优先名称匹配，匹配不到 + 必填 → 设为自定义
-- **修复**：导出字段列表基于权限 exportFields 过滤
-- **修复**：非 admin/root 隐藏「全部数据表」导出选项
-- **新增**：导入必填字段实时校验提示（绿=已映射 / 红=未映射）+ 清空匹配按钮
-- **改进**：唯一值/必填字段 Tag 显示格式「字段名称（字段标识）」
-- **改进**：导入模式仅1种时显示 Tag 文字，多种时才显示下拉
-
-### v1.0.52（2026-06-30）
-- **修复**：v2 页面添加区块改用 `registerModels` 同步注册（修复 v2 添加区块不显示）
-- **新增**：导入/导出面板基于用户权限过滤可选表（只能看到有权限的表）
-- **修复**：全部数据表导出列表格式改为「表名称（表标识）」
-- **修复**：关联数据 Sheet 选项格式改为「表名称（表标识）」
-- **修复**：关联字段显示模式下拉中文+英文（显示值(Display) / 仅ID(ID only)）
-
-### v1.0.51（2026-06-30）
-- **重大变更**：taskViewScope 改为按用户配置（`sjgl02_settings` 新增 `userId` 字段）
-- 角色面板移除任务查看范围设置（仅用户面板显示）
-- admin/root 始终可查看全部任务
-- 权限卡片标签行修复：导入=否时不显示模式/唯一值/必填/可导入标签
-
-### v1.0.50（2026-06-30）
-- **修复**：收起/展开分页 Bug —— 收起继承权限后自定义权限无需翻页即可显示
-- **修复**：选表下拉过滤条件改为只排除已有自定义权限的表，角色继承的表允许再次添加自定义
-- **修复**：前端权限判断尊重用户级 canImport=false 否定（前端不再显示可用）
-- **修复**：getSettings GET 请求不再自动创建默认记录（消除副作用）
-- **新增**：AGENTS.md 补充权限开发约束（_inherited 序列化、admin/root 特判、前后端一致性）
-
-### v1.0.49（2026-06-30）
-- **重构**：权限面板按原型图完全重写（v1 + v2 双向同步）
-  - 导入/导出开关移到编辑弹窗内，卡片上去除 Switch
-  - 继承权限卡片新增「查看详情」只读弹窗
-  - 右侧头部增加用户角色标签（格式：管理员（admin））
-  - 字段/角色显示格式统一为「名称（标识）」
-  - 权限分区支持收起/展开（点击标题 ▼/▶）
-  - 新增子Tab：权限配置 / 📋 操作日志（审计日志表）
-  - 批量操作：全选 + 批量删除（Popconfirm）
-  - 数量化标签：可导入: N个字段 / 可导出: N个字段
-
-### v1.0.48（2026-06-30）
-- **深度重构**：权限管理架构全面升级
-  - 第0阶段：创建 hooks/ types/ 目录，7 个共享 hooks（usePermissions、useTargetList、useTableList 等）
-  - 第0阶段：v1 plugin.tsx 从 1204 行单体文件拆分为 5 个独立 Panel 文件（ImportPanel、ExportPanel、TaskPanel、PermissionPanel、Sjgl02Block）
-  - 第1阶段：v2 PermissionTab 重构为使用共享 hooks（355 行 → 220 行，减 38%）
-  - 第1阶段：v2 ImportTab 改用 useTablePermission hook，消除 auth:check 冗余请求
-  - 第2阶段：sjgl02_table_permissions 表新增审计字段（createdAt、updatedAt、createdById）、permissions JSON 扩展字段、priority 优先级字段
-  - 第2阶段：新增 sjgl02_permission_logs 审计日志表，savePermissions 自动记录创建/修改/删除操作
-  - 第3阶段：v2 权限面板新增批量操作（全选 + 批量删除）
-- **变更**：services 层 hooks 目录结构
-
-### v1.0.47（2026-06-30）
-- **严重修复**：install() 数据重复创建 bug —— 创建循环从外层 for tables 内部移到外部，消除海量重复
-- **严重修复**：sjgl02_table_permissions 表添加 UNIQUE(targetType, targetId, tableName) 唯一约束
-- **修复**：getPermissions admin/root 自动补齐改为批量创建，减少 DB 往返
-- **修复**：前端导入面板改为仅查询当前用户权限（修复 Array.isArray 误判导致权限过滤完全失效）
-- **修复**：permission-check.ts 多角色权限取最宽松（不再只取单条 ID 最大的）
-- **新增**：admin/root 权限标记 `_systemManaged: true`，前端区分显示「系统管理」（蓝色）vs「继承」（紫色）
-- **修复**：Alert 提示文案加入"超级管理员"（root 角色）
-- **优化**：v2 ImportTab 同步修复（仅查当前用户，消除 N+1 API 请求）
-
-### v1.0.46（2026-06-30）
-- **重要**：服务端权限强制校验 —— 导入/导出操作会根据 `sjgl02_table_permissions` 表检查用户权限
-- 修复：admin/root 角色自动补齐权限时 `targetName` 区分「管理员」和「超级管理员」
-- 修复：v1 自动保存只发送非继承权限，避免继承权限被错误修改
-- 修复：v1 Switch 组件 checkedChildren/unCheckedChildren 文案区分（导入/关、导出/关）
-- 修复：前端 `_inherited` 标记被错误覆盖导致 admin/root 权限不可识别的 bug
-- 修复：用户拥有多角色时继承权限去重，消除 React 重复 key 警告
-- 导入服务端增加导入模式校验和字段级权限过滤
-- 导出服务端增加字段级权限过滤和全表导出逐表权限检查
-
-### v1.0.27（2026-06-29）
-- 文档全面修正：API 端点恢复准确（移除不存在的 upload/logs 端点）、数据模型补全字段、翻译键计数更正
-- 修正 v1/v2 客户端版本号显示（v1.0.24 → v1.0.27）
-
-### v1.0.26（2026-06-29）
-- 新增导出附件功能：勾选后自动打包 attachment 类型字段文件到 ZIP
-- Excel 附件列显示系统文件名，ZIP 中按字段名分文件夹存放
-- v1 导出面板新增"包含附件"开关和格式提示
-- `sjgl02_tasks` 表新增 `includeAttachments` 字段
-
-### v1.0.25（2026-06-29）
-- 新增预览表头弹框：显示表头列和前 10 行数据、Sheet 名、表头行、数据行数
-- Sheet/表头行切换自动重新解析
-- `uploadParse` 接口新增 `sheetName`/`headerRow` 参数和 `previewRows`/`totalRows` 返回
-
-### v1.0.24（2026-06-29）
-- v1 导入字段映射完整实现（uploadParse + Sheet/表头行 + 字段映射表 UI + 去重联动）
-- 自定义固定值映射修复（makeRecord else 分支）
-- 导出筛选格式转换（客户端数组 → NocoBase filter 对象）
-- 权限物理删除旧记录
-- TypeScript 类型修复、死代码清理
-
-### v1.0.23（2026-06-28）
-- ImportTab Empty 组件导入修复
-- 角色 ID 类型 integer → string（targetId 统一为 string）
-- v1 apiRequest 错误处理、权限实时保存、动态字段加载
-- 区分导入/导出下载，viewScope 持久化
-- archiver ES import、falsy id 修复
-
-### v1.0.22（2026-06-28）
-- 导入事务回滚（sequelize.transaction）
-- uploadParse 端点新增（接收 fileId 解析 Excel）
-- 字段映射表完全重写（Excel列→映射方式→工作表字段 三列）
-- 权限编辑弹窗动态字段加载
-- 预设管理员权限、导出 FilterConditionBuilder
-- 任务筛选按钮组、日志抽屉区分下载
-
-### v1.0.21（2026-06-27）
-- POST 参数修复（改用 ctx.action.params.values）
-- 上传改为 attachments:create 标准 API
-- 导出关联表 Sheet 实现
-- 下载 taskId 从硬编码改为真实值
-
-### v1.0.20（2026-06-27）
-- 真实导入导出重写（xlsx + sequelize 数据库写入、exceljs 真实导出）
-- 全部数据表导出 ZIP 打包
-- 任务 viewScope 权限过滤
-- 动态数据表/字段加载
+| 版本 | 日期 | 主要变更 |
+|------|------|----------|
+| 1.0.95 | 2026-07-02 | 导入/导出执行异步化（任务提交后立即返回，后台异步处理） |
+| 1.0.94 | 2026-07-02 | 导入权限方案下拉优化 + `__all__` 导出预览404修复 |
+| 1.0.92 | 2026-07-02 | 任务表新增 blankCellMode/headerStyle 字段 |
+| 1.0.89 | 2026-07-02 | 导出流式写入重构（去 20000 行限制）；导入批次批量操作 |
+| 1.0.88 | 2026-07-02 | admin/root 导入模拟权限方案切换 |
+| 1.0.87 | 2026-07-02 | 空白单元格处理 + 唯一值空值整批回滚 |
+| 1.0.85 | 2026-07-02 | 导出表头格式三选一 |
+| 1.0.64 | 2026-07-01 | 任务管理全面重写（列表+详情Drawer+7张卡片+终端日志） |
+| 1.0.49 | 2026-06-30 | 权限面板按原型图重写（v1+v2双向同步） |
+| 1.0.48 | 2026-06-30 | 权限架构全面升级（hooks/types/panels 目录拆分 + 审计日志表） |
+| 1.0.47 | 2026-06-30 | install() 数据重复创建修复 + UNIQUE 约束 |
+| 1.0.46 | 2026-06-30 | 服务端权限强制校验首次引入 |
+| 1.0.20 | 2026-06-27 | 表级权限管理 + 安装预设管理员权限 |

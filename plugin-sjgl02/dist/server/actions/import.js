@@ -197,7 +197,7 @@ async function preview(ctx, next) {
   await next();
 }
 async function executeImport(ctx, next) {
-  var _a, _b;
+  var _a;
   const params = ctx.action.params.values || ctx.action.params;
   const { tableName, fileId, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields, blankCellMode, permSource } = params;
   if (!tableName || !fileId) {
@@ -257,23 +257,46 @@ async function executeImport(ctx, next) {
       blankCellMode: blankCellMode || "update"
     }
   });
-  const sequelize = ctx.db.sequelize;
+  const db = ctx.db;
+  const taskId = task.id;
+  ctx.body = { taskId };
+  await next();
+  setImmediate(() => {
+    processImportAsync(db, taskId, {
+      tableName,
+      fileId,
+      sheetName,
+      headerRow,
+      fieldMapping,
+      customValues,
+      importMode,
+      uniqueFields,
+      blankCellMode,
+      attachmentPath: attachment.path || attachment.filename
+    });
+  });
+}
+async function processImportAsync(db, taskId, params) {
+  var _a;
+  const { tableName, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields, blankCellMode, attachmentPath } = params;
+  const repo = db.getRepository("sjgl02_tasks");
+  const sequelize = db.sequelize;
   const transaction = await sequelize.transaction();
-  await repo.update({ filterByTk: task.id, values: { status: "processing" }, transaction });
-  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u5165\u4EFB\u52A1");
-  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}`);
-  await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", `\u5BFC\u5165\u6A21\u5F0F: ${importMode || "insert"}`);
+  await repo.update({ filterByTk: taskId, values: { status: "processing" }, transaction });
+  await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u5165\u4EFB\u52A1");
+  await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}`);
+  await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u5BFC\u5165\u6A21\u5F0F: ${importMode || "insert"}`);
   try {
     const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
-    const filePath = import_path.default.join(storageDir, attachment.path || attachment.filename);
+    const filePath = import_path.default.join(storageDir, attachmentPath);
     if (!import_fs.default.existsSync(filePath)) {
-      throw new Error("File not found on disk: " + filePath);
+      throw new Error("\u6587\u4EF6\u672A\u627E\u5230: " + filePath);
     }
     const workbook = XLSX.readFile(filePath, { type: "file" });
     const targetSheetName = sheetName || workbook.SheetNames[0];
     const sheet = workbook.Sheets[targetSheetName];
     if (!sheet) {
-      throw new Error(`Sheet "${targetSheetName}" not found`);
+      throw new Error(`Sheet "${targetSheetName}" \u672A\u627E\u5230`);
     }
     const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
     const hRow = Math.max(0, (parseInt(String(headerRow), 10) || 1) - 1);
@@ -282,12 +305,13 @@ async function executeImport(ctx, next) {
     const mapping = fieldMapping || {};
     const custVals = customValues || {};
     const totalRows = dataRows.length;
-    await repo.update({ filterByTk: task.id, values: { totalRows }, transaction });
-    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "SUCC", `\u6587\u4EF6\u89E3\u6790\u5B8C\u6210\uFF0C\u5171 ${totalRows} \u884C\u6709\u6548\u6570\u636E`);
-    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "INFO", `\u5F00\u59CB\u9010\u884C\u5904\u7406\u6570\u636E...`);
-    const targetRepo = ctx.db.getRepository(tableName);
+    await repo.update({ filterByTk: taskId, values: { totalRows }, transaction });
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", `\u6587\u4EF6\u89E3\u6790\u5B8C\u6210\uFF0C\u5171 ${totalRows} \u884C\u6709\u6548\u6570\u636E`);
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u5F00\u59CB\u9010\u884C\u5904\u7406\u6570\u636E...");
+    const targetRepo = db.getRepository(tableName);
     const errorLogs = [];
     let processedRows = 0;
+    const coll = db.getCollection(tableName);
     const normalizeDateValue = (val) => {
       if (!val || !val.trim()) return val;
       if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(val)) return val;
@@ -300,7 +324,7 @@ async function executeImport(ctx, next) {
     };
     const dateFieldNames = [];
     try {
-      for (const f of Array.from(((_b = coll.fields) == null ? void 0 : _b.values()) || [])) {
+      for (const f of Array.from(((_a = coll.fields) == null ? void 0 : _a.values()) || [])) {
         if (["date", "datetime", "datetimeTz", "unixTimestamp"].includes(f.type)) {
           dateFieldNames.push(f.name);
         }
@@ -347,14 +371,14 @@ async function executeImport(ctx, next) {
       return JSON.stringify(snap).substring(0, 500);
     };
     const applyBelongsToFK = (record, rowIdx) => {
-      var _a2, _b2;
+      var _a2, _b;
       const belonegs = [];
       try {
         belonegs.push(...Array.from(((_a2 = coll.fields) == null ? void 0 : _a2.values()) || []).filter((f) => f.type === "belongsTo" && f.name !== "createdBy" && f.name !== "updatedBy"));
       } catch {
       }
       for (const bf of belonegs) {
-        const fk = ((_b2 = bf.options) == null ? void 0 : _b2.foreignKey) || bf.name + "Id";
+        const fk = ((_b = bf.options) == null ? void 0 : _b.foreignKey) || bf.name + "Id";
         const mappedVal = mapping[bf.name];
         if (mappedVal && mappedVal !== "__ignore__") {
           const colIdx = headers.indexOf(mappedVal);
@@ -379,10 +403,9 @@ async function executeImport(ctx, next) {
             reason: `\u552F\u4E00\u503C\u5B57\u6BB5\u4E3A\u7A7A\uFF08${emptyFields.join(", ")}\uFF09\uFF0C\u6574\u6279\u5BFC\u5165\u5DF2\u53D6\u6D88`,
             snapshot: buildSnapshot(dataRows[i])
           });
-          await repo.update({ filterByTk: task.id, values: { status: "failed", errorLogs, processedRows: 0, totalRows: dataRows.length } }, { transaction });
-          await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "ERROR", `\u7B2C ${i + 1} \u884C\u552F\u4E00\u503C\u5B57\u6BB5\uFF08${emptyFields.join(", ")}\uFF09\u4E3A\u7A7A\uFF0C\u5DF2\u56DE\u6EDA\u5168\u90E8 ${dataRows.length} \u884C\u6570\u636E`);
+          await repo.update({ filterByTk: taskId, values: { status: "failed", errorLogs, processedRows: 0, totalRows: dataRows.length } }, { transaction });
+          await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u7B2C ${i + 1} \u884C\u552F\u4E00\u503C\u5B57\u6BB5\uFF08${emptyFields.join(", ")}\uFF09\u4E3A\u7A7A\uFF0C\u5DF2\u56DE\u6EDA\u5168\u90E8 ${dataRows.length} \u884C\u6570\u636E`);
           await transaction.rollback();
-          ctx.body = { success: false, taskId: task.id, error: `\u552F\u4E00\u503C\u5B57\u6BB5\u4E3A\u7A7A\uFF1A${emptyFields.join(", ")}\uFF08\u7B2C ${i + 1} \u884C\uFF09` };
           return;
         }
       }
@@ -465,7 +488,7 @@ async function executeImport(ctx, next) {
             delete record._existingId;
             applyBelongsToFK(record, br.idx);
             toUpdatePromises.push((async () => {
-              await targetRepo.update({ filterByTk: eid, values: record, transaction, context: ctx });
+              await targetRepo.update({ filterByTk: eid, values: record, transaction });
               processedRows++;
             })());
             continue;
@@ -494,7 +517,7 @@ async function executeImport(ctx, next) {
       }
       if (toCreateRows.length > 0) {
         try {
-          await targetRepo.create({ values: toCreateRows, transaction, context: ctx });
+          await targetRepo.create({ values: toCreateRows, transaction });
         } catch (createErr) {
           for (const cr of toCreateRows) {
             errorLogs.push({ reason: createErr.message || String(createErr) });
@@ -504,15 +527,15 @@ async function executeImport(ctx, next) {
       await Promise.all(toUpdatePromises);
       const batchProgress = Math.min(100, Math.floor(batchEnd * 100 / dataRows.length));
       try {
-        await repo.update({ filterByTk: task.id, values: { processedRows, progress: batchProgress }, transaction });
+        await repo.update({ filterByTk: taskId, values: { processedRows, progress: batchProgress }, transaction });
       } catch {
       }
     }
     if (errorLogs.length > 0) {
       await transaction.rollback();
-      await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "WARN", `\u5171 ${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u6B63\u5728\u56DE\u6EDA...`);
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", `\u5171 ${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u6B63\u5728\u56DE\u6EDA...`);
       await repo.update({
-        filterByTk: task.id,
+        filterByTk: taskId,
         values: {
           status: "failed",
           progress: 0,
@@ -522,12 +545,12 @@ async function executeImport(ctx, next) {
           completedAt: /* @__PURE__ */ new Date()
         }
       });
-      await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "ERROR", `\u5BFC\u5165\u5931\u8D25: ${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u5DF2\u56DE\u6EDA`);
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u5BFC\u5165\u5931\u8D25: ${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u5DF2\u56DE\u6EDA`);
     } else {
       await transaction.commit();
-      await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "SUCC", `\u5BFC\u5165\u5B8C\u6210\uFF0C\u5171 ${processedRows} \u884C\u6570\u636E`);
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", `\u5BFC\u5165\u5B8C\u6210\uFF0C\u5171 ${processedRows} \u884C\u6570\u636E`);
       await repo.update({
-        filterByTk: task.id,
+        filterByTk: taskId,
         values: {
           status: "completed",
           progress: 100,
@@ -537,20 +560,24 @@ async function executeImport(ctx, next) {
       });
     }
   } catch (err) {
-    await transaction.rollback();
-    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "ERROR", `\u5BFC\u5165\u5F02\u5E38: ${err.message || String(err)}`);
-    await (0, import_taskLogs.writeTaskLog)(ctx, task.id, "WARN", "\u4E8B\u52A1\u5DF2\u56DE\u6EDA\uFF0C\u6570\u636E\u5DF2\u8FD8\u539F");
-    await repo.update({
-      filterByTk: task.id,
-      values: {
-        status: "failed",
-        errorMessage: err.message || String(err),
-        completedAt: /* @__PURE__ */ new Date()
-      }
-    });
+    try {
+      await transaction.rollback();
+    } catch {
+    }
+    try {
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u5BFC\u5165\u5F02\u5E38: ${err.message || String(err)}`);
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", "\u4E8B\u52A1\u5DF2\u56DE\u6EDA\uFF0C\u6570\u636E\u5DF2\u8FD8\u539F");
+      await repo.update({
+        filterByTk: taskId,
+        values: {
+          status: "failed",
+          errorMessage: err.message || String(err),
+          completedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    } catch {
+    }
   }
-  ctx.body = { taskId: task.id };
-  await next();
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
