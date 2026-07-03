@@ -1,4 +1,5 @@
 import { Plugin } from '@nocobase/server';
+import fs from 'fs';
 import {
   getTableFields,
   uploadParse,
@@ -33,6 +34,51 @@ export class PluginSjgl02Server extends Plugin {
   async load() {
     this.defineCustomResources();
     this.setupACL();
+    setImmediate(() => this.startupCleanup());
+  }
+
+  /** 启动清理：残留任务、影子表、导出文件 */
+  private async startupCleanup() {
+    try {
+      const sequelize = this.db.sequelize;
+
+      // 1. 清理残留任务（5 分钟窗口）
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+      await this.db.getRepository('sjgl02_tasks').update({
+        filter: {
+          status: { $in: ['processing', 'pending'] },
+          createdAt: { $lt: fiveMinAgo },
+        },
+        values: {
+          status: 'failed',
+          errorMessage: '服务器重启，任务中断',
+          completedAt: new Date(),
+        },
+      });
+
+      // 2. 清理残留影子表
+      const [shadowTables] = await sequelize.query(
+        `SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02_import_%' AND schemaname = current_schema()`,
+        { raw: true },
+      );
+      for (const row of (shadowTables as any[])) {
+        try {
+          await sequelize.query(`DROP TABLE IF EXISTS "${row.tablename}"`);
+        } catch {}
+      }
+
+      // 3. 清理残留导出文件
+      const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
+      const exportDir = storageDir + '/exports';
+      if (fs.existsSync(exportDir)) {
+        const files = fs.readdirSync(exportDir);
+        for (const file of files) {
+          if (file.startsWith('sjgl02_export_')) {
+            try { fs.unlinkSync(exportDir + '/' + file); } catch {}
+          }
+        }
+      }
+    } catch {}
   }
 
   private defineCustomResources() {

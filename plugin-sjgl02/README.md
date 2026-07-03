@@ -4,11 +4,11 @@ NocoBase 全栈插件，提供 **Excel 导入、导出、任务管理、表级�
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | 1.0.95 |
+| 版本 | 1.0.100 |
 | 兼容 | NocoBase 2.x |
 | 核心入口 | 设置 → 数据管理（v1: `/admin/settings/sjgl02` / v2: `/v2/admin/settings/sjgl02`） |
 | 区块入口 | v2 页面 → 添加区块 → 其他 → 数据管理 |
-| 运行时依赖 | xlsx（解析）、exceljs（流式写入）、async-mutex（防重入）、archiver（ZIP打包） |
+| 运行时依赖 | exceljs ^4.4.0（流式解析+写入）、async-mutex ^0.4.0（防重入）、archiver ^6.0.0（ZIP打包） |
 | 国际化 | zh-CN / en-US，共 115 个翻译键 |
 | 默认状态 | 默认关闭，需手动启用 |
 
@@ -32,12 +32,13 @@ plugin-sjgl02/
 │   │   │   ├── sjgl02_permission_logs.ts         # 权限操作审计日志表
 │   │   │   └── sjgl02_task_logs.ts               # 任务执行日志表
 │   │   ├── actions/
-│   │   │   ├── import.ts                         # 导入端点（~522 行）
-│   │   │   ├── export.ts                         # 导出端点（~572 行）
-│   │   │   ├── tasks.ts                          # 任务管理端点（~112 行）
+│   │   │   ├── import.ts                         # 导入端点（三阶段流式+影子表）
+│   │   │   ├── export.ts                         # 导出端点（游标分页+合并扫描）
+│   │   │   ├── tasks.ts                          # 任务管理端点（含 cancelFlags）
 │   │   │   ├── permissions.ts                    # 权限管理端点（~226 行）
 │   │   │   ├── permission-check.ts               # 权限强制校验工具（~153 行）
-│   │   │   └── taskLogs.ts                       # 任务日志读写（~25 行）
+│   │   │   ├── taskLogs.ts                       # 任务日志读写（~25 行）
+│   │   │   └── cancel-state.ts                   # 内存级取消标志（Set<number>）
 │   │   └── migrations/
 │   │       ├── 20260702160000-add-task-file-name.ts   # file_name 列添加
 │   │       └── 20260702170000-backfill-file-name.ts   # 旧数据 fileName 回填

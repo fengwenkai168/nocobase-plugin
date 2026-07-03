@@ -31,6 +31,7 @@ __export(tasks_exports, {
   listTasks: () => listTasks
 });
 module.exports = __toCommonJS(tasks_exports);
+var import_cancel_state = require("./cancel-state");
 async function listTasks(ctx, next) {
   var _a, _b;
   const { taskType, status, search } = ctx.action.params;
@@ -109,6 +110,11 @@ async function cancelTask(ctx, next) {
   }
   if (["completed", "failed", "cancelled"].includes(task.status)) {
     ctx.throw(400, "Cannot cancel a completed/failed/cancelled task");
+  }
+  import_cancel_state.cancelFlags.add(Number(taskId));
+  try {
+    await ctx.db.sequelize.query(`DROP TABLE IF EXISTS "_sjgl02_import_${taskId}"`);
+  } catch {
   }
   await repo.update({
     filterByTk: task.id,

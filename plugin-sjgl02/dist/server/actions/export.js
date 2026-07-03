@@ -51,6 +51,7 @@ var import_archiver = __toESM(require("archiver"));
 var import_async_mutex = require("async-mutex");
 var import_permission_check = require("./permission-check");
 var import_taskLogs = require("./taskLogs");
+var import_cancel_state = require("./cancel-state");
 const exportMutex = new import_async_mutex.Mutex();
 function sanitizeSheetName(name) {
   return name.replace(/[\\\/\*\?\[\]:!@#\$%\^&\(\)]/g, "_").substring(0, 31);
@@ -133,6 +134,27 @@ function getAssociationFields(coll) {
   } catch {
   }
   return fields;
+}
+function detectPkType(coll) {
+  var _a, _b;
+  try {
+    const fields = Array.from(((_a = coll.fields) == null ? void 0 : _a.values()) || coll.fields || []);
+    const pk = fields.find((f) => {
+      var _a2;
+      return (_a2 = f.options) == null ? void 0 : _a2.primaryKey;
+    });
+    if (!pk) return "other";
+    const pkType = String(pk.type || "");
+    if (pkType.includes("UUID") || pkType.includes("uuid")) return "uuid";
+    const autoIncr = (_b = pk.options) == null ? void 0 : _b.autoIncrement;
+    if (autoIncr !== false && (pkType.includes("INT") || pkType.includes("int") || pkType === "bigInt" || pkType === "BIGINT")) {
+      return "int_auto";
+    }
+    if (pkType.includes("INT") || pkType.includes("int") || pkType === "bigInt" || pkType === "BIGINT") return "int_auto";
+    return "other";
+  } catch {
+    return "other";
+  }
 }
 async function getExportTableFields(ctx, next) {
   var _a;
@@ -313,17 +335,23 @@ async function processExportAsync(db, taskId, params) {
     await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}${tableName === "__all__" ? "\uFF08\u5168\u90E8\u6570\u636E\u8868\uFF09" : ""}`);
     const isAllTables = tableName === "__all__";
     const tableList = isAllTables ? allowedTableList || [] : [tableName];
-    const tempDir = import_path.default.join(process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads", "exports");
+    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
+    const tempDir = import_path.default.join(storageDir, "exports");
     if (!import_fs.default.existsSync(tempDir)) import_fs.default.mkdirSync(tempDir, { recursive: true });
     let totalRows = 0;
     let processedRows = 0;
     const outputFiles = [];
+    let cancelled = false;
+    const allAttachFileEntries = [];
     for (const tblName of tableList) {
+      if (import_cancel_state.cancelFlags.has(taskId)) {
+        cancelled = true;
+        break;
+      }
       const coll = db.getCollection(tblName);
       if (!coll) continue;
       const targetRepo = db.getRepository(tblName);
       if (!targetRepo) continue;
-      let records = [];
       let collectionTotal = 0;
       const appendFields = [];
       const attachmentFieldNames = [];
@@ -331,11 +359,20 @@ async function processExportAsync(db, taskId, params) {
       try {
         for (const f of Array.from(((_a = coll.fields) == null ? void 0 : _a.values()) || coll.fields || [])) {
           if (f.type === "belongsTo") appendFields.push(f.name);
-          if (includeAttachments && f.type === "belongsToMany") {
+          if (f.type === "belongsToMany") {
             const interfaceName = (_b = f.options) == null ? void 0 : _b.interface;
-            if (interfaceName === "attachment" && !appendFields.includes(f.name)) {
+            if (includeAttachments && interfaceName === "attachment" && !appendFields.includes(f.name)) {
               appendFields.push(f.name);
               attachmentFieldNames.push(f.name);
+            } else if (!includeAttachments || interfaceName !== "attachment") {
+              if (!(selectedFields == null ? void 0 : selectedFields.length) || selectedFields.includes(f.name)) {
+                if (!appendFields.includes(f.name)) appendFields.push(f.name);
+              }
+            }
+          }
+          if (f.type === "hasMany" || f.type === "hasOne") {
+            if (!(selectedFields == null ? void 0 : selectedFields.length) || selectedFields.includes(f.name)) {
+              if (!appendFields.includes(f.name)) appendFields.push(f.name);
             }
           }
           if (includeAttachments && f.type === "integer" && /FileId$/.test(f.name)) {
@@ -353,7 +390,7 @@ async function processExportAsync(db, taskId, params) {
       const fieldNames = selectedFields && selectedFields.length > 0 ? selectedFields : getScalarFields(coll);
       if (!fieldNames || fieldNames.length === 0) continue;
       const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, "_");
-      const xlsxName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.xlsx", "");
+      const xlsxName = `sjgl02_export_${taskId}_${Date.now()}.xlsx`;
       const filePath = import_path.default.join(tempDir, xlsxName);
       const streamWriter = new import_exceljs.default.stream.xlsx.WorkbookWriter({
         filename: filePath,
@@ -371,42 +408,191 @@ async function processExportAsync(db, taskId, params) {
       }));
       mainSheet.getRow(1).font = { bold: true };
       mainSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0E0E0" } };
+      const attachIds = /* @__PURE__ */ new Set();
+      const attachFieldMap = /* @__PURE__ */ new Map();
       const PAGE_SIZE = 5e3;
-      let offset = 0;
-      while (offset < collectionTotal) {
-        const pageRecords = await targetRepo.find({
-          filter: exportFilter || {},
-          offset,
-          limit: PAGE_SIZE,
-          ...appendFields.length > 0 ? { appends: appendFields } : {}
-        });
-        if (pageRecords.length === 0) break;
-        for (const record of pageRecords) {
-          const row = {};
-          for (const f of fieldNames) {
-            let val = record[f];
-            if (attachmentFieldNames.includes(f)) {
-              if (Array.isArray(val) && val.length > 0) {
-                val = val.map((a) => a.filename || a.title || a.id || "").join(", ");
-              } else val = "";
-            } else if (fileIdFieldNames.includes(f)) {
-              val = val !== null && val !== void 0 ? String(val) : "";
-            } else if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
-              val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
-            }
-            row[f] = formatValue(val);
+      const pkType = detectPkType(coll);
+      if (pkType === "int_auto") {
+        let lastId = 0;
+        while (true) {
+          if (import_cancel_state.cancelFlags.has(taskId)) {
+            cancelled = true;
+            break;
           }
-          mainSheet.addRow(row).commit();
-          processedRows++;
-          totalRows++;
+          const pageRecords = await targetRepo.find({
+            filter: { ...exportFilter || {}, id: { $gt: lastId } },
+            sort: ["id"],
+            limit: PAGE_SIZE,
+            ...appendFields.length > 0 ? { appends: appendFields } : {}
+          });
+          if (pageRecords.length === 0) break;
+          for (const record of pageRecords) {
+            const row = {};
+            for (const f of fieldNames) {
+              let val = record[f];
+              if (attachmentFieldNames.includes(f)) {
+                if (Array.isArray(val) && val.length > 0) {
+                  for (const a of val) {
+                    if ((a == null ? void 0 : a.id) && !attachIds.has(a.id)) {
+                      attachIds.add(a.id);
+                      attachFieldMap.set(a.id, f);
+                    }
+                  }
+                  val = val.map((a) => a.filename || a.title || a.id || "").join(", ");
+                } else val = "";
+              } else if (fileIdFieldNames.includes(f)) {
+                if (val !== null && val !== void 0 && !attachIds.has(Number(val))) {
+                  attachIds.add(Number(val));
+                  attachFieldMap.set(Number(val), f);
+                }
+                val = val !== null && val !== void 0 ? String(val) : "";
+              } else if (Array.isArray(val)) {
+                val = val.map((item) => {
+                  const name = item.nickname || item.name || item.title || item.id || "";
+                  return name ? `${name}(\u4E3B\u952E\uFF1A${item.id})` : "";
+                }).filter(Boolean).join(", ");
+              } else if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
+                val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
+              }
+              row[f] = formatValue(val);
+            }
+            mainSheet.addRow(row).commit();
+            processedRows++;
+            totalRows++;
+          }
+          lastId = Number(pageRecords[pageRecords.length - 1].id);
+          const progress = Math.min(100, Math.floor(processedRows / Math.max(1, collectionTotal) * 100));
+          try {
+            await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
+          } catch {
+          }
         }
-        offset += PAGE_SIZE;
-        const progress = Math.min(100, Math.floor(offset * 100 / Math.max(1, collectionTotal)));
+      } else if (pkType === "uuid") {
         try {
-          await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
+          await db.sequelize.query("SET SESSION statement_timeout = '30min'");
         } catch {
         }
+        const allIds = [];
+        let uuidOffset = 0;
+        while (true) {
+          const idPage = await targetRepo.find({
+            filter: exportFilter || {},
+            fields: ["id"],
+            offset: uuidOffset,
+            limit: PAGE_SIZE
+          });
+          if (idPage.length === 0) break;
+          allIds.push(...idPage.map((r) => r.id));
+          uuidOffset += PAGE_SIZE;
+        }
+        for (let bi = 0; bi < allIds.length; bi += PAGE_SIZE) {
+          if (import_cancel_state.cancelFlags.has(taskId)) {
+            cancelled = true;
+            break;
+          }
+          const batch = allIds.slice(bi, bi + PAGE_SIZE);
+          const pageRecords = await targetRepo.find({
+            filter: { ...exportFilter || {}, id: { $in: batch } },
+            limit: PAGE_SIZE,
+            ...appendFields.length > 0 ? { appends: appendFields } : {}
+          });
+          for (const record of pageRecords) {
+            const row = {};
+            for (const f of fieldNames) {
+              let val = record[f];
+              if (attachmentFieldNames.includes(f)) {
+                if (Array.isArray(val) && val.length > 0) {
+                  for (const a of val) {
+                    if ((a == null ? void 0 : a.id) && !attachIds.has(a.id)) {
+                      attachIds.add(a.id);
+                      attachFieldMap.set(a.id, f);
+                    }
+                  }
+                  val = val.map((a) => a.filename || a.title || a.id || "").join(", ");
+                } else val = "";
+              } else if (fileIdFieldNames.includes(f)) {
+                if (val !== null && val !== void 0 && !attachIds.has(Number(val))) {
+                  attachIds.add(Number(val));
+                  attachFieldMap.set(Number(val), f);
+                }
+                val = val !== null && val !== void 0 ? String(val) : "";
+              } else if (Array.isArray(val)) {
+                val = val.map((item) => {
+                  const name = item.nickname || item.name || item.title || item.id || "";
+                  return name ? `${name}(\u4E3B\u952E\uFF1A${item.id})` : "";
+                }).filter(Boolean).join(", ");
+              } else if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
+                val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
+              }
+              row[f] = formatValue(val);
+            }
+            mainSheet.addRow(row).commit();
+            processedRows++;
+            totalRows++;
+          }
+          const progress = Math.min(100, Math.floor(processedRows / Math.max(1, collectionTotal) * 100));
+          try {
+            await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
+          } catch {
+          }
+        }
+      } else {
+        let offset = 0;
+        while (offset < collectionTotal) {
+          if (import_cancel_state.cancelFlags.has(taskId)) {
+            cancelled = true;
+            break;
+          }
+          const pageRecords = await targetRepo.find({
+            filter: exportFilter || {},
+            offset,
+            limit: PAGE_SIZE,
+            ...appendFields.length > 0 ? { appends: appendFields } : {}
+          });
+          if (pageRecords.length === 0) break;
+          for (const record of pageRecords) {
+            const row = {};
+            for (const f of fieldNames) {
+              let val = record[f];
+              if (attachmentFieldNames.includes(f)) {
+                if (Array.isArray(val) && val.length > 0) {
+                  for (const a of val) {
+                    if ((a == null ? void 0 : a.id) && !attachIds.has(a.id)) {
+                      attachIds.add(a.id);
+                      attachFieldMap.set(a.id, f);
+                    }
+                  }
+                  val = val.map((a) => a.filename || a.title || a.id || "").join(", ");
+                } else val = "";
+              } else if (fileIdFieldNames.includes(f)) {
+                if (val !== null && val !== void 0 && !attachIds.has(Number(val))) {
+                  attachIds.add(Number(val));
+                  attachFieldMap.set(Number(val), f);
+                }
+                val = val !== null && val !== void 0 ? String(val) : "";
+              } else if (Array.isArray(val)) {
+                val = val.map((item) => {
+                  const name = item.nickname || item.name || item.title || item.id || "";
+                  return name ? `${name}(\u4E3B\u952E\uFF1A${item.id})` : "";
+                }).filter(Boolean).join(", ");
+              } else if (val !== null && val !== void 0 && typeof val === "object" && !(val instanceof Date)) {
+                val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
+              }
+              row[f] = formatValue(val);
+            }
+            mainSheet.addRow(row).commit();
+            processedRows++;
+            totalRows++;
+          }
+          offset += PAGE_SIZE;
+          const progress = Math.min(100, Math.floor(offset * 100 / Math.max(1, collectionTotal)));
+          try {
+            await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
+          } catch {
+          }
+        }
       }
+      if (cancelled) break;
       if (includeAssociationSheet) {
         const assocFields = getAssociationFields(coll);
         for (const af of assocFields.filter((af2) => !fieldNames.length || fieldNames.includes(af2.name))) {
@@ -435,6 +621,10 @@ async function processExportAsync(db, taskId, params) {
           assocSheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F5F5" } };
           let aOff = 0;
           while (aOff < assocTotal) {
+            if (import_cancel_state.cancelFlags.has(taskId)) {
+              cancelled = true;
+              break;
+            }
             const aRecs = await assocRepo.find({ offset: aOff, limit: PAGE_SIZE });
             for (const rec of aRecs) {
               const row = {};
@@ -455,117 +645,115 @@ async function processExportAsync(db, taskId, params) {
             } catch {
             }
           }
+          if (cancelled) break;
           assocSheet.commit();
         }
       }
       mainSheet.commit();
       await streamWriter.commit();
-      outputFiles.push(filePath);
-      if (includeAttachments && (attachmentFieldNames.length > 0 || fileIdFieldNames.length > 0)) {
-        const attachIds = /* @__PURE__ */ new Set();
-        const attachFieldMap = /* @__PURE__ */ new Map();
-        let aScanOff = 0;
-        while (aScanOff < collectionTotal) {
-          const pr = await targetRepo.find({
-            filter: exportFilter || {},
-            offset: aScanOff,
-            limit: PAGE_SIZE,
-            ...appendFields.length > 0 ? { appends: appendFields } : {}
+      if (cancelled) break;
+      let finalFilePath2 = filePath;
+      if (includeAttachments && attachIds.size > 0) {
+        const fileIdFilenameMap = /* @__PURE__ */ new Map();
+        try {
+          const ar = await db.getRepository("attachments").find({ filter: { id: Array.from(attachIds) } });
+          ar.forEach((at) => {
+            if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
           });
-          for (const r of pr) {
-            for (const an of attachmentFieldNames) {
-              if (Array.isArray(r[an])) {
-                for (const a of r[an]) if ((a == null ? void 0 : a.id) && !attachIds.has(a.id)) {
-                  attachIds.add(a.id);
-                  attachFieldMap.set(a.id, an);
+        } catch {
+        }
+        if (fileIdFilenameMap.size > 0) {
+          try {
+            const attachmentFiles = [];
+            for (const [aid, fn] of fileIdFilenameMap) {
+              let realPath = import_path.default.join(storageDir, fn);
+              if (!import_fs.default.existsSync(realPath)) {
+                const atRecords = await db.getRepository("attachments").find({ filter: { id: [aid] } });
+                if (((_c = atRecords[0]) == null ? void 0 : _c.path) !== void 0) {
+                  realPath = import_path.default.join(storageDir, atRecords[0].path || "", fn);
+                }
+              }
+              if (!import_fs.default.existsSync(realPath)) continue;
+              const afName = attachFieldMap.get(aid) || "\u9644\u4EF6";
+              const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
+              attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
+            }
+            if (attachmentFiles.length > 0) {
+              if (isAllTables) {
+                allAttachFileEntries.push(...attachmentFiles);
+              } else {
+                const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
+                const zipPath = import_path.default.join(tempDir, zipName);
+                try {
+                  const zipOutput = import_fs.default.createWriteStream(zipPath);
+                  const zipArchive = (0, import_archiver.default)("zip", { zlib: { level: 1 } });
+                  await new Promise((resolve, reject) => {
+                    zipArchive.on("error", reject);
+                    zipOutput.on("close", resolve);
+                    zipOutput.on("error", reject);
+                    zipArchive.pipe(zipOutput);
+                    zipArchive.file(filePath, { name: import_path.default.basename(filePath) });
+                    for (const af of attachmentFiles) {
+                      zipArchive.file(af.diskPath, { name: af.entryName });
+                    }
+                    zipArchive.finalize();
+                  });
+                  try {
+                    import_fs.default.unlinkSync(filePath);
+                  } catch {
+                  }
+                  outputFiles.push(zipPath);
+                  finalFilePath2 = zipPath;
+                } catch (attErr) {
+                  await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", `\u9644\u4EF6\u6253\u5305\u5931\u8D25(${tblName}): ${attErr.message || String(attErr)}\uFF0C\u8DF3\u8FC7\u6253\u5305`);
                 }
               }
             }
-            for (const fn of fileIdFieldNames) {
-              const fid = r[fn];
-              if (fid && !attachIds.has(fid)) {
-                attachIds.add(fid);
-                attachFieldMap.set(fid, fn);
-              }
-            }
-          }
-          aScanOff += PAGE_SIZE;
-        }
-        if (attachIds.size > 0) {
-          const fileIdFilenameMap = /* @__PURE__ */ new Map();
-          try {
-            const ar = await db.getRepository("attachments").find({ filter: { id: Array.from(attachIds) } });
-            ar.forEach((at) => {
-              if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
-            });
           } catch {
           }
-          if (fileIdFilenameMap.size > 0) {
-            try {
-              const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
-              const attachmentFiles = [];
-              for (const [aid, fn] of fileIdFilenameMap) {
-                const diskPath = import_path.default.join(storageDir, fn);
-                let realPath = diskPath;
-                if (!import_fs.default.existsSync(realPath)) {
-                  const atRecords = await db.getRepository("attachments").find({ filter: { id: [aid] } });
-                  if (((_c = atRecords[0]) == null ? void 0 : _c.path) !== void 0) {
-                    realPath = import_path.default.join(storageDir, atRecords[0].path || "", fn);
-                  }
-                }
-                if (!import_fs.default.existsSync(realPath)) continue;
-                const afName = attachFieldMap.get(aid) || "\u9644\u4EF6";
-                const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
-                attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
-              }
-              if (attachmentFiles.length > 0) {
-                const zipName = collDisplay + "-" + formatFileName("{\u65E5\u671F}.zip", "");
-                const zipPath = import_path.default.join(tempDir, zipName);
-                const zipOutput = import_fs.default.createWriteStream(zipPath);
-                const zipArchive = (0, import_archiver.default)("zip", { zlib: { level: 9 } });
-                await new Promise((resolve, reject) => {
-                  zipArchive.on("error", reject);
-                  zipOutput.on("close", resolve);
-                  zipArchive.pipe(zipOutput);
-                  zipArchive.file(filePath, { name: import_path.default.basename(filePath) });
-                  for (const af of attachmentFiles) {
-                    zipArchive.file(af.diskPath, { name: af.entryName });
-                  }
-                  zipArchive.finalize();
-                });
-                try {
-                  import_fs.default.unlinkSync(filePath);
-                } catch {
-                }
-                outputFiles[outputFiles.indexOf(filePath)] = zipPath;
-              }
-            } catch {
-            }
-          }
         }
+      }
+      if (!outputFiles.includes(finalFilePath2)) {
+        outputFiles.push(finalFilePath2);
       }
       await repo.update({
         filterByTk: taskId,
         values: { progress: Math.min(100, Math.floor(processedRows / Math.max(totalRows, 1) * 100)), processedRows, totalRows }
       });
     }
-    let finalFilePath;
+    if (cancelled) {
+      for (const fp of outputFiles) {
+        try {
+          import_fs.default.unlinkSync(fp);
+        } catch {
+        }
+      }
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", "\u4EFB\u52A1\u5DF2\u53D6\u6D88");
+      await repo.update({ filterByTk: taskId, values: { status: "cancelled", completedAt: /* @__PURE__ */ new Date() } });
+      return;
+    }
     if (outputFiles.length === 0) {
       throw new Error("\u6CA1\u6709\u6570\u636E\u53EF\u5BFC\u51FA");
-    } else if (outputFiles.length === 1) {
-      finalFilePath = outputFiles[0];
+    }
+    let mergedFilePath;
+    if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
+      mergedFilePath = outputFiles[0];
     } else {
-      const zipName = "\u5168\u90E8\u6570\u636E\u8868-" + formatFileName("{\u65E5\u671F}.zip", "");
-      finalFilePath = import_path.default.join(tempDir, zipName);
-      const output = import_fs.default.createWriteStream(finalFilePath);
-      const archive = (0, import_archiver.default)("zip", { zlib: { level: 9 } });
+      const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
+      mergedFilePath = import_path.default.join(tempDir, zipName);
+      const output = import_fs.default.createWriteStream(mergedFilePath);
+      const archive = (0, import_archiver.default)("zip", { zlib: { level: 0 } });
       await new Promise((resolve, reject) => {
         try {
           output.on("close", resolve);
+          output.on("error", reject);
           archive.on("error", reject);
           archive.pipe(output);
           for (const fp of outputFiles) {
             archive.file(fp, { name: import_path.default.basename(fp) });
+          }
+          for (const af of allAttachFileEntries) {
+            archive.file(af.diskPath, { name: af.entryName });
           }
           archive.finalize();
         } catch (err) {
@@ -579,16 +767,36 @@ async function processExportAsync(db, taskId, params) {
         }
       }
     }
-    const stats = await import_promises.default.stat(finalFilePath);
+    const d = /* @__PURE__ */ new Date();
+    const padDate = (n) => String(n).padStart(2, "0");
+    const dateStr = `${d.getFullYear()}${padDate(d.getMonth() + 1)}${padDate(d.getDate())}${padDate(d.getHours())}${padDate(d.getMinutes())}${padDate(d.getSeconds())}`;
+    const isZip = mergedFilePath.endsWith(".zip");
+    let finalDisplayName;
+    if (tableName === "__all__") {
+      finalDisplayName = isZip ? `\u5168\u90E8\u6570\u636E\u8868_${dateStr}.zip` : `\u5168\u90E8\u6570\u636E\u8868_${dateStr}.xlsx`;
+    } else {
+      const exportColl = db.getCollection(tableName);
+      const collDisplayName = exportColl ? sanitizeSheetName(getCollDisplayName(exportColl, headerStyle)).replace(/\s+/g, "_") : tableName;
+      finalDisplayName = `${collDisplayName}_${dateStr}${isZip ? ".zip" : ".xlsx"}`;
+    }
+    let finalFilePath = import_path.default.join(tempDir, finalDisplayName);
+    let suffix = 0;
+    while (import_fs.default.existsSync(finalFilePath)) {
+      suffix++;
+      finalFilePath = import_path.default.join(tempDir, finalDisplayName.replace(/\.(xlsx|zip)$/, `_${suffix}.${isZip ? "zip" : "xlsx"}`));
+    }
+    import_fs.default.renameSync(mergedFilePath, finalFilePath);
+    mergedFilePath = finalFilePath;
+    const stats = await import_promises.default.stat(mergedFilePath);
     const attachRepo = db.getRepository("attachments");
     const exportAttachment = await attachRepo.create({
       values: {
-        title: import_path.default.basename(finalFilePath),
-        filename: import_path.default.basename(finalFilePath),
-        extname: import_path.default.extname(finalFilePath),
-        mimetype: finalFilePath.endsWith(".zip") ? "application/zip" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        title: import_path.default.basename(mergedFilePath),
+        filename: import_path.default.basename(mergedFilePath),
+        extname: import_path.default.extname(mergedFilePath),
+        mimetype: mergedFilePath.endsWith(".zip") ? "application/zip" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         size: stats.size,
-        path: import_path.default.relative(process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads", finalFilePath).replace(/\\/g, "/")
+        path: import_path.default.relative(storageDir, mergedFilePath).replace(/\\/g, "/")
       }
     });
     await repo.update({
@@ -619,6 +827,7 @@ async function processExportAsync(db, taskId, params) {
     } catch {
     }
   } finally {
+    import_cancel_state.cancelFlags.delete(taskId);
     release();
   }
 }

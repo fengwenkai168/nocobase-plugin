@@ -42,11 +42,12 @@ __export(import_exports, {
   uploadParse: () => uploadParse
 });
 module.exports = __toCommonJS(import_exports);
-var XLSX = __toESM(require("xlsx"));
+var import_exceljs = __toESM(require("exceljs"));
 var import_fs = __toESM(require("fs"));
 var import_path = __toESM(require("path"));
 var import_permission_check = require("./permission-check");
 var import_taskLogs = require("./taskLogs");
+var import_cancel_state = require("./cancel-state");
 async function getTableFields(ctx, next) {
   var _a;
   const { tableName } = ctx.action.params;
@@ -92,6 +93,62 @@ async function getTableFields(ctx, next) {
   ctx.body = fields;
   await next();
 }
+function streamProcessExcel(filePath, targetSheet, headerRow, onRow) {
+  return new Promise((resolve, reject) => {
+    const WorkbookReaderCtor = import_exceljs.default.stream.xlsx.WorkbookReader;
+    const workbookReader = new WorkbookReaderCtor(filePath, {});
+    let sheetFound = false;
+    let ready = false;
+    let headers = [];
+    const hRowNum = headerRow || 1;
+    let dataIndex = 0;
+    let totalRows = 0;
+    let destroyed = false;
+    const destroy = () => {
+      if (destroyed) return;
+      destroyed = true;
+      try {
+        workbookReader.destroy();
+      } catch {
+      }
+    };
+    workbookReader.on("worksheet", (worksheet) => {
+      if (destroyed || sheetFound) return;
+      if (targetSheet && worksheet.name !== targetSheet) return;
+      sheetFound = true;
+      worksheet.on("row", (row) => {
+        if (destroyed) return;
+        const rowNum = row.number;
+        if (rowNum < hRowNum) return;
+        if (rowNum === hRowNum) {
+          headers = (row.values || []).slice(1).map((h) => String(h ?? ""));
+          ready = true;
+          return;
+        }
+        if (!ready) return;
+        const vals = (row.values || []).slice(1);
+        const isEmpty = !vals.some((v) => v !== void 0 && v !== null && v !== "");
+        if (isEmpty) {
+          dataIndex++;
+          return;
+        }
+        totalRows++;
+        const shouldContinue = onRow(rowNum, dataIndex, vals);
+        dataIndex++;
+        if (shouldContinue === false) destroy();
+      });
+      worksheet.on("end", () => {
+        ready = true;
+      });
+    });
+    workbookReader.on("end", () => resolve({ headers, totalRows }));
+    workbookReader.on("error", (err) => {
+      if (destroyed) resolve({ headers, totalRows });
+      else reject(err);
+    });
+    workbookReader.read();
+  });
+}
 async function uploadParse(ctx, next) {
   const params = ctx.action.params.values || ctx.action.params;
   const { fileId, sheetName, headerRow } = params;
@@ -113,31 +170,30 @@ async function uploadParse(ctx, next) {
     if (!import_fs.default.existsSync(filePath)) {
       ctx.throw(404, "File not found on disk");
     }
-    const workbook = XLSX.readFile(filePath, { type: "file" });
-    const sheets = workbook.SheetNames;
-    const targetSheet = sheetName || sheets[0];
-    const ws = workbook.Sheets[targetSheet];
-    if (!ws) {
-      ctx.throw(400, `Sheet "${targetSheet}" not found`);
-    }
-    const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-    const hRow = Math.max(0, (parseInt(String(headerRow), 10) || 1) - 1);
-    const headerColumns = (allRows[hRow] || []).map((h) => String(h));
-    const dataRows = allRows.slice(hRow + 1).filter((r) => r.some((c) => c !== ""));
-    const previewRows = dataRows.slice(0, 10).map((row) => {
-      const obj = {};
-      headerColumns.forEach((h, i) => {
-        obj[h] = row[i] !== void 0 ? row[i] : "";
-      });
-      return obj;
+    const previewRows = [];
+    let headerColumns = [];
+    let totalRows = 0;
+    await streamProcessExcel(filePath, sheetName, parseInt(String(headerRow), 10) || 1, (rowNum, dataIdx, vals) => {
+      if (dataIdx < 0) return true;
+      if (dataIdx < 10) {
+        const obj = {};
+        headerColumns.forEach((h, i) => {
+          obj[h] = vals[i] !== void 0 ? vals[i] : "";
+        });
+        previewRows.push(obj);
+      }
+      return dataIdx < 10;
+    }).then((result) => {
+      headerColumns = result.headers;
+      totalRows = result.totalRows;
     });
     ctx.body = {
-      sheets,
+      sheets: [sheetName || "Sheet1"],
       headerColumns,
       fileId,
       fileName: attachment.filename || attachment.title,
       previewRows,
-      totalRows: dataRows.length
+      totalRows
     };
   } catch (err) {
     if (err.status) throw err;
@@ -161,34 +217,33 @@ async function preview(ctx, next) {
     if (!attachment) {
       ctx.throw(404, "Uploaded file not found in storage");
     }
-    const filePath = import_path.default.join(
-      process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads",
-      attachment.path || attachment.filename
-    );
+    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
+    const filePath = import_path.default.join(storageDir, attachment.path || attachment.filename);
     if (!import_fs.default.existsSync(filePath)) {
       ctx.throw(404, "File not found on disk: " + filePath);
     }
-    const workbook = XLSX.readFile(filePath, { type: "file" });
-    const targetSheetName = sheetName || workbook.SheetNames[0];
-    const sheet = workbook.Sheets[targetSheetName];
-    if (!sheet) {
-      ctx.throw(400, `Sheet "${targetSheetName}" not found`);
-    }
-    const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-    const hRow = Math.max(0, (parseInt(String(headerRow), 10) || 1) - 1);
-    const headers = (allRows[hRow] || []).map((h) => String(h));
-    const dataRows = allRows.slice(hRow + 1).filter((r) => r.some((c) => c !== ""));
-    const previewRows = dataRows.slice(0, previewLimit).map((row) => {
-      const obj = {};
-      headers.forEach((h, i) => {
-        obj[h] = row[i] !== void 0 ? row[i] : "";
-      });
-      return obj;
+    const previewRows = [];
+    let columns = [];
+    let totalRows = 0;
+    const hRow = parseInt(String(headerRow), 10) || 1;
+    await streamProcessExcel(filePath, sheetName, hRow, (rowNum, dataIdx, vals) => {
+      if (dataIdx < 0) return true;
+      if (dataIdx < previewLimit) {
+        const obj = {};
+        columns.forEach((h, i) => {
+          obj[h] = vals[i] !== void 0 ? vals[i] : "";
+        });
+        previewRows.push(obj);
+      }
+      return dataIdx < previewLimit;
+    }).then((result) => {
+      columns = result.headers;
+      totalRows = result.totalRows;
     });
     ctx.body = {
       preview: previewRows,
-      totalRows: dataRows.length,
-      columns: headers
+      totalRows,
+      columns
     };
   } catch (err) {
     if (err.status) throw err;
@@ -277,306 +332,387 @@ async function executeImport(ctx, next) {
   });
 }
 async function processImportAsync(db, taskId, params) {
-  var _a;
+  var _a, _b, _c;
   const { tableName, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields, blankCellMode, attachmentPath } = params;
   const repo = db.getRepository("sjgl02_tasks");
   const sequelize = db.sequelize;
-  const transaction = await sequelize.transaction();
-  await repo.update({ filterByTk: taskId, values: { status: "processing" }, transaction });
-  await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u5165\u4EFB\u52A1");
-  await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}`);
-  await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u5BFC\u5165\u6A21\u5F0F: ${importMode || "insert"}`);
+  const mapping = fieldMapping || {};
+  const custVals = customValues || {};
+  const uFields = uniqueFields || [];
+  const hRow = parseInt(String(headerRow), 10) || 1;
+  const bCellMode = blankCellMode || "update";
+  const coll = db.getCollection(tableName);
+  const dateFieldNames = [];
   try {
-    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
-    const filePath = import_path.default.join(storageDir, attachmentPath);
-    if (!import_fs.default.existsSync(filePath)) {
-      throw new Error("\u6587\u4EF6\u672A\u627E\u5230: " + filePath);
-    }
-    const workbook = XLSX.readFile(filePath, { type: "file" });
-    const targetSheetName = sheetName || workbook.SheetNames[0];
-    const sheet = workbook.Sheets[targetSheetName];
-    if (!sheet) {
-      throw new Error(`Sheet "${targetSheetName}" \u672A\u627E\u5230`);
-    }
-    const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-    const hRow = Math.max(0, (parseInt(String(headerRow), 10) || 1) - 1);
-    const headers = (allRows[hRow] || []).map((h) => String(h));
-    const dataRows = allRows.slice(hRow + 1).filter((r) => r.some((c) => c !== ""));
-    const mapping = fieldMapping || {};
-    const custVals = customValues || {};
-    const totalRows = dataRows.length;
-    await repo.update({ filterByTk: taskId, values: { totalRows }, transaction });
-    await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", `\u6587\u4EF6\u89E3\u6790\u5B8C\u6210\uFF0C\u5171 ${totalRows} \u884C\u6709\u6548\u6570\u636E`);
-    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u5F00\u59CB\u9010\u884C\u5904\u7406\u6570\u636E...");
-    const targetRepo = db.getRepository(tableName);
-    const errorLogs = [];
-    let processedRows = 0;
-    const coll = db.getCollection(tableName);
-    const normalizeDateValue = (val) => {
-      if (!val || !val.trim()) return val;
-      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(val)) return val;
-      const d = new Date(val);
-      if (!isNaN(d.getTime())) {
-        const pad = (n) => String(n).padStart(2, "0");
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    for (const f of Array.from(((_a = coll.fields) == null ? void 0 : _a.values()) || [])) {
+      if (["date", "datetime", "datetimeTz", "unixTimestamp"].includes(f.type)) {
+        dateFieldNames.push(f.name);
       }
-      return val;
-    };
-    const dateFieldNames = [];
+    }
+  } catch {
+  }
+  const normalizeDateValue = (val) => {
+    if (!val || !val.trim()) return val;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(val)) return val;
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    return val;
+  };
+  function applyBelongsToFK(record, vals, headers) {
+    var _a2, _b2;
+    const belongs = [];
     try {
-      for (const f of Array.from(((_a = coll.fields) == null ? void 0 : _a.values()) || [])) {
-        if (["date", "datetime", "datetimeTz", "unixTimestamp"].includes(f.type)) {
-          dateFieldNames.push(f.name);
-        }
-      }
+      belongs.push(...Array.from(((_a2 = coll.fields) == null ? void 0 : _a2.values()) || []).filter(
+        (f) => f.type === "belongsTo" && f.name !== "createdBy" && f.name !== "updatedBy"
+      ));
     } catch {
     }
-    const makeRecord = (row) => {
-      const record = {};
-      for (const [tableField, excelCol] of Object.entries(mapping)) {
-        if (!excelCol || excelCol === "__ignore__") continue;
-        if (excelCol === "__custom__") {
-          record[tableField] = String(custVals[tableField] ?? "");
-          continue;
+    for (const bf of belongs) {
+      const fk = ((_b2 = bf.options) == null ? void 0 : _b2.foreignKey) || bf.name + "Id";
+      const mappedVal = mapping[bf.name];
+      if (mappedVal && mappedVal !== "__ignore__") {
+        const colIdx = headers.indexOf(mappedVal);
+        if (colIdx >= 0 && colIdx < vals.length) {
+          record[fk] = vals[colIdx];
         }
-        const colIndex = headers.indexOf(excelCol);
-        if (colIndex >= 0 && colIndex < row.length) {
-          const raw = row[colIndex];
-          if (raw === void 0 || raw === null || raw === "") {
-            if (blankCellMode === "skip") continue;
-            if (blankCellMode === "null") {
-              record[tableField] = null;
-              continue;
-            }
-          }
-          record[tableField] = String(raw !== void 0 && raw !== null ? raw : "");
-        } else {
-          record[tableField] = String(excelCol);
-        }
-      }
-      return record;
-    };
-    const buildSnapshot = (row) => {
-      const snap = {};
-      Object.entries(mapping).forEach(([fieldName, excelCol]) => {
-        if (excelCol && excelCol !== "__ignore__") {
-          if (excelCol === "__custom__") {
-            snap[fieldName + "=(\u81EA\u5B9A\u4E49)"] = custVals[fieldName] || "";
-          } else {
-            const idx = headers.indexOf(excelCol);
-            if (idx >= 0 && idx < row.length) snap[excelCol + "\u2192" + fieldName] = String(row[idx] ?? "");
-          }
-        }
-      });
-      return JSON.stringify(snap).substring(0, 500);
-    };
-    const applyBelongsToFK = (record, rowIdx) => {
-      var _a2, _b;
-      const belonegs = [];
-      try {
-        belonegs.push(...Array.from(((_a2 = coll.fields) == null ? void 0 : _a2.values()) || []).filter((f) => f.type === "belongsTo" && f.name !== "createdBy" && f.name !== "updatedBy"));
-      } catch {
-      }
-      for (const bf of belonegs) {
-        const fk = ((_b = bf.options) == null ? void 0 : _b.foreignKey) || bf.name + "Id";
-        const mappedVal = mapping[bf.name];
-        if (mappedVal && mappedVal !== "__ignore__") {
-          const colIdx = headers.indexOf(mappedVal);
-          if (colIdx >= 0 && colIdx < dataRows[rowIdx].length) {
-            record[fk] = dataRows[rowIdx][colIdx];
-          }
-          delete record[bf.name];
-        }
-      }
-    };
-    const processedUniques = /* @__PURE__ */ new Set();
-    if ((importMode === "update" || importMode === "upsert") && ((uniqueFields == null ? void 0 : uniqueFields.length) || 0) > 0) {
-      for (let i = 0; i < dataRows.length; i++) {
-        const testRecord = makeRecord(dataRows[i]);
-        const emptyFields = (uniqueFields || []).filter(
-          (uf) => testRecord[uf] === void 0 || testRecord[uf] === "" || testRecord[uf] === null
-        );
-        if (emptyFields.length > 0) {
-          errorLogs.push({
-            row: i + 1,
-            excelRow: (headerRow || 1) + i,
-            reason: `\u552F\u4E00\u503C\u5B57\u6BB5\u4E3A\u7A7A\uFF08${emptyFields.join(", ")}\uFF09\uFF0C\u6574\u6279\u5BFC\u5165\u5DF2\u53D6\u6D88`,
-            snapshot: buildSnapshot(dataRows[i])
-          });
-          await repo.update({ filterByTk: taskId, values: { status: "failed", errorLogs, processedRows: 0, totalRows: dataRows.length } }, { transaction });
-          await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u7B2C ${i + 1} \u884C\u552F\u4E00\u503C\u5B57\u6BB5\uFF08${emptyFields.join(", ")}\uFF09\u4E3A\u7A7A\uFF0C\u5DF2\u56DE\u6EDA\u5168\u90E8 ${dataRows.length} \u884C\u6570\u636E`);
-          await transaction.rollback();
-          return;
-        }
+        delete record[bf.name];
       }
     }
-    const BATCH_SIZE = 1e3;
-    for (let batchStart = 0; batchStart < dataRows.length; batchStart += BATCH_SIZE) {
-      const batchEnd = Math.min(batchStart + BATCH_SIZE, dataRows.length);
-      const batchRows = dataRows.slice(batchStart, batchEnd);
-      const batchRecords = [];
-      for (let bi = 0; bi < batchRows.length; bi++) {
-        const rowData = batchRows[bi];
-        const i = batchStart + bi;
-        const record = makeRecord(rowData);
+  }
+  function makeRecord(vals, headers) {
+    const record = {};
+    for (const [tableField, excelCol] of Object.entries(mapping)) {
+      if (!excelCol || excelCol === "__ignore__") continue;
+      if (excelCol === "__custom__") {
+        record[tableField] = String(custVals[tableField] ?? "");
+        continue;
+      }
+      const colIndex = headers.indexOf(excelCol);
+      if (colIndex >= 0 && colIndex < vals.length) {
+        let raw = vals[colIndex];
+        if (raw === void 0 || raw === null || raw === "") {
+          if (bCellMode === "skip") continue;
+          if (bCellMode === "null") {
+            record[tableField] = null;
+            continue;
+          }
+        }
+        record[tableField] = String(raw !== void 0 && raw !== null ? raw : "");
+      } else {
+        record[tableField] = String(excelCol);
+      }
+    }
+    return record;
+  }
+  function buildSnapshot(vals, headers) {
+    const snap = {};
+    Object.entries(mapping).forEach(([fieldName, excelCol]) => {
+      if (excelCol && excelCol !== "__ignore__") {
+        if (excelCol === "__custom__") {
+          snap[fieldName + "=(\u81EA\u5B9A\u4E49)"] = custVals[fieldName] || "";
+        } else {
+          const idx = headers.indexOf(excelCol);
+          if (idx >= 0 && idx < vals.length) snap[excelCol + "\u2192" + fieldName] = String(vals[idx] ?? "");
+        }
+      }
+    });
+    return JSON.stringify(snap).substring(0, 500);
+  }
+  function isEmptyRow(vals, headers) {
+    for (const excelCol of Object.values(mapping)) {
+      if (!excelCol || excelCol === "__ignore__" || excelCol === "__custom__") continue;
+      const idx = headers.indexOf(excelCol);
+      if (idx >= 0 && idx < vals.length) {
+        const v = vals[idx];
+        if (v !== void 0 && v !== null && v !== "") return false;
+      }
+    }
+    return true;
+  }
+  const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
+  const filePath = import_path.default.join(storageDir, attachmentPath);
+  if (!import_fs.default.existsSync(filePath)) {
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", "\u6587\u4EF6\u672A\u627E\u5230: " + filePath);
+    await repo.update({ filterByTk: taskId, values: { status: "failed", errorMessage: "\u6587\u4EF6\u672A\u627E\u5230: " + filePath, completedAt: /* @__PURE__ */ new Date() } });
+    return;
+  }
+  try {
+    await repo.update({ filterByTk: taskId, values: { status: "processing" } });
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u5165\u4EFB\u52A1");
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}`);
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u5BFC\u5165\u6A21\u5F0F: ${importMode || "insert"}`);
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u9636\u6BB5\u4E00\uFF1A\u6D41\u5F0F\u9884\u6821\u9A8C\u5F00\u59CB...");
+    const errorLogs = [];
+    let phase1TotalRows = 0;
+    let phase1Processed = 0;
+    let phase1Headers = [];
+    const seenUniqueValues = /* @__PURE__ */ new Set();
+    let phase1Cancelled = false;
+    const phase1Result = await new Promise((resolve) => {
+      streamProcessExcel(filePath, sheetName, hRow, (rowNum, dataIdx, vals) => {
+        if (import_cancel_state.cancelFlags.has(taskId)) {
+          phase1Cancelled = true;
+          return false;
+        }
+        if (dataIdx < 0) return true;
+        if (isEmptyRow(vals, phase1Headers)) return true;
+        phase1TotalRows++;
+        phase1Processed++;
+        const record = makeRecord(vals, phase1Headers);
+        if ((importMode === "update" || importMode === "upsert") && uFields.length > 0) {
+          const emptyUFields = uFields.filter((uf) => record[uf] === void 0 || record[uf] === "" || record[uf] === null);
+          if (emptyUFields.length > 0) {
+            if (errorLogs.length < 1e3) {
+              errorLogs.push({
+                row: dataIdx + 1,
+                excelRow: rowNum,
+                reason: `\u552F\u4E00\u503C\u5B57\u6BB5\u4E3A\u7A7A\uFF08${emptyUFields.join(", ")}\uFF09`,
+                snapshot: buildSnapshot(vals, phase1Headers)
+              });
+            }
+          } else {
+            const ufKey = uFields.map((uf) => record[uf]).join("||");
+            if (seenUniqueValues.has(ufKey)) {
+              if (errorLogs.length < 1e3) {
+                errorLogs.push({
+                  row: dataIdx + 1,
+                  excelRow: rowNum,
+                  reason: `Excel \u5185\u90E8\u552F\u4E00\u503C\u91CD\u590D: ${uFields.join("+")} = ${ufKey}`,
+                  snapshot: buildSnapshot(vals, phase1Headers)
+                });
+              }
+            } else {
+              seenUniqueValues.add(ufKey);
+            }
+          }
+        }
+        if (phase1Processed % 1e4 === 0) {
+          try {
+            repo.update({
+              filterByTk: taskId,
+              values: { progress: Math.min(50, Math.floor(phase1Processed / Math.max(phase1Processed, 1) * 50)) }
+            });
+          } catch {
+          }
+        }
+        return true;
+      }).then((result) => {
+        phase1Headers = result.headers;
+        if (phase1TotalRows === 0) phase1TotalRows = result.totalRows;
+        resolve({ passed: !phase1Cancelled && errorLogs.length === 0 });
+      });
+    });
+    if (phase1Cancelled) {
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", "\u4EFB\u52A1\u5DF2\u53D6\u6D88\uFF08\u9636\u6BB5\u4E00\uFF09");
+      import_cancel_state.cancelFlags.delete(taskId);
+      await repo.update({ filterByTk: taskId, values: { status: "cancelled", completedAt: /* @__PURE__ */ new Date() } });
+      return;
+    }
+    await repo.update({ filterByTk: taskId, values: { totalRows: phase1TotalRows } });
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", `\u9636\u6BB5\u4E00\u9884\u6821\u9A8C\u5B8C\u6210\uFF0C\u5171 ${phase1TotalRows} \u884C\u6709\u6548\u6570\u636E`);
+    if (!phase1Result.passed) {
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u9636\u6BB5\u4E00\u9884\u6821\u9A8C\u5931\u8D25\uFF0C\u5171 ${errorLogs.length} \u4E2A\u9519\u8BEF`);
+      await repo.update({
+        filterByTk: taskId,
+        values: { status: "failed", errorLogs, errorMessage: `\u9884\u6821\u9A8C\u5931\u8D25: ${errorLogs.length} \u4E2A\u9519\u8BEF`, completedAt: /* @__PURE__ */ new Date() }
+      });
+      return;
+    }
+    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u9636\u6BB5\u4E8C\uFF1A\u5F71\u5B50\u8868\u5199\u5165\u5F00\u59CB...");
+    const shadowTableName = `_sjgl02_import_${taskId}`;
+    const quotedMain = `"${tableName}"`;
+    const quotedShadow = `"${shadowTableName}"`;
+    try {
+      await sequelize.query(`
+        CREATE TABLE ${quotedShadow} (
+          LIKE ${quotedMain}
+          INCLUDING DEFAULTS
+          INCLUDING CONSTRAINTS
+          INCLUDING STORAGE
+          INCLUDING COMMENTS
+        )
+      `);
+      await sequelize.query(`ALTER TABLE ${quotedShadow} ALTER COLUMN id DROP DEFAULT`);
+      const [colRows] = await sequelize.query(
+        `SELECT column_name FROM information_schema.columns 
+         WHERE table_name = '${shadowTableName}' AND table_schema = current_schema()
+         ORDER BY ordinal_position`,
+        { raw: true }
+      );
+      const allColumns = colRows.map((r) => r.column_name);
+      const nonIdColumns = allColumns.filter((c) => c !== "id");
+      const quotedCols = allColumns.map((c) => `"${c}"`).join(", ");
+      const allRowValues = [];
+      let phase2Headers = [];
+      let phase2Cancelled = false;
+      await streamProcessExcel(filePath, sheetName, hRow, (rowNum, dataIdx, vals) => {
+        if (import_cancel_state.cancelFlags.has(taskId)) {
+          phase2Cancelled = true;
+          return false;
+        }
+        if (dataIdx < 0) return true;
+        if (isEmptyRow(vals, phase2Headers)) return true;
+        const record = makeRecord(vals, phase2Headers);
         for (const fn of dateFieldNames) {
           const v = record[fn];
           if (typeof v === "string") record[fn] = normalizeDateValue(v);
         }
-        batchRecords.push({ idx: i, record, rowData });
-      }
-      if ((importMode === "update" || importMode === "upsert") && ((uniqueFields == null ? void 0 : uniqueFields.length) || 0) > 0) {
-        const batchFilters = [];
-        const validIdx = [];
-        for (const br of batchRecords) {
-          const allFilled = (uniqueFields || []).every((uf) => br.record[uf] !== void 0 && br.record[uf] !== "");
-          if (!allFilled) continue;
-          const ufKey = (uniqueFields || []).map((uf) => String(br.record[uf] || "")).join("||");
-          if (processedUniques.has(ufKey)) {
-            errorLogs.push({
-              row: br.idx + 1,
-              excelRow: (headerRow || 1) + br.idx,
-              reason: `\u552F\u4E00\u503C\u5B57\u6BB5\u7EC4\u5408\u91CD\u590D: ${(uniqueFields || []).join("+")} = ${ufKey}`,
-              snapshot: buildSnapshot(br.rowData)
-            });
-            continue;
-          }
-          processedUniques.add(ufKey);
-          const filter = {};
-          for (const uf of uniqueFields || []) {
-            if (br.record[uf] !== void 0 && br.record[uf] !== "") filter[uf] = br.record[uf];
-          }
-          if (Object.keys(filter).length > 0) {
-            batchFilters.push(filter);
-            validIdx.push(br.idx);
-          }
+        if ((importMode === "update" || importMode === "upsert") && uFields.length > 0) {
+          const allFilled = uFields.every((uf) => record[uf] !== void 0 && record[uf] !== "");
+          if (!allFilled) return true;
         }
-        if (batchFilters.length > 0) {
-          const allExisting = await targetRepo.find({
-            filter: { $or: batchFilters },
-            limit: batchFilters.length * 2,
-            transaction
-          });
-          for (let fi = 0; fi < validIdx.length; fi++) {
-            const br = batchRecords.find((b) => b.idx === validIdx[fi]);
-            if (!br) continue;
-            const filter = batchFilters[fi];
-            const matched = allExisting.filter((er) => {
-              return Object.keys(filter).every((k) => er[k] !== void 0 && String(er[k]) === String(filter[k]));
-            });
-            if (matched.length > 1) {
-              errorLogs.push({
-                row: br.idx + 1,
-                excelRow: (headerRow || 1) + br.idx,
-                reason: `\u552F\u4E00\u503C\u5339\u914D\u5230 ${matched.length} \u6761\u8BB0\u5F55`,
-                snapshot: buildSnapshot(br.rowData)
-              });
-            } else if (matched.length === 1) {
-              br.record._existingId = matched[0].id;
-            }
-          }
+        const rowVals = allColumns.map((c) => record[c] !== void 0 ? record[c] : null);
+        allRowValues.push(rowVals);
+        if (allRowValues.length % 1e3 === 0 && import_cancel_state.cancelFlags.has(taskId)) {
+          phase2Cancelled = true;
+          return false;
         }
+        return true;
+      }).then((result) => {
+        phase2Headers = result.headers;
+      });
+      if (phase2Cancelled || import_cancel_state.cancelFlags.has(taskId)) {
+        await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
+        await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", "\u4EFB\u52A1\u5DF2\u53D6\u6D88\uFF08\u9636\u6BB5\u4E8C\uFF09");
+        import_cancel_state.cancelFlags.delete(taskId);
+        await repo.update({ filterByTk: taskId, values: { status: "cancelled", completedAt: /* @__PURE__ */ new Date() } });
+        return;
       }
-      const toCreateRows = [];
-      const toUpdatePromises = [];
-      for (const br of batchRecords) {
-        const rowIndex = br.idx + 1;
+      const phase2TotalRows = allRowValues.length;
+      const BATCH_SIZE = 5e3;
+      for (let bi = 0; bi < allRowValues.length; bi += BATCH_SIZE) {
+        if (import_cancel_state.cancelFlags.has(taskId)) {
+          await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
+          await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", "\u4EFB\u52A1\u5DF2\u53D6\u6D88\uFF08\u9636\u6BB5\u4E8C\u5199\u5165\uFF09");
+          import_cancel_state.cancelFlags.delete(taskId);
+          await repo.update({ filterByTk: taskId, values: { status: "cancelled", completedAt: /* @__PURE__ */ new Date() } });
+          return;
+        }
+        const batch = allRowValues.slice(bi, bi + BATCH_SIZE);
+        const placeholders = batch.map(
+          (_, ri) => `(${allColumns.map((__, ci) => `$${ri * allColumns.length + ci + 1}`).join(", ")})`
+        ).join(", ");
+        const flatValues = batch.flat();
+        await sequelize.query(
+          `INSERT INTO ${quotedShadow} (${quotedCols}) VALUES ${placeholders}`,
+          { bind: flatValues }
+        );
+        const prog = 50 + Math.floor(bi * 40 / Math.max(allRowValues.length, 1));
         try {
-          const record = br.record;
-          if (record._existingId !== void 0) {
-            const eid = record._existingId;
-            delete record._existingId;
-            applyBelongsToFK(record, br.idx);
-            toUpdatePromises.push((async () => {
-              await targetRepo.update({ filterByTk: eid, values: record, transaction });
-              processedRows++;
-            })());
-            continue;
-          }
-          if ((importMode === "update" || importMode === "upsert") && ((uniqueFields == null ? void 0 : uniqueFields.length) || 0) > 0) {
-            const uFields = uniqueFields || [];
-            if (uFields.length === 0) {
-              if (importMode === "update") {
-                errorLogs.push({ row: rowIndex, excelRow: (headerRow || 1) + br.idx, reason: "\u66F4\u65B0\u6A21\u5F0F\u672A\u914D\u7F6E\u552F\u4E00\u503C\u5B57\u6BB5" });
-                continue;
-              }
-            }
-            if (importMode === "update") {
-              errorLogs.push({ row: rowIndex, excelRow: (headerRow || 1) + br.idx, reason: "\u672A\u5339\u914D\u5230\u5DF2\u6709\u8BB0\u5F55\uFF08\u66F4\u65B0\u6A21\u5F0F\uFF09" });
-              continue;
-            }
-          }
-          if (importMode === "insert" || importMode === "upsert") {
-            applyBelongsToFK(record, br.idx);
-            toCreateRows.push(record);
-            processedRows++;
-          }
-        } catch (rowErr) {
-          errorLogs.push({ row: rowIndex, excelRow: (headerRow || 1) + br.idx, reason: rowErr.message || String(rowErr), snapshot: buildSnapshot(br.rowData) });
+          await repo.update({ filterByTk: taskId, values: { progress: Math.min(90, prog) } });
+        } catch {
         }
       }
-      if (toCreateRows.length > 0) {
-        try {
-          await targetRepo.create({ values: toCreateRows, transaction });
-        } catch (createErr) {
-          for (const cr of toCreateRows) {
-            errorLogs.push({ reason: createErr.message || String(createErr) });
-          }
-        }
-      }
-      await Promise.all(toUpdatePromises);
-      const batchProgress = Math.min(100, Math.floor(batchEnd * 100 / dataRows.length));
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", `\u9636\u6BB5\u4E8C\u5F71\u5B50\u8868\u5199\u5165\u5B8C\u6210\uFF0C\u5171 ${phase2TotalRows} \u884C`);
+      await repo.update({ filterByTk: taskId, values: { progress: 90 } });
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u9636\u6BB5\u4E09\uFF1A\u539F\u5B50\u8FC1\u79FB\u5F00\u59CB...");
       try {
-        await repo.update({ filterByTk: taskId, values: { processedRows, progress: batchProgress }, transaction });
+        await sequelize.query("SET SESSION statement_timeout = '30min'");
       } catch {
       }
-    }
-    if (errorLogs.length > 0) {
-      await transaction.rollback();
-      await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", `\u5171 ${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u6B63\u5728\u56DE\u6EDA...`);
-      await repo.update({
-        filterByTk: taskId,
-        values: {
-          status: "failed",
-          progress: 0,
-          processedRows: 0,
-          errorLogs,
-          errorMessage: `${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u4E8B\u52A1\u5DF2\u56DE\u6EDA`,
-          completedAt: /* @__PURE__ */ new Date()
+      const transaction = await sequelize.transaction();
+      let updatedCount = 0;
+      try {
+        if (importMode === "update") {
+          const setClauses = [];
+          for (const col of nonIdColumns) {
+            if (bCellMode === "skip" && Object.values(mapping).some((v) => v === col)) {
+              const stillMap = Object.entries(mapping).some(([tf, ec]) => {
+                if (ec === "__ignore__" || ec === "__custom__") return false;
+                if (ec === col) return true;
+                const idx = phase2Headers.indexOf(ec);
+                return idx >= 0 && phase2Headers[idx] === col;
+              });
+              if (stillMap) continue;
+            }
+            setClauses.push(`"${col}" = s."${col}"`);
+          }
+          const whereClauses = uFields.map((uf) => `m."${uf}" = s."${uf}"`).join(" AND ");
+          if (setClauses.length > 0 && whereClauses) {
+            const [updateResult] = await sequelize.query(
+              `UPDATE ${quotedMain} m SET ${setClauses.join(", ")} FROM ${quotedShadow} s WHERE ${whereClauses} RETURNING m.id`,
+              { transaction }
+            );
+            updatedCount = updateResult.length;
+            await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u66F4\u65B0\u6A21\u5F0F\uFF1A\u5339\u914D ${updatedCount} \u884C\uFF0C\u5F71\u5B50\u8868\u5171 ${phase2TotalRows} \u884C`);
+          }
+        } else if (importMode === "upsert") {
+          const conflictCols = uFields.map((uf) => `"${uf}"`).join(", ");
+          const updateSetClauses = nonIdColumns.filter((c) => !uFields.includes(c)).map((c) => `"${c}" = EXCLUDED."${c}"`).join(", ");
+          await sequelize.query(
+            `INSERT INTO ${quotedMain} SELECT * FROM ${quotedShadow} ON CONFLICT (${conflictCols}) DO UPDATE SET ${updateSetClauses}`,
+            { transaction }
+          );
+        } else {
+          const hasId = mapping.id && mapping.id !== "__ignore__";
+          if (hasId) {
+            await sequelize.query(
+              `INSERT INTO ${quotedMain} SELECT * FROM ${quotedShadow}`,
+              { transaction }
+            );
+          } else {
+            const nonIdQuotedCols = nonIdColumns.map((c) => `"${c}"`).join(", ");
+            await sequelize.query(
+              `INSERT INTO ${quotedMain} (${nonIdQuotedCols}) SELECT ${nonIdQuotedCols} FROM ${quotedShadow}`,
+              { transaction }
+            );
+          }
         }
-      });
-      await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u5BFC\u5165\u5931\u8D25: ${errorLogs.length} \u884C\u6570\u636E\u5931\u8D25\uFF0C\u5DF2\u56DE\u6EDA`);
-    } else {
-      await transaction.commit();
-      await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", `\u5BFC\u5165\u5B8C\u6210\uFF0C\u5171 ${processedRows} \u884C\u6570\u636E`);
-      await repo.update({
-        filterByTk: taskId,
-        values: {
-          status: "completed",
-          progress: 100,
-          processedRows,
-          completedAt: /* @__PURE__ */ new Date()
+        await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`, { transaction });
+        await transaction.commit();
+        if (importMode === "insert" && mapping.id && mapping.id !== "__ignore__") {
+          try {
+            const [seqRows] = await sequelize.query(
+              `SELECT pg_get_serial_sequence('${tableName}', 'id') AS seq_name`,
+              { raw: true }
+            );
+            const seqName = (_b = seqRows[0]) == null ? void 0 : _b.seq_name;
+            if (seqName) {
+              const [maxRows] = await sequelize.query(
+                `SELECT COALESCE(MAX(id), 0) AS max_id FROM ${quotedMain}`,
+                { raw: true }
+              );
+              const maxId = parseInt(((_c = maxRows[0]) == null ? void 0 : _c.max_id) || "0", 10);
+              await sequelize.query(`SELECT setval('${seqName}', ${maxId + 1})`);
+            }
+          } catch {
+          }
         }
-      });
+        const successMsg = importMode === "update" ? `\u8FC1\u79FB\u5B8C\u6210\uFF0C\u66F4\u65B0 ${updatedCount} \u884C\uFF0C\u5F71\u5B50\u8868\u5DF2\u5220\u9664` : `\u8FC1\u79FB\u5B8C\u6210\uFF0C\u5171 ${phase2TotalRows} \u884C\uFF0C\u5F71\u5B50\u8868\u5DF2\u5220\u9664`;
+        await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", successMsg);
+        await repo.update({
+          filterByTk: taskId,
+          values: { status: "completed", progress: 100, processedRows: phase2TotalRows, completedAt: /* @__PURE__ */ new Date() }
+        });
+      } catch (migrateErr) {
+        await transaction.rollback();
+        try {
+          await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
+        } catch {
+        }
+        throw migrateErr;
+      }
+    } catch (phase2Err) {
+      try {
+        await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
+      } catch {
+      }
+      throw phase2Err;
     }
   } catch (err) {
     try {
-      await transaction.rollback();
-    } catch {
-    }
-    try {
       await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u5BFC\u5165\u5F02\u5E38: ${err.message || String(err)}`);
-      await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", "\u4E8B\u52A1\u5DF2\u56DE\u6EDA\uFF0C\u6570\u636E\u5DF2\u8FD8\u539F");
       await repo.update({
         filterByTk: taskId,
-        values: {
-          status: "failed",
-          errorMessage: err.message || String(err),
-          completedAt: /* @__PURE__ */ new Date()
-        }
+        values: { status: "failed", errorMessage: err.message || String(err), completedAt: /* @__PURE__ */ new Date() }
       });
     } catch {
     }
+  } finally {
+    import_cancel_state.cancelFlags.delete(taskId);
   }
 }
 // Annotate the CommonJS export names for ESM import in node:

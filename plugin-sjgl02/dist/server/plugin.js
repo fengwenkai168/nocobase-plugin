@@ -7,9 +7,11 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -23,6 +25,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var plugin_exports = {};
 __export(plugin_exports, {
@@ -31,6 +41,7 @@ __export(plugin_exports, {
 });
 module.exports = __toCommonJS(plugin_exports);
 var import_server = require("@nocobase/server");
+var import_fs = __toESM(require("fs"));
 var import_import = require("./actions/import");
 var import_export = require("./actions/export");
 var import_tasks = require("./actions/tasks");
@@ -40,6 +51,49 @@ class PluginSjgl02Server extends import_server.Plugin {
   async load() {
     this.defineCustomResources();
     this.setupACL();
+    setImmediate(() => this.startupCleanup());
+  }
+  /** 启动清理：残留任务、影子表、导出文件 */
+  async startupCleanup() {
+    try {
+      const sequelize = this.db.sequelize;
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1e3);
+      await this.db.getRepository("sjgl02_tasks").update({
+        filter: {
+          status: { $in: ["processing", "pending"] },
+          createdAt: { $lt: fiveMinAgo }
+        },
+        values: {
+          status: "failed",
+          errorMessage: "\u670D\u52A1\u5668\u91CD\u542F\uFF0C\u4EFB\u52A1\u4E2D\u65AD",
+          completedAt: /* @__PURE__ */ new Date()
+        }
+      });
+      const [shadowTables] = await sequelize.query(
+        `SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02_import_%' AND schemaname = current_schema()`,
+        { raw: true }
+      );
+      for (const row of shadowTables) {
+        try {
+          await sequelize.query(`DROP TABLE IF EXISTS "${row.tablename}"`);
+        } catch {
+        }
+      }
+      const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
+      const exportDir = storageDir + "/exports";
+      if (import_fs.default.existsSync(exportDir)) {
+        const files = import_fs.default.readdirSync(exportDir);
+        for (const file of files) {
+          if (file.startsWith("sjgl02_export_")) {
+            try {
+              import_fs.default.unlinkSync(exportDir + "/" + file);
+            } catch {
+            }
+          }
+        }
+      }
+    } catch {
+    }
   }
   defineCustomResources() {
     this.app.resourceManager.define({

@@ -7,6 +7,7 @@ import archiver from 'archiver';
 import { Mutex } from 'async-mutex';
 import { checkExportPermission } from './permission-check';
 import { writeTaskLog } from './taskLogs';
+import { cancelFlags } from './cancel-state';
 import type { Database } from '@nocobase/database';
 
 const exportMutex = new Mutex();
@@ -92,6 +93,25 @@ function getAssociationFields(coll: any): Array<{ name: string; type: string; ta
     }
   } catch {}
   return fields;
+}
+
+/** 检测主键类型：返回 'int_auto' | 'uuid' | 'other' */
+function detectPkType(coll: any): 'int_auto' | 'uuid' | 'other' {
+  try {
+    const fields = Array.from(coll.fields?.values() || coll.fields || []);
+    const pk = fields.find((f: any) => (f as any).options?.primaryKey) as any;
+    if (!pk) return 'other';
+    const pkType = String(pk.type || '');
+    if (pkType.includes('UUID') || pkType.includes('uuid')) return 'uuid';
+    const autoIncr = pk.options?.autoIncrement;
+    if (autoIncr !== false && (pkType.includes('INT') || pkType.includes('int') || pkType === 'bigInt' || pkType === 'BIGINT')) {
+      return 'int_auto';
+    }
+    if (pkType.includes('INT') || pkType.includes('int') || pkType === 'bigInt' || pkType === 'BIGINT') return 'int_auto';
+    return 'other';
+  } catch {
+    return 'other';
+  }
 }
 
 export async function getExportTableFields(ctx: Context, next: Next) {
@@ -263,7 +283,6 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
   } = params;
 
   const repo = db.getRepository('sjgl02_tasks');
-
   const release = await exportMutex.acquire();
 
   try {
@@ -277,20 +296,26 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       ? (allowedTableList || [])
       : [tableName];
 
-    const tempDir = path.join(process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads', 'exports');
+    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
+    const tempDir = path.join(storageDir, 'exports');
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
     let totalRows = 0;
     let processedRows = 0;
     const outputFiles: string[] = [];
+    let cancelled = false;
+
+    // 全部数据表模式：延迟附件打包到最终合并
+    const allAttachFileEntries: Array<{ entryName: string; diskPath: string }> = [];
 
     for (const tblName of tableList) {
+      if (cancelFlags.has(taskId)) { cancelled = true; break; }
+
       const coll: any = db.getCollection(tblName);
       if (!coll) continue;
       const targetRepo = db.getRepository(tblName);
       if (!targetRepo) continue;
 
-      let records: any[] = [];
       let collectionTotal = 0;
       const appendFields: string[] = [];
       const attachmentFieldNames: string[] = [];
@@ -298,11 +323,20 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       try {
         for (const f of Array.from(coll.fields?.values() || coll.fields || [])) {
           if ((f as any).type === 'belongsTo') appendFields.push((f as any).name);
-          if (includeAttachments && ((f as any).type === 'belongsToMany')) {
+          if ((f as any).type === 'belongsToMany') {
             const interfaceName = (f as any).options?.interface;
-            if (interfaceName === 'attachment' && !appendFields.includes((f as any).name)) {
+            if (includeAttachments && interfaceName === 'attachment' && !appendFields.includes((f as any).name)) {
               appendFields.push((f as any).name);
               attachmentFieldNames.push((f as any).name);
+            } else if (!includeAttachments || interfaceName !== 'attachment') {
+              if (!selectedFields?.length || selectedFields.includes((f as any).name)) {
+                if (!appendFields.includes((f as any).name)) appendFields.push((f as any).name);
+              }
+            }
+          }
+          if ((f as any).type === 'hasMany' || (f as any).type === 'hasOne') {
+            if (!selectedFields?.length || selectedFields.includes((f as any).name)) {
+              if (!appendFields.includes((f as any).name)) appendFields.push((f as any).name);
             }
           }
           if (includeAttachments && ((f as any).type === 'integer') && /FileId$/.test((f as any).name)) {
@@ -310,7 +344,7 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           }
         }
       } catch {}
-      try { const [,c] = await targetRepo.findAndCount({ filter: exportFilter || {}, limit: 1 }); collectionTotal = c; } catch {}
+      try { const [, c] = await targetRepo.findAndCount({ filter: exportFilter || {}, limit: 1 }); collectionTotal = c; } catch {}
       if (collectionTotal === 0) continue;
 
       const fieldNames: string[] = (selectedFields && selectedFields.length > 0)
@@ -319,7 +353,7 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       if (!fieldNames || fieldNames.length === 0) continue;
 
       const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, '_');
-      const xlsxName = collDisplay + '-' + formatFileName('{日期}.xlsx', '');
+      const xlsxName = `sjgl02_export_${taskId}_${Date.now()}.xlsx`;
       const filePath = path.join(tempDir, xlsxName);
 
       const streamWriter = new ExcelJS.stream.xlsx.WorkbookWriter({
@@ -336,47 +370,166 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       (mainSheet.getRow(1) as any).font = { bold: true };
       (mainSheet.getRow(1) as any).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
 
+      // 附件 ID 收集（主循环合并，一次扫描）
+      const attachIds = new Set<number>();
+      const attachFieldMap = new Map<number, string>();
+
       const PAGE_SIZE = 5000;
-      let offset = 0;
+      const pkType = detectPkType(coll);
 
-      while (offset < collectionTotal) {
-        const pageRecords = await targetRepo.find({
-          filter: exportFilter || {}, offset, limit: PAGE_SIZE,
-          ...(appendFields.length > 0 ? { appends: appendFields } : {}),
-        });
-        if (pageRecords.length === 0) break;
-
-        for (const record of pageRecords) {
-          const row: Record<string, any> = {};
-          for (const f of fieldNames) {
-            let val = record[f];
-            if (attachmentFieldNames.includes(f)) {
-              if (Array.isArray(val) && val.length > 0) {
-                val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
-              } else val = '';
-            } else if (fileIdFieldNames.includes(f)) {
-              val = val !== null && val !== undefined ? String(val) : '';
-            } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
-              val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
+      if (pkType === 'int_auto') {
+        // 游标分页：WHERE id > ? ORDER BY id LIMIT ?
+        let lastId = 0;
+        while (true) {
+          if (cancelFlags.has(taskId)) { cancelled = true; break; }
+          const pageRecords = await targetRepo.find({
+            filter: { ...(exportFilter || {}), id: { $gt: lastId } },
+            sort: ['id'],
+            limit: PAGE_SIZE,
+            ...(appendFields.length > 0 ? { appends: appendFields } : {}),
+          });
+          if (pageRecords.length === 0) break;
+          for (const record of pageRecords) {
+            const row: Record<string, any> = {};
+            for (const f of fieldNames) {
+              let val = record[f];
+              if (attachmentFieldNames.includes(f)) {
+                if (Array.isArray(val) && val.length > 0) {
+                  for (const a of val) { if (a?.id && !attachIds.has(a.id)) { attachIds.add(a.id); attachFieldMap.set(a.id, f); } }
+                  val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
+                } else val = '';
+              } else if (fileIdFieldNames.includes(f)) {
+                if (val !== null && val !== undefined && !attachIds.has(Number(val))) {
+                  attachIds.add(Number(val)); attachFieldMap.set(Number(val), f);
+                }
+                val = val !== null && val !== undefined ? String(val) : '';
+               } else if (Array.isArray(val)) {
+                  val = val.map((item: any) => {
+                    const name = item.nickname || item.name || item.title || item.id || '';
+                    return name ? `${name}(主键：${item.id})` : '';
+                  }).filter(Boolean).join(', ');
+                } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
+                val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
+              }
+              row[f] = formatValue(val);
             }
-            row[f] = formatValue(val);
+            mainSheet.addRow(row).commit();
+            processedRows++;
+            totalRows++;
           }
-          mainSheet.addRow(row).commit();
-          processedRows++;
-          totalRows++;
+          lastId = Number((pageRecords[pageRecords.length - 1] as any).id);
+          const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
+          try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } }); } catch {}
         }
-        offset += PAGE_SIZE;
-        const progress = Math.min(100, Math.floor((offset * 100) / Math.max(1, collectionTotal)));
-        try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } }); } catch {}
+      } else if (pkType === 'uuid') {
+        // UUID：预取 ID 数组 → IN 分批
+        try { await db.sequelize.query("SET SESSION statement_timeout = '30min'"); } catch {}
+        const allIds: any[] = [];
+        let uuidOffset = 0;
+        while (true) {
+          const idPage = await targetRepo.find({
+            filter: exportFilter || {},
+            fields: ['id'],
+            offset: uuidOffset,
+            limit: PAGE_SIZE,
+          });
+          if (idPage.length === 0) break;
+          allIds.push(...idPage.map((r: any) => r.id));
+          uuidOffset += PAGE_SIZE;
+        }
+        for (let bi = 0; bi < allIds.length; bi += PAGE_SIZE) {
+          if (cancelFlags.has(taskId)) { cancelled = true; break; }
+          const batch = allIds.slice(bi, bi + PAGE_SIZE);
+          const pageRecords = await targetRepo.find({
+            filter: { ...(exportFilter || {}), id: { $in: batch } },
+            limit: PAGE_SIZE,
+            ...(appendFields.length > 0 ? { appends: appendFields } : {}),
+          });
+          for (const record of pageRecords) {
+            const row: Record<string, any> = {};
+            for (const f of fieldNames) {
+              let val = record[f];
+              if (attachmentFieldNames.includes(f)) {
+                if (Array.isArray(val) && val.length > 0) {
+                  for (const a of val) { if (a?.id && !attachIds.has(a.id)) { attachIds.add(a.id); attachFieldMap.set(a.id, f); } }
+                  val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
+                } else val = '';
+              } else if (fileIdFieldNames.includes(f)) {
+                if (val !== null && val !== undefined && !attachIds.has(Number(val))) {
+                  attachIds.add(Number(val)); attachFieldMap.set(Number(val), f);
+                }
+                val = val !== null && val !== undefined ? String(val) : '';
+               } else if (Array.isArray(val)) {
+                  val = val.map((item: any) => {
+                    const name = item.nickname || item.name || item.title || item.id || '';
+                    return name ? `${name}(主键：${item.id})` : '';
+                  }).filter(Boolean).join(', ');
+                } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
+                val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
+              }
+              row[f] = formatValue(val);
+            }
+            mainSheet.addRow(row).commit();
+            processedRows++;
+            totalRows++;
+          }
+          const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
+          try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } }); } catch {}
+        }
+      } else {
+        // 其他主键类型：传统 offset/limit 分页
+        let offset = 0;
+        while (offset < collectionTotal) {
+          if (cancelFlags.has(taskId)) { cancelled = true; break; }
+          const pageRecords = await targetRepo.find({
+            filter: exportFilter || {}, offset, limit: PAGE_SIZE,
+            ...(appendFields.length > 0 ? { appends: appendFields } : {}),
+          });
+          if (pageRecords.length === 0) break;
+          for (const record of pageRecords) {
+            const row: Record<string, any> = {};
+            for (const f of fieldNames) {
+              let val = record[f];
+              if (attachmentFieldNames.includes(f)) {
+                if (Array.isArray(val) && val.length > 0) {
+                  for (const a of val) { if (a?.id && !attachIds.has(a.id)) { attachIds.add(a.id); attachFieldMap.set(a.id, f); } }
+                  val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
+                } else val = '';
+              } else if (fileIdFieldNames.includes(f)) {
+                if (val !== null && val !== undefined && !attachIds.has(Number(val))) {
+                  attachIds.add(Number(val)); attachFieldMap.set(Number(val), f);
+                }
+                val = val !== null && val !== undefined ? String(val) : '';
+               } else if (Array.isArray(val)) {
+                  val = val.map((item: any) => {
+                    const name = item.nickname || item.name || item.title || item.id || '';
+                    return name ? `${name}(主键：${item.id})` : '';
+                  }).filter(Boolean).join(', ');
+                } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
+                val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
+              }
+              row[f] = formatValue(val);
+            }
+            mainSheet.addRow(row).commit();
+            processedRows++;
+            totalRows++;
+          }
+          offset += PAGE_SIZE;
+          const progress = Math.min(100, Math.floor((offset * 100) / Math.max(1, collectionTotal)));
+          try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } }); } catch {}
+        }
       }
 
+      if (cancelled) break;
+
+      // 关联数据 Sheet（保留原有功能）
       if (includeAssociationSheet) {
         const assocFields = getAssociationFields(coll);
         for (const af of assocFields.filter((af: any) => !fieldNames.length || fieldNames.includes(af.name))) {
           const assocRepo = db.getRepository(af.target);
           if (!assocRepo) continue;
           let assocTotal = 0;
-          try { const [,cnt] = await assocRepo.findAndCount({ limit:1 }); assocTotal = cnt; } catch {}
+          try { const [, cnt] = await assocRepo.findAndCount({ limit: 1 }); assocTotal = cnt; } catch {}
           if (assocTotal === 0) continue;
           const assocColl = db.getCollection(af.target);
           const assocScalarFields = getScalarFields(assocColl);
@@ -384,17 +537,18 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
 
           const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
           const sheetDisplay = getCollDisplayName(assocColl, headerStyle);
-          const sheetName = ensureUniqueSheetName(streamWriter as any, sanitizeSheetName(fieldDisplay + '-' + sheetDisplay).substring(0,31));
+          const sheetName = ensureUniqueSheetName(streamWriter as any, sanitizeSheetName(fieldDisplay + '-' + sheetDisplay).substring(0, 31));
           const assocSheet = streamWriter.addWorksheet(sheetName);
           assocSheet.columns = assocScalarFields.map((n: string) => ({
             header: getFieldDisplayName(assocColl, n, headerStyle), key: n,
             width: Math.max(getFieldDisplayName(assocColl, n, headerStyle).length + 4, 20),
           }));
           (assocSheet.getRow(1) as any).font = { bold: true };
-          (assocSheet.getRow(1) as any).fill = { type:'pattern',pattern:'solid',fgColor:{argb:'FFF5F5F5'}};
+          (assocSheet.getRow(1) as any).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
 
           let aOff = 0;
           while (aOff < assocTotal) {
+            if (cancelFlags.has(taskId)) { cancelled = true; break; }
             const aRecs = await assocRepo.find({ offset: aOff, limit: PAGE_SIZE });
             for (const rec of aRecs) {
               const row: Record<string, any> = {};
@@ -411,78 +565,76 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
             const ap = Math.min(100, Math.floor((aOff * 100) / Math.max(1, assocTotal)));
             try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress: Math.max(ap, 0) } }); } catch {}
           }
+          if (cancelled) break;
           assocSheet.commit();
         }
       }
 
       mainSheet.commit();
       await streamWriter.commit();
-      outputFiles.push(filePath);
 
-      if (includeAttachments && (attachmentFieldNames.length > 0 || fileIdFieldNames.length > 0)) {
-        const attachIds = new Set<number>();
-        const attachFieldMap = new Map<number, string>();
-        let aScanOff = 0;
-        while (aScanOff < collectionTotal) {
-          const pr = await targetRepo.find({
-            filter: exportFilter || {}, offset: aScanOff, limit: PAGE_SIZE,
-            ...(appendFields.length > 0 ? { appends: appendFields } : {}),
-          });
-          for (const r of pr) {
-            for (const an of attachmentFieldNames) {
-              if (Array.isArray(r[an])) for (const a of r[an]) if (a?.id && !attachIds.has(a.id)) { attachIds.add(a.id); attachFieldMap.set(a.id, an); }
-            }
-            for (const fn of fileIdFieldNames) {
-              const fid = r[fn]; if (fid && !attachIds.has(fid)) { attachIds.add(fid); attachFieldMap.set(fid, fn); }
-            }
-          }
-          aScanOff += PAGE_SIZE;
-        }
-        if (attachIds.size > 0) {
-          const fileIdFilenameMap = new Map<number, string>();
+      if (cancelled) break;
+
+      // 附件打包：已收集的 attachIds
+      let finalFilePath = filePath;
+      if (includeAttachments && attachIds.size > 0) {
+        const fileIdFilenameMap = new Map<number, string>();
+        try {
+          const ar = await db.getRepository('attachments').find({ filter: { id: Array.from(attachIds) } });
+          ar.forEach((at: any) => { if (at.filename) fileIdFilenameMap.set(at.id, at.filename); });
+        } catch {}
+        if (fileIdFilenameMap.size > 0) {
           try {
-            const ar = await db.getRepository('attachments').find({ filter: { id: Array.from(attachIds) } });
-            ar.forEach((at: any) => { if (at.filename) fileIdFilenameMap.set(at.id, at.filename); });
-          } catch {}
-          if (fileIdFilenameMap.size > 0) {
-            try {
-              const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
-              const attachmentFiles: Array<{ entryName: string; diskPath: string }> = [];
-              for (const [aid, fn] of fileIdFilenameMap) {
-                const diskPath = path.join(storageDir, fn);
-                let realPath = diskPath;
-                if (!fs.existsSync(realPath)) {
-                  const atRecords = await db.getRepository('attachments').find({ filter: { id: [aid] } });
-                  if (atRecords[0]?.path !== undefined) {
-                    realPath = path.join(storageDir, atRecords[0].path || '', fn);
-                  }
+            const attachmentFiles: Array<{ entryName: string; diskPath: string }> = [];
+            for (const [aid, fn] of fileIdFilenameMap) {
+              let realPath = path.join(storageDir, fn);
+              if (!fs.existsSync(realPath)) {
+                const atRecords = await db.getRepository('attachments').find({ filter: { id: [aid] } });
+                if (atRecords[0]?.path !== undefined) {
+                  realPath = path.join(storageDir, atRecords[0].path || '', fn);
                 }
-                if (!fs.existsSync(realPath)) continue;
-                const afName = attachFieldMap.get(aid) || '附件';
-                const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
-                attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
               }
-              if (attachmentFiles.length > 0) {
-                const zipName = collDisplay + '-' + formatFileName('{日期}.zip', '');
+              if (!fs.existsSync(realPath)) continue;
+              const afName = attachFieldMap.get(aid) || '附件';
+              const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
+              attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
+            }
+            if (attachmentFiles.length > 0) {
+              if (isAllTables) {
+                // 全部数据表：延迟打包，仅收集附件信息到全局列表
+                allAttachFileEntries.push(...attachmentFiles);
+              } else {
+                // 单表：直接创建 per-table ZIP
+                const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
                 const zipPath = path.join(tempDir, zipName);
-                const zipOutput = fs.createWriteStream(zipPath);
-                const zipArchive = archiver('zip', { zlib: { level: 9 } });
-                await new Promise<void>((resolve, reject) => {
-                  zipArchive.on('error', reject);
-                  zipOutput.on('close', resolve);
-                  zipArchive.pipe(zipOutput);
-                  zipArchive.file(filePath, { name: path.basename(filePath) });
-                  for (const af of attachmentFiles) {
-                    zipArchive.file(af.diskPath, { name: af.entryName });
-                  }
-                  zipArchive.finalize();
-                });
-                try { fs.unlinkSync(filePath); } catch {}
-                outputFiles[outputFiles.indexOf(filePath)] = zipPath;
+                try {
+                  const zipOutput = fs.createWriteStream(zipPath);
+                  const zipArchive = archiver('zip', { zlib: { level: 1 } });
+                  await new Promise<void>((resolve, reject) => {
+                    zipArchive.on('error', reject);
+                    zipOutput.on('close', resolve);
+                    zipOutput.on('error', reject);
+                    zipArchive.pipe(zipOutput);
+                    zipArchive.file(filePath, { name: path.basename(filePath) });
+                    for (const af of attachmentFiles) {
+                      zipArchive.file(af.diskPath, { name: af.entryName });
+                    }
+                    zipArchive.finalize();
+                  });
+                  try { fs.unlinkSync(filePath); } catch {}
+                  outputFiles.push(zipPath);
+                  finalFilePath = zipPath;
+                } catch (attErr: any) {
+                  await writeTaskLog(db, taskId, 'WARN', `附件打包失败(${tblName}): ${attErr.message || String(attErr)}，跳过打包`);
+                }
               }
-            } catch {}
-          }
+            }
+          } catch {}
         }
+      }
+
+      if (!outputFiles.includes(finalFilePath)) {
+        outputFiles.push(finalFilePath);
       }
 
       await repo.update({
@@ -491,23 +643,37 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       });
     }
 
-    let finalFilePath: string;
+    if (cancelled) {
+      // 取消：删除已生成的临时文件
+      for (const fp of outputFiles) { try { fs.unlinkSync(fp); } catch {} }
+      await writeTaskLog(db, taskId, 'WARN', '任务已取消');
+      await repo.update({ filterByTk: taskId, values: { status: 'cancelled', completedAt: new Date() } });
+      return;
+    }
+
     if (outputFiles.length === 0) {
       throw new Error('没有数据可导出');
-    } else if (outputFiles.length === 1) {
-      finalFilePath = outputFiles[0];
+    }
+
+    let mergedFilePath: string;
+    if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
+      mergedFilePath = outputFiles[0];
     } else {
-      const zipName = '全部数据表-' + formatFileName('{日期}.zip', '');
-      finalFilePath = path.join(tempDir, zipName);
-      const output = fs.createWriteStream(finalFilePath);
-      const archive = archiver('zip', { zlib: { level: 9 } });
+      const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
+      mergedFilePath = path.join(tempDir, zipName);
+      const output = fs.createWriteStream(mergedFilePath);
+      const archive = archiver('zip', { zlib: { level: 0 } });
       await new Promise<void>((resolve, reject) => {
         try {
           output.on('close', resolve);
+          output.on('error', reject);
           archive.on('error', reject);
           archive.pipe(output);
           for (const fp of outputFiles) {
             archive.file(fp, { name: path.basename(fp) });
+          }
+          for (const af of allAttachFileEntries) {
+            archive.file(af.diskPath, { name: af.entryName });
           }
           archive.finalize();
         } catch (err) {
@@ -519,18 +685,42 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       }
     }
 
-    const stats = await fsp.stat(finalFilePath);
+    // 将临时文件重命名为可读格式（表名称(表标识)_日期，无前缀）
+    const d = new Date();
+    const padDate = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${d.getFullYear()}${padDate(d.getMonth() + 1)}${padDate(d.getDate())}${padDate(d.getHours())}${padDate(d.getMinutes())}${padDate(d.getSeconds())}`;
+    const isZip = mergedFilePath.endsWith('.zip');
+    let finalDisplayName: string;
+    if (tableName === '__all__') {
+      finalDisplayName = isZip ? `全部数据表_${dateStr}.zip` : `全部数据表_${dateStr}.xlsx`;
+    } else {
+      const exportColl = db.getCollection(tableName);
+      const collDisplayName = exportColl
+        ? sanitizeSheetName(getCollDisplayName(exportColl, headerStyle)).replace(/\s+/g, '_')
+        : tableName;
+      finalDisplayName = `${collDisplayName}_${dateStr}${isZip ? '.zip' : '.xlsx'}`;
+    }
+    let finalFilePath = path.join(tempDir, finalDisplayName);
+    let suffix = 0;
+    while (fs.existsSync(finalFilePath)) {
+      suffix++;
+      finalFilePath = path.join(tempDir, finalDisplayName.replace(/\.(xlsx|zip)$/, `_${suffix}.${isZip ? 'zip' : 'xlsx'}`));
+    }
+    fs.renameSync(mergedFilePath, finalFilePath);
+    mergedFilePath = finalFilePath;
+
+    const stats = await fsp.stat(mergedFilePath);
     const attachRepo = db.getRepository('attachments');
     const exportAttachment = await attachRepo.create({
       values: {
-        title: path.basename(finalFilePath),
-        filename: path.basename(finalFilePath),
-        extname: path.extname(finalFilePath),
-        mimetype: finalFilePath.endsWith('.zip')
+        title: path.basename(mergedFilePath),
+        filename: path.basename(mergedFilePath),
+        extname: path.extname(mergedFilePath),
+        mimetype: mergedFilePath.endsWith('.zip')
           ? 'application/zip'
           : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         size: stats.size,
-        path: path.relative(process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads', finalFilePath).replace(/\\/g, '/'),
+        path: path.relative(storageDir, mergedFilePath).replace(/\\/g, '/'),
       },
     });
 
@@ -547,6 +737,7 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       },
     });
     await writeTaskLog(db, taskId, 'SUCC', `导出完成，共 ${processedRows} 行数据`);
+    // 注意：完成文件保留，不删除（用户可下载）
   } catch (err: any) {
     try {
       await writeTaskLog(db, taskId, 'ERROR', `导出失败: ${err.message || String(err)}`);
@@ -561,6 +752,7 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       });
     } catch {}
   } finally {
+    cancelFlags.delete(taskId);
     release();
   }
 }

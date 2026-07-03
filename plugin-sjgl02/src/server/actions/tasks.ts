@@ -1,4 +1,5 @@
 import { Context, Next } from '@nocobase/actions';
+import { cancelFlags } from './cancel-state';
 
 export async function listTasks(ctx: Context, next: Next) {
   const { taskType, status, search } = ctx.action.params;
@@ -84,6 +85,10 @@ export async function cancelTask(ctx: Context, next: Next) {
   if (['completed', 'failed', 'cancelled'].includes(task.status)) {
     ctx.throw(400, 'Cannot cancel a completed/failed/cancelled task');
   }
+  cancelFlags.add(Number(taskId));
+  try {
+    await ctx.db.sequelize.query(`DROP TABLE IF EXISTS "_sjgl02_import_${taskId}"`);
+  } catch {}
   await repo.update({
     filterByTk: task.id,
     values: { status: 'cancelled', progress: task.progress },
