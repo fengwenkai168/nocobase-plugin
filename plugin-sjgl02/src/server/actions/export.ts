@@ -305,7 +305,8 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     let processedRows = 0;
     const outputFiles: string[] = [];
     let cancelled = false;
-
+    // 全部数据表增量 ZIP 路径（生成即追加，每秒删原文件）
+    let mergedZipPath = '';
     // 全部数据表模式：延迟附件打包到最终合并
     const allAttachFileEntries: Array<{ entryName: string; diskPath: string }> = [];
 
@@ -638,6 +639,17 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
         outputFiles.push(finalFilePath);
       }
 
+      // 全部数据表模式：生成即追加到 ZIP，追加完删原文件（控制磁盘峰值）
+      if (isAllTables && !cancelled) {
+        try {
+          if (!mergedZipPath) {
+            mergedZipPath = path.join(tempDir, `sjgl02_export_${taskId}_${Date.now()}.zip`);
+          }
+          execSync(`cd "${tempDir}" && zip -0 -q "${mergedZipPath}" "${path.basename(finalFilePath)}"`, { stdio: 'pipe' });
+          try { fs.unlinkSync(finalFilePath); } catch {}
+        } catch {}
+      }
+
       await repo.update({
         filterByTk: taskId,
         values: { progress: Math.min(100, Math.floor((processedRows / Math.max(totalRows, 1)) * 100)), processedRows, totalRows },
@@ -645,19 +657,26 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     }
 
     if (cancelled) {
-      // 取消：删除已生成的临时文件
+      // 取消：删除生成的临时文件和增量 ZIP
+      if (mergedZipPath) { try { fs.unlinkSync(mergedZipPath); } catch {} }
       for (const fp of outputFiles) { try { fs.unlinkSync(fp); } catch {} }
       await writeTaskLog(db, taskId, 'WARN', '任务已取消');
       await repo.update({ filterByTk: taskId, values: { status: 'cancelled', completedAt: new Date() } });
       return;
     }
 
-    if (outputFiles.length === 0) {
-      throw new Error('没有数据可导出');
-    }
-
     let mergedFilePath: string;
-    if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
+    if (isAllTables && mergedZipPath) {
+      // 全部数据表：增量 ZIP 已构建完成，追加附件
+      mergedFilePath = mergedZipPath;
+      if (allAttachFileEntries.length > 0) {
+        try {
+          execSync(`cd "${tempDir}" && zip -0 -q "${mergedFilePath}" ${allAttachFileEntries.map(a => `"${a.diskPath.replace(tempDir + '/', '')}"`).join(' ')}`, { stdio: 'pipe' });
+        } catch {}
+      }
+    } else if (outputFiles.length === 0) {
+      throw new Error('没有数据可导出');
+    } else if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
       mergedFilePath = outputFiles[0];
     } else {
       await writeTaskLog(db, taskId, 'INFO', `最终合并 ${outputFiles.length} 个文件${allAttachFileEntries.length > 0 ? ' + ' + allAttachFileEntries.length + ' 个附件' : ''}...`);

@@ -56,7 +56,7 @@ export function TaskList({ api, onViewTask }: { api: any; onViewTask: (task: any
   }, [taskType, status, search, page, api]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
-  useEffect(() => { const t = setInterval(loadTasks, 10000); return () => clearInterval(t); }, [loadTasks]);
+  useEffect(() => { const t = setInterval(loadTasks, 15000); return () => clearInterval(t); }, [loadTasks]);
 
   const handleCancel = (task: any) => {
     modal.confirm({
@@ -110,11 +110,18 @@ export function TaskList({ api, onViewTask }: { api: any; onViewTask: (task: any
             v === '__all__' ? <Tag color="#7c3aed">📦 全部数据表</Tag> : <span style={{ fontSize: 12 }}>📁 {tableTitles[v] || v}({v})</span>
           )},
           { title: '文件名称', ellipsis: true, render: (_: any, r: any) => getFileName(r) },
-          { title: '状态', dataIndex: 'status', width: 120, render: (v: any, r: any) => (
-            <Space size={4}>
-              <StatusBadge status={v} />
-              {v === 'processing' && <Progress percent={r.progress || 0} size="small" style={{ width: 60, margin: 0 }} />}
-            </Space>
+          { title: '状态', dataIndex: 'status', width: 150, render: (v: any, r: any) => (
+            <div>
+              <Space size={4}>
+                <StatusBadge status={v} />
+                {v === 'processing' && <Progress percent={r.progress || 0} size="small" style={{ width: 60, margin: 0 }} />}
+              </Space>
+              {v === 'processing' && r.totalRows > 0 && (
+                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                  {r.processedRows || 0}行已{r.taskType === 'import' ? '导入' : '导出'} / 总{r.totalRows}行
+                </div>
+              )}
+            </div>
           )},
           { title: '创建用户', width: 80, render: (_: any, r: any) => {
             const u = r.createdBy;

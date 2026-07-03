@@ -343,6 +343,7 @@ async function processExportAsync(db, taskId, params) {
     let processedRows = 0;
     const outputFiles = [];
     let cancelled = false;
+    let mergedZipPath = "";
     const allAttachFileEntries = [];
     for (const tblName of tableList) {
       if (import_cancel_state.cancelFlags.has(taskId)) {
@@ -717,12 +718,31 @@ async function processExportAsync(db, taskId, params) {
       if (!outputFiles.includes(finalFilePath2)) {
         outputFiles.push(finalFilePath2);
       }
+      if (isAllTables && !cancelled) {
+        try {
+          if (!mergedZipPath) {
+            mergedZipPath = import_path.default.join(tempDir, `sjgl02_export_${taskId}_${Date.now()}.zip`);
+          }
+          (0, import_child_process.execSync)(`cd "${tempDir}" && zip -0 -q "${mergedZipPath}" "${import_path.default.basename(finalFilePath2)}"`, { stdio: "pipe" });
+          try {
+            import_fs.default.unlinkSync(finalFilePath2);
+          } catch {
+          }
+        } catch {
+        }
+      }
       await repo.update({
         filterByTk: taskId,
         values: { progress: Math.min(100, Math.floor(processedRows / Math.max(totalRows, 1) * 100)), processedRows, totalRows }
       });
     }
     if (cancelled) {
+      if (mergedZipPath) {
+        try {
+          import_fs.default.unlinkSync(mergedZipPath);
+        } catch {
+        }
+      }
       for (const fp of outputFiles) {
         try {
           import_fs.default.unlinkSync(fp);
@@ -733,11 +753,18 @@ async function processExportAsync(db, taskId, params) {
       await repo.update({ filterByTk: taskId, values: { status: "cancelled", completedAt: /* @__PURE__ */ new Date() } });
       return;
     }
-    if (outputFiles.length === 0) {
-      throw new Error("\u6CA1\u6709\u6570\u636E\u53EF\u5BFC\u51FA");
-    }
     let mergedFilePath;
-    if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
+    if (isAllTables && mergedZipPath) {
+      mergedFilePath = mergedZipPath;
+      if (allAttachFileEntries.length > 0) {
+        try {
+          (0, import_child_process.execSync)(`cd "${tempDir}" && zip -0 -q "${mergedFilePath}" ${allAttachFileEntries.map((a) => `"${a.diskPath.replace(tempDir + "/", "")}"`).join(" ")}`, { stdio: "pipe" });
+        } catch {
+        }
+      }
+    } else if (outputFiles.length === 0) {
+      throw new Error("\u6CA1\u6709\u6570\u636E\u53EF\u5BFC\u51FA");
+    } else if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
       mergedFilePath = outputFiles[0];
     } else {
       await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u6700\u7EC8\u5408\u5E76 ${outputFiles.length} \u4E2A\u6587\u4EF6${allAttachFileEntries.length > 0 ? " + " + allAttachFileEntries.length + " \u4E2A\u9644\u4EF6" : ""}...`);

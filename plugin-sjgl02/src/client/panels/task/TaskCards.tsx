@@ -100,7 +100,7 @@ export function TaskSummaryCard({ task, api, tableTitles, fieldTitles }: any) {
           <StatusBadge status={task.status} />
           {task.status === 'processing' && (
             <span style={{ marginLeft: 8, fontSize: 12, color: '#666' }}>
-              {task.progress || 0}% · {task.processedRows || 0}/{task.totalRows || 0}
+              {task.progress || 0}% · {task.processedRows || 0}行已{isImport ? '导入' : '导出'} / 总{task.totalRows || 0}行
             </span>
           )}
         </Descriptions.Item>
@@ -479,19 +479,39 @@ function ImportPreviewCard({ task, api }: any) {
   }
 
   const rows = previewData.preview;
-  // 只显示映射的 Excel 列（与导入步骤3的预览一致）
-  const mappedExcelCols = Object.values(task.fieldMapping || {}).filter(
-    (v: any) => v && v !== '__ignore__' && v !== '__custom__'
-  );
-  const cols = (mappedExcelCols.length > 0 ? mappedExcelCols : Object.keys(rows[0] || {}))
-    .map(k => ({ title: k, dataIndex: k, ellipsis: true }));
+  const fm = task.fieldMapping || {};
+  const cv = task.customValues || {};
+
+  // 基于 fieldMapping 全量构建列和行（含Excel映射、自定义值、忽略）
+  const tableFields = Object.keys(fm);
+  const cols = tableFields.map(tf => ({
+    title: tf,
+    dataIndex: tf,
+    ellipsis: true,
+    render: (v: any) => {
+      if (fm[tf] === '__ignore__') return <span style={{ color: '#9ca3af' }}>{v}</span>;
+      if (fm[tf] === '__custom__') return <span style={{ color: '#7c3aed' }}>📝 {v}</span>;
+      return v;
+    },
+  }));
+
+  const tableRows = rows.map((r: any, i: number) => {
+    const obj: any = { key: i };
+    for (const tf of tableFields) {
+      const ec = fm[tf];
+      if (ec === '__ignore__') obj[tf] = '— 忽略';
+      else if (ec === '__custom__') obj[tf] = cv[tf] || '';
+      else obj[tf] = r[ec] !== undefined ? r[ec] : '';
+    }
+    return obj;
+  });
 
   return (
     <CollapseCard title={`数据预览（前 ${rows.length} 条）`}>
       <div style={{ color: '#6b7280', fontSize: 12, marginBottom: 8 }}>
         导入完成，共处理 {task.totalRows || 0} 行，成功 {task.processedRows || 0} 行
       </div>
-      <Table dataSource={rows.map((r: any, i: number) => ({ key: i, ...r }))} columns={cols} pagination={false} size="small" scroll={{ x: 'max-content' }} />
+      <Table dataSource={tableRows} columns={cols} pagination={false} size="small" scroll={{ x: 'max-content' }} />
     </CollapseCard>
   );
 }
