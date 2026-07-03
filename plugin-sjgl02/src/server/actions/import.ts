@@ -56,6 +56,7 @@ function streamProcessExcel(
   targetSheet: string | undefined,
   headerRow: number,
   onRow: (excelRowNum: number, dataIndex: number, rowValues: any[]) => boolean | void,
+  onHeader?: (headers: string[]) => void,
 ): Promise<{ headers: string[]; totalRows: number }> {
   return new Promise((resolve, reject) => {
     const WorkbookReaderCtor = (ExcelJS.stream.xlsx as any).WorkbookReader;
@@ -86,6 +87,7 @@ function streamProcessExcel(
         if (rowNum === hRowNum) {
           headers = (row.values || []).slice(1).map((h: any) => String(h ?? ''));
           ready = true;
+          if (onHeader) onHeader(headers);
           return;
         }
         if (!ready) return;
@@ -132,25 +134,36 @@ export async function uploadParse(ctx: Context, next: Next) {
       ctx.throw(404, 'File not found on disk');
     }
 
-    const previewRows: Record<string, any>[] = [];
+    const rawRows: any[][] = [];
     let headerColumns: string[] = [];
     let totalRows = 0;
 
+    // 读 Sheet 名（轻量读文件结构）
+    let sheets: string[] = [sheetName || 'Sheet1'];
+    try {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.readFile(filePath);
+      sheets = wb.worksheets.map((ws: any) => ws.name);
+    } catch {}
+
     await streamProcessExcel(filePath, sheetName, parseInt(String(headerRow), 10) || 1, (rowNum, dataIdx, vals) => {
       if (dataIdx < 0) return true;
-      if (dataIdx < 10) {
-        const obj: Record<string, any> = {};
-        headerColumns.forEach((h, i) => { obj[h] = vals[i] !== undefined ? vals[i] : ''; });
-        previewRows.push(obj);
-      }
+      if (dataIdx < 10) rawRows.push(vals);
       return dataIdx < 10;
-    }).then((result) => {
-      headerColumns = result.headers;
+    }, (headers) => { headerColumns = headers; }).then((result) => {
+      if (headerColumns.length === 0) headerColumns = result.headers;
       totalRows = result.totalRows;
     });
 
+    // 用填充好的 headerColumns 重建预览对象
+    const previewRows = rawRows.map(vals => {
+      const obj: Record<string, any> = {};
+      headerColumns.forEach((h, i) => { obj[h] = vals[i] !== undefined ? vals[i] : ''; });
+      return obj;
+    });
+
     ctx.body = {
-      sheets: [sheetName || 'Sheet1'],
+      sheets,
       headerColumns,
       fileId,
       fileName: attachment.filename || attachment.title,
@@ -185,22 +198,24 @@ export async function preview(ctx: Context, next: Next) {
       ctx.throw(404, 'File not found on disk: ' + filePath);
     }
 
-    const previewRows: any[] = [];
+    const rawRows: any[] = [];
     let columns: string[] = [];
     let totalRows = 0;
 
     const hRow = parseInt(String(headerRow), 10) || 1;
     await streamProcessExcel(filePath, sheetName, hRow, (rowNum, dataIdx, vals) => {
       if (dataIdx < 0) return true;
-      if (dataIdx < previewLimit) {
-        const obj: Record<string, any> = {};
-        columns.forEach((h, i) => { obj[h] = vals[i] !== undefined ? vals[i] : ''; });
-        previewRows.push(obj);
-      }
+      if (dataIdx < previewLimit) rawRows.push(vals);
       return dataIdx < previewLimit;
-    }).then((result) => {
-      columns = result.headers;
+    }, (headers) => { columns = headers; }).then((result) => {
+      if (columns.length === 0) columns = result.headers;
       totalRows = result.totalRows;
+    });
+
+    const previewRows = rawRows.map(vals => {
+      const obj: Record<string, any> = {};
+      columns.forEach((h, i) => { obj[h] = vals[i] !== undefined ? vals[i] : ''; });
+      return obj;
     });
 
     ctx.body = {
@@ -314,6 +329,12 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
   const { tableName, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields, blankCellMode, attachmentPath } = params;
   const repo = db.getRepository('sjgl02_tasks');
   const sequelize = db.sequelize;
+  // 获取当前用户 ID（用于系统字段自动填充）
+  let userId: number | null = null;
+  try {
+    const taskRec = await repo.findOne({ filter: { id: taskId }, raw: true });
+    userId = (taskRec as any)?.createdById || null;
+  } catch {}
   const mapping = fieldMapping || {};
   const custVals = customValues || {};
   const uFields = uniqueFields || [];
@@ -419,6 +440,9 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
     return;
   }
 
+  let errorLogs: any[] = [];
+  let shadowTableName = '';
+
   try {
     await repo.update({ filterByTk: taskId, values: { status: 'processing' } });
     await writeTaskLog(db, taskId, 'INFO', '开始执行导入任务');
@@ -427,7 +451,7 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
 
     // ==================== 阶段一：流式预校验 ====================
     await writeTaskLog(db, taskId, 'INFO', '阶段一：流式预校验开始...');
-    const errorLogs: any[] = [];
+    errorLogs = [];
     let phase1TotalRows = 0;
     let phase1Processed = 0;
     let phase1Headers: string[] = [];
@@ -483,8 +507,7 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
         }
 
         return true;
-      }).then((result) => {
-        phase1Headers = result.headers;
+      }, (headers) => { phase1Headers = headers; }).then((result) => {
         if (phase1TotalRows === 0) phase1TotalRows = result.totalRows;
         resolve({ passed: !phase1Cancelled && errorLogs.length === 0 });
       });
@@ -511,7 +534,7 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
 
     // ==================== 阶段二：影子表写入 ====================
     await writeTaskLog(db, taskId, 'INFO', '阶段二：影子表写入开始...');
-    const shadowTableName = `_sjgl02_import_${taskId}`;
+    shadowTableName = `_sjgl02_import_${taskId}`;
     const quotedMain = `"${tableName}"`;
     const quotedShadow = `"${shadowTableName}"`;
 
@@ -525,7 +548,26 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
           INCLUDING COMMENTS
         )
       `);
-      await sequelize.query(`ALTER TABLE ${quotedShadow} ALTER COLUMN id DROP DEFAULT`);
+
+      // 检查 id 列是否有 nextval 默认值，没有则创建临时序列
+      let idHasDefault = false;
+      try {
+        const [defRows] = await sequelize.query(
+          `SELECT column_name FROM information_schema.columns 
+           WHERE table_name = '${shadowTableName}' AND column_name = 'id'
+           AND column_default LIKE 'nextval%' AND table_schema = current_schema()`,
+          { raw: true },
+        );
+        idHasDefault = (defRows as any[]).length > 0;
+      } catch {}
+
+      let tempSeqName = '';
+      if (!idHasDefault) {
+        tempSeqName = `_sjgl02_temp_${taskId}_id_seq`;
+        await sequelize.query(`CREATE SEQUENCE IF NOT EXISTS "${tempSeqName}"`);
+        await sequelize.query(`ALTER TABLE ${quotedShadow} ALTER COLUMN id SET DEFAULT nextval('${tempSeqName}')`);
+        await writeTaskLog(db, taskId, 'INFO', `id 无默认值，已创建临时序列: ${tempSeqName}`);
+      }
 
       const [colRows] = await sequelize.query(
         `SELECT column_name FROM information_schema.columns 
@@ -534,20 +576,24 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
         { raw: true },
       );
       const allColumns = (colRows as any[]).map((r: any) => r.column_name);
-      const nonIdColumns = allColumns.filter(c => c !== 'id');
-      const quotedCols = allColumns.map(c => `"${c}"`).join(', ');
+
+      // 系统字段硬编码排除（仅限用户未映射的字段）
+      const SYS_FIELDS = ['id', 'createdAt', 'updatedAt', 'createdById', 'updatedById'];
+      const systemCols = new Set(SYS_FIELDS.filter(f => !mapping[f] || mapping[f] === '__ignore__'));
+      const nonIdColumns = allColumns.filter(c => !systemCols.has(c));
+      const quotedCols = nonIdColumns.map(c => `"${c}"`).join(', ');
+      await writeTaskLog(db, taskId, 'INFO', `影子表列: ${quotedCols}, 排除: ${Array.from(systemCols).join(', ')}`);
 
       // 流式读取收集所有行数据
       const allRowValues: any[][] = [];
-      let phase2Headers: string[] = [];
       let phase2Cancelled = false;
 
       await streamProcessExcel(filePath, sheetName, hRow, (rowNum, dataIdx, vals) => {
         if (cancelFlags.has(taskId)) { phase2Cancelled = true; return false; }
         if (dataIdx < 0) return true;
-        if (isEmptyRow(vals, phase2Headers)) return true;
+        if (isEmptyRow(vals, phase1Headers)) return true;
 
-        const record = makeRecord(vals, phase2Headers);
+        const record = makeRecord(vals, phase1Headers);
         for (const fn of dateFieldNames) {
           const v = record[fn];
           if (typeof v === 'string') record[fn] = normalizeDateValue(v);
@@ -558,7 +604,7 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
           if (!allFilled) return true;
         }
 
-        const rowVals = allColumns.map(c => record[c] !== undefined ? record[c] : null);
+        const rowVals = nonIdColumns.map(c => record[c] !== undefined ? record[c] : null);
         allRowValues.push(rowVals);
 
         if (allRowValues.length % 1000 === 0 && cancelFlags.has(taskId)) {
@@ -567,7 +613,7 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
         }
 
         return true;
-      }).then((result) => { phase2Headers = result.headers; });
+      }, (headers) => { if (phase1Headers.length === 0) phase1Headers = headers; }).then((result) => { phase1Headers = result.headers; });
 
       if (phase2Cancelled || cancelFlags.has(taskId)) {
         await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
@@ -579,8 +625,55 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
 
       const phase2TotalRows = allRowValues.length;
 
-      // 批量 INSERT 到影子表（每 5000 行一批）
+      // 批量 INSERT 到影子表（每 5000 行一批），失败时拆分逐行定位
       const BATCH_SIZE = 5000;
+
+      /** 单批 INSERT */
+      async function insertBatch(batch: any[][]) {
+        const placeholders = batch.map(
+          (_, ri) => `(${nonIdColumns.map((__, ci) => `$${ri * nonIdColumns.length + ci + 1}`).join(', ')})`
+        ).join(', ');
+        const flatValues = batch.flat();
+        await sequelize.query(`INSERT INTO ${quotedShadow} (${quotedCols}) VALUES ${placeholders}`, { bind: flatValues });
+      }
+
+      /** 方案 C：批次失败后拆小批→拆单行，返回失败行 errorLogs */
+      async function insertWithSplit(batch: any[][], startOffset: number): Promise<any[]> {
+        const errLogs: any[] = [];
+        const SUB_SIZE = Math.max(500, Math.floor(batch.length / 10));
+        if (SUB_SIZE >= batch.length) {
+          // 拆到单行
+          for (let si = 0; si < batch.length; si++) {
+            try {
+              await insertBatch([batch[si]]);
+            } catch (e: any) {
+              const rowIdx = startOffset + si;
+              const rowVals = batch[si];
+              errLogs.push({
+                row: rowIdx + 1,
+                excelRow: (headerRow || 1) + rowIdx + 1,
+                reason: e.message || String(e),
+                snapshot: JSON.stringify(
+                  nonIdColumns.reduce((acc: any, c, i) => { acc[c] = rowVals[i]; return acc; }, {})
+                ).substring(0, 500),
+              });
+            }
+          }
+        } else {
+          for (let si = 0; si < batch.length; si += SUB_SIZE) {
+            const sub = batch.slice(si, si + SUB_SIZE);
+            try {
+              await insertBatch(sub);
+            } catch {
+              const subLogs = await insertWithSplit(sub, startOffset + si);
+              errLogs.push(...subLogs);
+              if (errLogs.length > 100) break; // 太多错误就跳过继续拆
+            }
+          }
+        }
+        return errLogs;
+      }
+
       for (let bi = 0; bi < allRowValues.length; bi += BATCH_SIZE) {
         if (cancelFlags.has(taskId)) {
           await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
@@ -590,18 +683,25 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
           return;
         }
         const batch = allRowValues.slice(bi, bi + BATCH_SIZE);
-        const placeholders = batch.map(
-          (_, ri) => `(${allColumns.map((__, ci) => `$${ri * allColumns.length + ci + 1}`).join(', ')})`
-        ).join(', ');
-        const flatValues = batch.flat();
-        await sequelize.query(
-          `INSERT INTO ${quotedShadow} (${quotedCols}) VALUES ${placeholders}`,
-          { bind: flatValues },
-        );
-        const prog = 50 + Math.floor((bi * 40) / Math.max(allRowValues.length, 1));
         try {
-          await repo.update({ filterByTk: taskId, values: { progress: Math.min(90, prog) } });
-        } catch {}
+          await insertBatch(batch);
+        } catch (batchErr: any) {
+          await writeTaskLog(db, taskId, 'WARN', `批次 ${bi+1}-${bi+batch.length} 写入失败，逐行定位...`);
+          const splitLogs = await insertWithSplit(batch, bi);
+          if (splitLogs.length > 0) {
+            errorLogs.push(...splitLogs);
+            if (errorLogs.length > 1000) errorLogs.splice(1000);
+            await writeTaskLog(db, taskId, 'ERROR', `${splitLogs.length} 行写入失败，已终止`);
+            await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
+            await repo.update({
+              filterByTk: taskId,
+              values: { status: 'failed', errorLogs, errorMessage: `阶段二写入失败: ${splitLogs.length} 行数据异常`, completedAt: new Date() },
+            });
+            return;
+          }
+        }
+        const prog = 50 + Math.floor((bi * 40) / Math.max(allRowValues.length, 1));
+        try { await repo.update({ filterByTk: taskId, values: { progress: Math.min(90, prog) } }); } catch {}
       }
 
       await writeTaskLog(db, taskId, 'SUCC', `阶段二影子表写入完成，共 ${phase2TotalRows} 行`);
@@ -625,14 +725,21 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
               const stillMap = Object.entries(mapping).some(([tf, ec]) => {
                 if (ec === '__ignore__' || ec === '__custom__') return false;
                 if (ec === col) return true;
-                const idx = phase2Headers.indexOf(ec);
-                return idx >= 0 && phase2Headers[idx] === col;
+                const idx = phase1Headers.indexOf(ec);
+                return idx >= 0 && phase1Headers[idx] === col;
               });
               if (stillMap) continue;
             }
             setClauses.push(`"${col}" = s."${col}"`);
           }
           const whereClauses = uFields.map(uf => `m."${uf}" = s."${uf}"`).join(' AND ');
+
+          // 系统字段智能填充：updatedAt/updatedById — 映射了取Excel值，没映射自动填
+          for (const f of ['updatedAt', 'updatedById']) {
+            if (!nonIdColumns.includes(f)) {
+              setClauses.push(`"${f}" = COALESCE(s."${f}", ${f === 'updatedAt' ? 'NOW()' : (userId || 'NULL') + '::bigint'})`);
+            }
+          }
 
           if (setClauses.length > 0 && whereClauses) {
             const [updateResult] = await sequelize.query(
@@ -643,27 +750,90 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
             await writeTaskLog(db, taskId, 'INFO', `更新模式：匹配 ${updatedCount} 行，影子表共 ${phase2TotalRows} 行`);
           }
         } else if (importMode === 'upsert') {
-          const conflictCols = uFields.map(uf => `"${uf}"`).join(', ');
-          const updateSetClauses = nonIdColumns
-            .filter(c => !uFields.includes(c))
-            .map(c => `"${c}" = EXCLUDED."${c}"`)
-            .join(', ');
+          const setClauses: string[] = [];
+          for (const col of nonIdColumns) {
+            if (uFields.includes(col)) continue;
+            if (bCellMode === 'skip' && Object.values(mapping).some(v => v === col)) continue;
+            setClauses.push(`"${col}" = s."${col}"`);
+          }
+          const whereClauses = uFields.map(uf => `m."${uf}" = s."${uf}"`).join(' AND ');
 
-          await sequelize.query(
-            `INSERT INTO ${quotedMain} SELECT * FROM ${quotedShadow} ON CONFLICT (${conflictCols}) DO UPDATE SET ${updateSetClauses}`,
-            { transaction },
-          );
-        } else {
-          const hasId = mapping.id && mapping.id !== '__ignore__';
-          if (hasId) {
+          // 系统字段智能填充
+          for (const f of ['updatedAt', 'updatedById']) {
+            if (!nonIdColumns.includes(f)) {
+              setClauses.push(`"${f}" = COALESCE(s."${f}", ${f === 'updatedAt' ? 'NOW()' : (userId || 'NULL') + '::bigint'})`);
+            }
+          }
+
+          if (uFields.length > 0 && setClauses.length > 0) {
+            // 先更新已存在的行
             await sequelize.query(
-              `INSERT INTO ${quotedMain} SELECT * FROM ${quotedShadow}`,
+              `UPDATE ${quotedMain} m SET ${setClauses.join(', ')} FROM ${quotedShadow} s WHERE ${whereClauses}`,
+              { transaction },
+            );
+            // 再插入不存在的行
+            const nonIdQuotedCols2 = nonIdColumns.map(c => `"${c}"`).join(', ');
+            const notExistsWhere = uFields.map(uf => `m."${uf}" = s."${uf}"`).join(' AND ');
+
+            // 系统字段智能填充 for UPSERT INSERT
+            const sysIns2: string[] = [];
+            const sysSel2: string[] = [];
+            const SYS2 = ['createdAt', 'updatedAt', 'createdById', 'updatedById'];
+            for (const f of SYS2) {
+              if (!nonIdColumns.includes(f)) {
+                sysIns2.push(`"${f}"`);
+                if (f === 'createdAt' || f === 'updatedAt') sysSel2.push('NOW()');
+                else sysSel2.push(`${userId || 'NULL'}::bigint`);
+              }
+            }
+
+            await sequelize.query(
+              `INSERT INTO ${quotedMain} (${nonIdQuotedCols2}${sysIns2.length ? ', ' + sysIns2.join(', ') : ''}) SELECT ${nonIdQuotedCols2}${sysSel2.length ? ', ' + sysSel2.join(', ') : ''} FROM ${quotedShadow} s WHERE NOT EXISTS (SELECT 1 FROM ${quotedMain} m WHERE ${notExistsWhere})`,
               { transaction },
             );
           } else {
-            const nonIdQuotedCols = nonIdColumns.map(c => `"${c}"`).join(', ');
+            // 无唯一值字段：直接 INSERT 全量
+            const nonIdQuotedCols2 = nonIdColumns.map(c => `"${c}"`).join(', ');
+            // 系统字段智能填充
+            const sysIns3: string[] = [];
+            const sysSel3: string[] = [];
+            const SYS3 = ['createdAt', 'updatedAt', 'createdById', 'updatedById'];
+            for (const f of SYS3) {
+              if (!nonIdColumns.includes(f)) {
+                sysIns3.push(`"${f}"`);
+                if (f === 'createdAt' || f === 'updatedAt') sysSel3.push('NOW()');
+                else sysSel3.push(`${userId || 'NULL'}::bigint`);
+              }
+            }
             await sequelize.query(
-              `INSERT INTO ${quotedMain} (${nonIdQuotedCols}) SELECT ${nonIdQuotedCols} FROM ${quotedShadow}`,
+              `INSERT INTO ${quotedMain} (${nonIdQuotedCols2}${sysIns3.length ? ', ' + sysIns3.join(', ') : ''}) SELECT ${nonIdQuotedCols2}${sysSel3.length ? ', ' + sysSel3.join(', ') : ''} FROM ${quotedShadow}`,
+              { transaction },
+            );
+          }
+        } else {
+          const hasId = mapping.id && mapping.id !== '__ignore__';
+          const nonIdQuotedCols = nonIdColumns.map(c => `"${c}"`).join(', ');
+
+          // 系统字段智能填充：映射了取 Excel 值，没映射用 NOW()/userId
+          const sysIns: string[] = [];
+          const sysSel: string[] = [];
+          const SYS = ['createdAt', 'updatedAt', 'createdById', 'updatedById'];
+          for (const f of SYS) {
+            if (!nonIdColumns.includes(f)) {
+              sysIns.push(`"${f}"`);
+              if (f === 'createdAt' || f === 'updatedAt') sysSel.push('NOW()');
+              else sysSel.push(`${userId || 'NULL'}::bigint`);
+            }
+          }
+
+          if (hasId) {
+            await sequelize.query(
+              `INSERT INTO ${quotedMain} (${nonIdQuotedCols}${sysIns.length ? ', ' + sysIns.join(', ') : ''}) SELECT ${nonIdQuotedCols}${sysSel.length ? ', ' + sysSel.join(', ') : ''} FROM ${quotedShadow}`,
+              { transaction },
+            );
+          } else {
+            await sequelize.query(
+              `INSERT INTO ${quotedMain} (${nonIdQuotedCols}${sysIns.length ? ', ' + sysIns.join(', ') : ''}) SELECT ${nonIdQuotedCols}${sysSel.length ? ', ' + sysSel.join(', ') : ''} FROM ${quotedShadow}`,
               { transaction },
             );
           }
@@ -690,6 +860,11 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
           } catch {}
         }
 
+        // 清理临时序列
+        if (tempSeqName) {
+          try { await sequelize.query(`DROP SEQUENCE IF EXISTS "${tempSeqName}"`); } catch {}
+        }
+
         const successMsg = importMode === 'update'
           ? `迁移完成，更新 ${updatedCount} 行，影子表已删除`
           : `迁移完成，共 ${phase2TotalRows} 行，影子表已删除`;
@@ -710,10 +885,11 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
     }
   } catch (err: any) {
     try {
+      const fallbackLogs = errorLogs.length > 0 ? errorLogs : [{ reason: err.message || String(err), snapshot: JSON.stringify({ shadowTable: shadowTableName || '?', phase: '阶段二写入' }).substring(0, 500) }];
       await writeTaskLog(db, taskId, 'ERROR', `导入异常: ${err.message || String(err)}`);
       await repo.update({
         filterByTk: taskId,
-        values: { status: 'failed', errorMessage: err.message || String(err), completedAt: new Date() },
+        values: { status: 'failed', errorMessage: err.message || String(err), errorLogs: fallbackLogs, completedAt: new Date() },
       });
     } catch {}
   } finally {

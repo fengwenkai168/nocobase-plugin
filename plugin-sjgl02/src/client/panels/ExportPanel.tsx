@@ -28,6 +28,9 @@ export default function ExportPanel() {
   const [includeAttachments, setIncludeAttachments] = React.useState(false);
   const [estimatedRows, setEstimatedRows] = React.useState<number | null>(null);
   const [headerStyle, setHeaderStyle] = React.useState<string>('title_id');
+  const [permSource, setPermSource] = React.useState<{ type: string; id?: string; label?: string }>({ type: 'admin' });
+  const [permSourceOptions, setPermSourceOptions] = React.useState<any[]>([]);
+  const [permExportFields, setPermExportFields] = React.useState<string[]>([]);
 
   React.useEffect(() => {
     apiRequest(client, 'sjgl02Permissions:tables').then((data) => {
@@ -46,10 +49,71 @@ export default function ExportPanel() {
     }).catch(() => {}).finally(() => setLoading(false));
     apiRequest(client, 'auth:check').then((userData: any) => {
       const roles = (userData?.data?.roles || userData?.roles || []).map((r: any) => r.name || '');
-      setIsAdminOrRoot(roles.includes('admin') || roles.includes('root'));
+      const isAdmin = roles.includes('admin') || roles.includes('root');
+      setIsAdminOrRoot(isAdmin);
+      if (isAdmin) {
+        apiRequest(client, 'sjgl02Permissions:userRoleList').then((list: any) => {
+          const opts: any[] = [{ value: 'admin', label: '管理员完整权限', type: 'admin' }];
+          (list?.users || []).forEach((u: any) => { opts.push({ value: `user:${u.id}`, label: `👤 ${u.nickname || u.username || u.id} — 用户方案`, type: 'user', id: String(u.id) }); });
+          (list?.roles || []).forEach((r: any) => { opts.push({ value: `role:${r.name}`, label: `👥 ${r.title || r.name} — 角色方案`, type: 'role', id: r.name }); });
+          setPermSourceOptions(opts);
+        }).catch(() => {});
+      }
     }).catch(() => {});
   }, []);
 
+  React.useEffect(() => {
+    if (!selTable || selTable === '__all__' || !isAdminOrRoot) return;
+    const allOpts = permSourceOptions.length > 0 ? permSourceOptions : [];
+    if (allOpts.length === 0) return;
+    const filtered: any[] = [{ value: 'admin', label: '管理员完整权限', type: 'admin' }];
+    const promises = allOpts.filter(o => o.type !== 'admin').map(async (o) => {
+      try {
+        const res = await apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: o.type, targetId: o.id } });
+        const perms = (res?.custom || []).concat(res?.inherited || []);
+        if (perms.some((p: any) => p.tableName === selTable && p.canExport)) filtered.push(o);
+      } catch {}
+    });
+    Promise.all(promises).then(() => setPermSourceOptions(filtered));
+  }, [selTable, isAdminOrRoot]);
+
+  const handlePermSourceChange = (val: string) => {
+    if (val === 'admin') { setPermSource({ type: 'admin' }); setPermExportFields([]); return; }
+    const [type, id] = val.split(':');
+    const option = permSourceOptions.find(o => o.value === val);
+    setPermSource({ type, id, label: option?.label });
+    apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: type, targetId: id } }).then((permData: any) => {
+      const perm = (permData?.custom || []).find((p: any) => p.tableName === selTable);
+      if (perm?.canExport && perm?.exportFields?.length > 0) {
+        setPermExportFields(perm.exportFields);
+      } else {
+        setPermExportFields([]);
+      }
+    }).catch(() => setPermExportFields([]));
+  };
+
+  // 权限方案切换时重载字段
+  React.useEffect(() => {
+    if (!selTable || selTable === '__all__') return;
+    client.request({ url: 'sjgl02Export:tableFields', method: 'get', params: { tableName: selTable } })
+      .then((res: any) => {
+        const fArr = res?.data?.data || [];
+        if (!Array.isArray(fArr)) return;
+        const allFields = fArr.map((f: any) => ({ ...f, displayName: f.name }));
+        if (permSource.type === 'admin') {
+          setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); return;
+        }
+        apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: permSource.type, targetId: permSource.id } }).then((permData: any) => {
+          const perm = (permData?.custom || []).find((p: any) => p.tableName === selTable);
+          if (perm?.canExport && perm?.exportFields?.length > 0) {
+            const filtered = allFields.filter((f: any) => perm.exportFields.includes(f.name));
+            setFields(filtered); setSelFields(filtered.map((f: any) => f.name));
+          } else { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); }
+        }).catch(() => { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); });
+      }).catch(() => {});
+  }, [permSource.type, permSource.id]);
+
+  // 当 selTable 变化时加载字段
   React.useEffect(() => {
     if (selTable && selTable !== '__all__') {
       client.request({ url: 'sjgl02Export:tableFields', method: 'get', params: { tableName: selTable } })
@@ -60,7 +124,17 @@ export default function ExportPanel() {
           apiRequest(client, 'auth:check').then((userData: any) => {
             const uid = userData?.data?.id || userData?.id;
             const roles = (userData?.roles || userData?.data?.roles || []).map((r: any) => r.name || '');
-            if (roles.includes('admin') || roles.includes('root')) { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); return; }
+            if (roles.includes('admin') || roles.includes('root')) {
+              if (permSource.type === 'admin') { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); return; }
+              apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: permSource.type, targetId: permSource.id } }).then((permData: any) => {
+                const perm = (permData?.custom || []).find((p: any) => p.tableName === selTable);
+                if (perm?.canExport && perm?.exportFields?.length > 0) {
+                  const filtered = allFields.filter((f: any) => perm.exportFields.includes(f.name));
+                  setFields(filtered); setSelFields(filtered.map((f: any) => f.name));
+                } else { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); }
+              }).catch(() => { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); });
+              return;
+            }
             if (!uid) { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); return; }
             apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: 'user', targetId: String(uid) } }).then((permData: any) => {
               const perms = [...(permData?.custom || []), ...(permData?.inherited || [])];
@@ -152,6 +226,16 @@ export default function ExportPanel() {
       )}
       {step === 1 && (
         <div>
+          {isAdminOrRoot && !isAllTables && (
+            <Card size="small" style={{ marginBottom: 12, backgroundColor: '#f0f7ff', border: '1px solid #bae0ff' }}>
+              <Space>
+                <span style={{ color: '#666', fontSize: 13 }}>切换已配置的方案：</span>
+                <Select value={permSource.type === 'admin' ? 'admin' : `${permSource.type}:${permSource.id}`}
+                  onChange={handlePermSourceChange} style={{ minWidth: 220 }} size="small"
+                  options={permSourceOptions} />
+              </Space>
+            </Card>
+          )}
           {isAllTables ? (
             <Card title="📦 全部数据表导出" size="small" style={{ marginBottom: 12 }}>
               <p>✅ 将导出系统中所有数据表，最终打包为 <strong>ZIP 压缩包</strong></p>

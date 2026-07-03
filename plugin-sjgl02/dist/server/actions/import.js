@@ -93,7 +93,7 @@ async function getTableFields(ctx, next) {
   ctx.body = fields;
   await next();
 }
-function streamProcessExcel(filePath, targetSheet, headerRow, onRow) {
+function streamProcessExcel(filePath, targetSheet, headerRow, onRow, onHeader) {
   return new Promise((resolve, reject) => {
     const WorkbookReaderCtor = import_exceljs.default.stream.xlsx.WorkbookReader;
     const workbookReader = new WorkbookReaderCtor(filePath, {});
@@ -123,6 +123,7 @@ function streamProcessExcel(filePath, targetSheet, headerRow, onRow) {
         if (rowNum === hRowNum) {
           headers = (row.values || []).slice(1).map((h) => String(h ?? ""));
           ready = true;
+          if (onHeader) onHeader(headers);
           return;
         }
         if (!ready) return;
@@ -170,25 +171,35 @@ async function uploadParse(ctx, next) {
     if (!import_fs.default.existsSync(filePath)) {
       ctx.throw(404, "File not found on disk");
     }
-    const previewRows = [];
+    const rawRows = [];
     let headerColumns = [];
     let totalRows = 0;
+    let sheets = [sheetName || "Sheet1"];
+    try {
+      const wb = new import_exceljs.default.Workbook();
+      await wb.xlsx.readFile(filePath);
+      sheets = wb.worksheets.map((ws) => ws.name);
+    } catch {
+    }
     await streamProcessExcel(filePath, sheetName, parseInt(String(headerRow), 10) || 1, (rowNum, dataIdx, vals) => {
       if (dataIdx < 0) return true;
-      if (dataIdx < 10) {
-        const obj = {};
-        headerColumns.forEach((h, i) => {
-          obj[h] = vals[i] !== void 0 ? vals[i] : "";
-        });
-        previewRows.push(obj);
-      }
+      if (dataIdx < 10) rawRows.push(vals);
       return dataIdx < 10;
+    }, (headers) => {
+      headerColumns = headers;
     }).then((result) => {
-      headerColumns = result.headers;
+      if (headerColumns.length === 0) headerColumns = result.headers;
       totalRows = result.totalRows;
     });
+    const previewRows = rawRows.map((vals) => {
+      const obj = {};
+      headerColumns.forEach((h, i) => {
+        obj[h] = vals[i] !== void 0 ? vals[i] : "";
+      });
+      return obj;
+    });
     ctx.body = {
-      sheets: [sheetName || "Sheet1"],
+      sheets,
       headerColumns,
       fileId,
       fileName: attachment.filename || attachment.title,
@@ -222,23 +233,26 @@ async function preview(ctx, next) {
     if (!import_fs.default.existsSync(filePath)) {
       ctx.throw(404, "File not found on disk: " + filePath);
     }
-    const previewRows = [];
+    const rawRows = [];
     let columns = [];
     let totalRows = 0;
     const hRow = parseInt(String(headerRow), 10) || 1;
     await streamProcessExcel(filePath, sheetName, hRow, (rowNum, dataIdx, vals) => {
       if (dataIdx < 0) return true;
-      if (dataIdx < previewLimit) {
-        const obj = {};
-        columns.forEach((h, i) => {
-          obj[h] = vals[i] !== void 0 ? vals[i] : "";
-        });
-        previewRows.push(obj);
-      }
+      if (dataIdx < previewLimit) rawRows.push(vals);
       return dataIdx < previewLimit;
+    }, (headers) => {
+      columns = headers;
     }).then((result) => {
-      columns = result.headers;
+      if (columns.length === 0) columns = result.headers;
       totalRows = result.totalRows;
+    });
+    const previewRows = rawRows.map((vals) => {
+      const obj = {};
+      columns.forEach((h, i) => {
+        obj[h] = vals[i] !== void 0 ? vals[i] : "";
+      });
+      return obj;
     });
     ctx.body = {
       preview: previewRows,
@@ -336,6 +350,12 @@ async function processImportAsync(db, taskId, params) {
   const { tableName, sheetName, headerRow, fieldMapping, customValues, importMode, uniqueFields, blankCellMode, attachmentPath } = params;
   const repo = db.getRepository("sjgl02_tasks");
   const sequelize = db.sequelize;
+  let userId = null;
+  try {
+    const taskRec = await repo.findOne({ filter: { id: taskId }, raw: true });
+    userId = (taskRec == null ? void 0 : taskRec.createdById) || null;
+  } catch {
+  }
   const mapping = fieldMapping || {};
   const custVals = customValues || {};
   const uFields = uniqueFields || [];
@@ -439,13 +459,15 @@ async function processImportAsync(db, taskId, params) {
     await repo.update({ filterByTk: taskId, values: { status: "failed", errorMessage: "\u6587\u4EF6\u672A\u627E\u5230: " + filePath, completedAt: /* @__PURE__ */ new Date() } });
     return;
   }
+  let errorLogs = [];
+  let shadowTableName = "";
   try {
     await repo.update({ filterByTk: taskId, values: { status: "processing" } });
     await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u5165\u4EFB\u52A1");
     await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}`);
     await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u5BFC\u5165\u6A21\u5F0F: ${importMode || "insert"}`);
     await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u9636\u6BB5\u4E00\uFF1A\u6D41\u5F0F\u9884\u6821\u9A8C\u5F00\u59CB...");
-    const errorLogs = [];
+    errorLogs = [];
     let phase1TotalRows = 0;
     let phase1Processed = 0;
     let phase1Headers = [];
@@ -499,8 +521,9 @@ async function processImportAsync(db, taskId, params) {
           }
         }
         return true;
+      }, (headers) => {
+        phase1Headers = headers;
       }).then((result) => {
-        phase1Headers = result.headers;
         if (phase1TotalRows === 0) phase1TotalRows = result.totalRows;
         resolve({ passed: !phase1Cancelled && errorLogs.length === 0 });
       });
@@ -522,7 +545,7 @@ async function processImportAsync(db, taskId, params) {
       return;
     }
     await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u9636\u6BB5\u4E8C\uFF1A\u5F71\u5B50\u8868\u5199\u5165\u5F00\u59CB...");
-    const shadowTableName = `_sjgl02_import_${taskId}`;
+    shadowTableName = `_sjgl02_import_${taskId}`;
     const quotedMain = `"${tableName}"`;
     const quotedShadow = `"${shadowTableName}"`;
     try {
@@ -535,7 +558,24 @@ async function processImportAsync(db, taskId, params) {
           INCLUDING COMMENTS
         )
       `);
-      await sequelize.query(`ALTER TABLE ${quotedShadow} ALTER COLUMN id DROP DEFAULT`);
+      let idHasDefault = false;
+      try {
+        const [defRows] = await sequelize.query(
+          `SELECT column_name FROM information_schema.columns 
+           WHERE table_name = '${shadowTableName}' AND column_name = 'id'
+           AND column_default LIKE 'nextval%' AND table_schema = current_schema()`,
+          { raw: true }
+        );
+        idHasDefault = defRows.length > 0;
+      } catch {
+      }
+      let tempSeqName = "";
+      if (!idHasDefault) {
+        tempSeqName = `_sjgl02_temp_${taskId}_id_seq`;
+        await sequelize.query(`CREATE SEQUENCE IF NOT EXISTS "${tempSeqName}"`);
+        await sequelize.query(`ALTER TABLE ${quotedShadow} ALTER COLUMN id SET DEFAULT nextval('${tempSeqName}')`);
+        await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `id \u65E0\u9ED8\u8BA4\u503C\uFF0C\u5DF2\u521B\u5EFA\u4E34\u65F6\u5E8F\u5217: ${tempSeqName}`);
+      }
       const [colRows] = await sequelize.query(
         `SELECT column_name FROM information_schema.columns 
          WHERE table_name = '${shadowTableName}' AND table_schema = current_schema()
@@ -543,10 +583,12 @@ async function processImportAsync(db, taskId, params) {
         { raw: true }
       );
       const allColumns = colRows.map((r) => r.column_name);
-      const nonIdColumns = allColumns.filter((c) => c !== "id");
-      const quotedCols = allColumns.map((c) => `"${c}"`).join(", ");
+      const SYS_FIELDS = ["id", "createdAt", "updatedAt", "createdById", "updatedById"];
+      const systemCols = new Set(SYS_FIELDS.filter((f) => !mapping[f] || mapping[f] === "__ignore__"));
+      const nonIdColumns = allColumns.filter((c) => !systemCols.has(c));
+      const quotedCols = nonIdColumns.map((c) => `"${c}"`).join(", ");
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u5F71\u5B50\u8868\u5217: ${quotedCols}, \u6392\u9664: ${Array.from(systemCols).join(", ")}`);
       const allRowValues = [];
-      let phase2Headers = [];
       let phase2Cancelled = false;
       await streamProcessExcel(filePath, sheetName, hRow, (rowNum, dataIdx, vals) => {
         if (import_cancel_state.cancelFlags.has(taskId)) {
@@ -554,8 +596,8 @@ async function processImportAsync(db, taskId, params) {
           return false;
         }
         if (dataIdx < 0) return true;
-        if (isEmptyRow(vals, phase2Headers)) return true;
-        const record = makeRecord(vals, phase2Headers);
+        if (isEmptyRow(vals, phase1Headers)) return true;
+        const record = makeRecord(vals, phase1Headers);
         for (const fn of dateFieldNames) {
           const v = record[fn];
           if (typeof v === "string") record[fn] = normalizeDateValue(v);
@@ -564,15 +606,17 @@ async function processImportAsync(db, taskId, params) {
           const allFilled = uFields.every((uf) => record[uf] !== void 0 && record[uf] !== "");
           if (!allFilled) return true;
         }
-        const rowVals = allColumns.map((c) => record[c] !== void 0 ? record[c] : null);
+        const rowVals = nonIdColumns.map((c) => record[c] !== void 0 ? record[c] : null);
         allRowValues.push(rowVals);
         if (allRowValues.length % 1e3 === 0 && import_cancel_state.cancelFlags.has(taskId)) {
           phase2Cancelled = true;
           return false;
         }
         return true;
+      }, (headers) => {
+        if (phase1Headers.length === 0) phase1Headers = headers;
       }).then((result) => {
-        phase2Headers = result.headers;
+        phase1Headers = result.headers;
       });
       if (phase2Cancelled || import_cancel_state.cancelFlags.has(taskId)) {
         await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
@@ -583,6 +627,50 @@ async function processImportAsync(db, taskId, params) {
       }
       const phase2TotalRows = allRowValues.length;
       const BATCH_SIZE = 5e3;
+      async function insertBatch(batch) {
+        const placeholders = batch.map(
+          (_, ri) => `(${nonIdColumns.map((__, ci) => `$${ri * nonIdColumns.length + ci + 1}`).join(", ")})`
+        ).join(", ");
+        const flatValues = batch.flat();
+        await sequelize.query(`INSERT INTO ${quotedShadow} (${quotedCols}) VALUES ${placeholders}`, { bind: flatValues });
+      }
+      async function insertWithSplit(batch, startOffset) {
+        const errLogs = [];
+        const SUB_SIZE = Math.max(500, Math.floor(batch.length / 10));
+        if (SUB_SIZE >= batch.length) {
+          for (let si = 0; si < batch.length; si++) {
+            try {
+              await insertBatch([batch[si]]);
+            } catch (e) {
+              const rowIdx = startOffset + si;
+              const rowVals = batch[si];
+              errLogs.push({
+                row: rowIdx + 1,
+                excelRow: (headerRow || 1) + rowIdx + 1,
+                reason: e.message || String(e),
+                snapshot: JSON.stringify(
+                  nonIdColumns.reduce((acc, c, i) => {
+                    acc[c] = rowVals[i];
+                    return acc;
+                  }, {})
+                ).substring(0, 500)
+              });
+            }
+          }
+        } else {
+          for (let si = 0; si < batch.length; si += SUB_SIZE) {
+            const sub = batch.slice(si, si + SUB_SIZE);
+            try {
+              await insertBatch(sub);
+            } catch {
+              const subLogs = await insertWithSplit(sub, startOffset + si);
+              errLogs.push(...subLogs);
+              if (errLogs.length > 100) break;
+            }
+          }
+        }
+        return errLogs;
+      }
       for (let bi = 0; bi < allRowValues.length; bi += BATCH_SIZE) {
         if (import_cancel_state.cancelFlags.has(taskId)) {
           await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
@@ -592,14 +680,23 @@ async function processImportAsync(db, taskId, params) {
           return;
         }
         const batch = allRowValues.slice(bi, bi + BATCH_SIZE);
-        const placeholders = batch.map(
-          (_, ri) => `(${allColumns.map((__, ci) => `$${ri * allColumns.length + ci + 1}`).join(", ")})`
-        ).join(", ");
-        const flatValues = batch.flat();
-        await sequelize.query(
-          `INSERT INTO ${quotedShadow} (${quotedCols}) VALUES ${placeholders}`,
-          { bind: flatValues }
-        );
+        try {
+          await insertBatch(batch);
+        } catch (batchErr) {
+          await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", `\u6279\u6B21 ${bi + 1}-${bi + batch.length} \u5199\u5165\u5931\u8D25\uFF0C\u9010\u884C\u5B9A\u4F4D...`);
+          const splitLogs = await insertWithSplit(batch, bi);
+          if (splitLogs.length > 0) {
+            errorLogs.push(...splitLogs);
+            if (errorLogs.length > 1e3) errorLogs.splice(1e3);
+            await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `${splitLogs.length} \u884C\u5199\u5165\u5931\u8D25\uFF0C\u5DF2\u7EC8\u6B62`);
+            await sequelize.query(`DROP TABLE IF EXISTS ${quotedShadow}`);
+            await repo.update({
+              filterByTk: taskId,
+              values: { status: "failed", errorLogs, errorMessage: `\u9636\u6BB5\u4E8C\u5199\u5165\u5931\u8D25: ${splitLogs.length} \u884C\u6570\u636E\u5F02\u5E38`, completedAt: /* @__PURE__ */ new Date() }
+            });
+            return;
+          }
+        }
         const prog = 50 + Math.floor(bi * 40 / Math.max(allRowValues.length, 1));
         try {
           await repo.update({ filterByTk: taskId, values: { progress: Math.min(90, prog) } });
@@ -623,14 +720,19 @@ async function processImportAsync(db, taskId, params) {
               const stillMap = Object.entries(mapping).some(([tf, ec]) => {
                 if (ec === "__ignore__" || ec === "__custom__") return false;
                 if (ec === col) return true;
-                const idx = phase2Headers.indexOf(ec);
-                return idx >= 0 && phase2Headers[idx] === col;
+                const idx = phase1Headers.indexOf(ec);
+                return idx >= 0 && phase1Headers[idx] === col;
               });
               if (stillMap) continue;
             }
             setClauses.push(`"${col}" = s."${col}"`);
           }
           const whereClauses = uFields.map((uf) => `m."${uf}" = s."${uf}"`).join(" AND ");
+          for (const f of ["updatedAt", "updatedById"]) {
+            if (!nonIdColumns.includes(f)) {
+              setClauses.push(`"${f}" = COALESCE(s."${f}", ${f === "updatedAt" ? "NOW()" : (userId || "NULL") + "::bigint"})`);
+            }
+          }
           if (setClauses.length > 0 && whereClauses) {
             const [updateResult] = await sequelize.query(
               `UPDATE ${quotedMain} m SET ${setClauses.join(", ")} FROM ${quotedShadow} s WHERE ${whereClauses} RETURNING m.id`,
@@ -640,23 +742,77 @@ async function processImportAsync(db, taskId, params) {
             await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u66F4\u65B0\u6A21\u5F0F\uFF1A\u5339\u914D ${updatedCount} \u884C\uFF0C\u5F71\u5B50\u8868\u5171 ${phase2TotalRows} \u884C`);
           }
         } else if (importMode === "upsert") {
-          const conflictCols = uFields.map((uf) => `"${uf}"`).join(", ");
-          const updateSetClauses = nonIdColumns.filter((c) => !uFields.includes(c)).map((c) => `"${c}" = EXCLUDED."${c}"`).join(", ");
-          await sequelize.query(
-            `INSERT INTO ${quotedMain} SELECT * FROM ${quotedShadow} ON CONFLICT (${conflictCols}) DO UPDATE SET ${updateSetClauses}`,
-            { transaction }
-          );
-        } else {
-          const hasId = mapping.id && mapping.id !== "__ignore__";
-          if (hasId) {
+          const setClauses = [];
+          for (const col of nonIdColumns) {
+            if (uFields.includes(col)) continue;
+            if (bCellMode === "skip" && Object.values(mapping).some((v) => v === col)) continue;
+            setClauses.push(`"${col}" = s."${col}"`);
+          }
+          const whereClauses = uFields.map((uf) => `m."${uf}" = s."${uf}"`).join(" AND ");
+          for (const f of ["updatedAt", "updatedById"]) {
+            if (!nonIdColumns.includes(f)) {
+              setClauses.push(`"${f}" = COALESCE(s."${f}", ${f === "updatedAt" ? "NOW()" : (userId || "NULL") + "::bigint"})`);
+            }
+          }
+          if (uFields.length > 0 && setClauses.length > 0) {
             await sequelize.query(
-              `INSERT INTO ${quotedMain} SELECT * FROM ${quotedShadow}`,
+              `UPDATE ${quotedMain} m SET ${setClauses.join(", ")} FROM ${quotedShadow} s WHERE ${whereClauses}`,
+              { transaction }
+            );
+            const nonIdQuotedCols2 = nonIdColumns.map((c) => `"${c}"`).join(", ");
+            const notExistsWhere = uFields.map((uf) => `m."${uf}" = s."${uf}"`).join(" AND ");
+            const sysIns2 = [];
+            const sysSel2 = [];
+            const SYS2 = ["createdAt", "updatedAt", "createdById", "updatedById"];
+            for (const f of SYS2) {
+              if (!nonIdColumns.includes(f)) {
+                sysIns2.push(`"${f}"`);
+                if (f === "createdAt" || f === "updatedAt") sysSel2.push("NOW()");
+                else sysSel2.push(`${userId || "NULL"}::bigint`);
+              }
+            }
+            await sequelize.query(
+              `INSERT INTO ${quotedMain} (${nonIdQuotedCols2}${sysIns2.length ? ", " + sysIns2.join(", ") : ""}) SELECT ${nonIdQuotedCols2}${sysSel2.length ? ", " + sysSel2.join(", ") : ""} FROM ${quotedShadow} s WHERE NOT EXISTS (SELECT 1 FROM ${quotedMain} m WHERE ${notExistsWhere})`,
               { transaction }
             );
           } else {
-            const nonIdQuotedCols = nonIdColumns.map((c) => `"${c}"`).join(", ");
+            const nonIdQuotedCols2 = nonIdColumns.map((c) => `"${c}"`).join(", ");
+            const sysIns3 = [];
+            const sysSel3 = [];
+            const SYS3 = ["createdAt", "updatedAt", "createdById", "updatedById"];
+            for (const f of SYS3) {
+              if (!nonIdColumns.includes(f)) {
+                sysIns3.push(`"${f}"`);
+                if (f === "createdAt" || f === "updatedAt") sysSel3.push("NOW()");
+                else sysSel3.push(`${userId || "NULL"}::bigint`);
+              }
+            }
             await sequelize.query(
-              `INSERT INTO ${quotedMain} (${nonIdQuotedCols}) SELECT ${nonIdQuotedCols} FROM ${quotedShadow}`,
+              `INSERT INTO ${quotedMain} (${nonIdQuotedCols2}${sysIns3.length ? ", " + sysIns3.join(", ") : ""}) SELECT ${nonIdQuotedCols2}${sysSel3.length ? ", " + sysSel3.join(", ") : ""} FROM ${quotedShadow}`,
+              { transaction }
+            );
+          }
+        } else {
+          const hasId = mapping.id && mapping.id !== "__ignore__";
+          const nonIdQuotedCols = nonIdColumns.map((c) => `"${c}"`).join(", ");
+          const sysIns = [];
+          const sysSel = [];
+          const SYS = ["createdAt", "updatedAt", "createdById", "updatedById"];
+          for (const f of SYS) {
+            if (!nonIdColumns.includes(f)) {
+              sysIns.push(`"${f}"`);
+              if (f === "createdAt" || f === "updatedAt") sysSel.push("NOW()");
+              else sysSel.push(`${userId || "NULL"}::bigint`);
+            }
+          }
+          if (hasId) {
+            await sequelize.query(
+              `INSERT INTO ${quotedMain} (${nonIdQuotedCols}${sysIns.length ? ", " + sysIns.join(", ") : ""}) SELECT ${nonIdQuotedCols}${sysSel.length ? ", " + sysSel.join(", ") : ""} FROM ${quotedShadow}`,
+              { transaction }
+            );
+          } else {
+            await sequelize.query(
+              `INSERT INTO ${quotedMain} (${nonIdQuotedCols}${sysIns.length ? ", " + sysIns.join(", ") : ""}) SELECT ${nonIdQuotedCols}${sysSel.length ? ", " + sysSel.join(", ") : ""} FROM ${quotedShadow}`,
               { transaction }
             );
           }
@@ -678,6 +834,12 @@ async function processImportAsync(db, taskId, params) {
               const maxId = parseInt(((_c = maxRows[0]) == null ? void 0 : _c.max_id) || "0", 10);
               await sequelize.query(`SELECT setval('${seqName}', ${maxId + 1})`);
             }
+          } catch {
+          }
+        }
+        if (tempSeqName) {
+          try {
+            await sequelize.query(`DROP SEQUENCE IF EXISTS "${tempSeqName}"`);
           } catch {
           }
         }
@@ -704,10 +866,11 @@ async function processImportAsync(db, taskId, params) {
     }
   } catch (err) {
     try {
+      const fallbackLogs = errorLogs.length > 0 ? errorLogs : [{ reason: err.message || String(err), snapshot: JSON.stringify({ shadowTable: shadowTableName || "?", phase: "\u9636\u6BB5\u4E8C\u5199\u5165" }).substring(0, 500) }];
       await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u5BFC\u5165\u5F02\u5E38: ${err.message || String(err)}`);
       await repo.update({
         filterByTk: taskId,
-        values: { status: "failed", errorMessage: err.message || String(err), completedAt: /* @__PURE__ */ new Date() }
+        values: { status: "failed", errorMessage: err.message || String(err), errorLogs: fallbackLogs, completedAt: /* @__PURE__ */ new Date() }
       });
     } catch {
     }

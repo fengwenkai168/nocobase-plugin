@@ -8,6 +8,7 @@ import { Mutex } from 'async-mutex';
 import { checkExportPermission } from './permission-check';
 import { writeTaskLog } from './taskLogs';
 import { cancelFlags } from './cancel-state';
+import { execSync } from 'child_process';
 import type { Database } from '@nocobase/database';
 
 const exportMutex = new Mutex();
@@ -659,27 +660,40 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
       mergedFilePath = outputFiles[0];
     } else {
+      await writeTaskLog(db, taskId, 'INFO', `最终合并 ${outputFiles.length} 个文件${allAttachFileEntries.length > 0 ? ' + ' + allAttachFileEntries.length + ' 个附件' : ''}...`);
+      try { await db.sequelize.query("SET SESSION statement_timeout = 0"); } catch {}
+
       const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
       mergedFilePath = path.join(tempDir, zipName);
-      const output = fs.createWriteStream(mergedFilePath);
-      const archive = archiver('zip', { zlib: { level: 0 } });
-      await new Promise<void>((resolve, reject) => {
+
+      // 创建临时目录，symlink 所有文件到一起，用系统 zip 打包
+      const stagingDir = path.join(tempDir, `staging_${taskId}`);
+      try { fs.rmSync(stagingDir, { recursive: true }); } catch {}
+      fs.mkdirSync(stagingDir, { recursive: true });
+
+      // 链入导出文件
+      for (const fp of outputFiles) {
+        try { fs.symlinkSync(fp, path.join(stagingDir, path.basename(fp))); } catch {}
+      }
+      // 链入附件文件（保留目录结构）
+      for (const af of allAttachFileEntries) {
         try {
-          output.on('close', resolve);
-          output.on('error', reject);
-          archive.on('error', reject);
-          archive.pipe(output);
-          for (const fp of outputFiles) {
-            archive.file(fp, { name: path.basename(fp) });
-          }
-          for (const af of allAttachFileEntries) {
-            archive.file(af.diskPath, { name: af.entryName });
-          }
-          archive.finalize();
-        } catch (err) {
-          reject(err);
-        }
-      });
+          const dest = path.join(stagingDir, af.entryName);
+          fs.mkdirSync(path.dirname(dest), { recursive: true });
+          fs.symlinkSync(af.diskPath, dest);
+        } catch {}
+      }
+
+      // 系统 zip 打包（C 原生，快且省内存）
+      try {
+        execSync(`cd "${stagingDir}" && zip -0 -q -r "${mergedFilePath}" .`, { stdio: 'pipe', timeout: 600000 });
+        await writeTaskLog(db, taskId, 'SUCC', '最终合并完成');
+      } catch (zipErr: any) {
+        await writeTaskLog(db, taskId, 'ERROR', `zip 合并失败: ${(zipErr.stderr || zipErr.message || '').toString().slice(0, 200)}`);
+        throw zipErr;
+      }
+      // 清理临时目录
+      try { fs.rmSync(stagingDir, { recursive: true }); } catch {}
       for (const fp of outputFiles) {
         try { fs.unlinkSync(fp); } catch {}
       }

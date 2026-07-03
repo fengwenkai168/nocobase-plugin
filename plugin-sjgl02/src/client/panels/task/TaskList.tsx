@@ -123,10 +123,10 @@ export function TaskList({ api, onViewTask }: { api: any; onViewTask: (task: any
           }},
           { title: '创建时间', dataIndex: 'createdAt', width: 140, render: (v: any) => formatTime(v) },
           { title: '完成时间', dataIndex: 'completedAt', width: 140, render: (v: any) => formatTime(v) },
-          { title: '操作', width: 140, render: (_: any, r: any) => (
+          { title: '操作', width: 170, render: (_: any, r: any) => (
             <Space size={4}>
-              <Button type="link" size="small" onClick={() => onViewTask(r)}>👁 查看详情</Button>
-              {canCancel(r.status) && <Button type="link" size="small" danger onClick={() => handleCancel(r)}>⏹ 取消任务</Button>}
+              <Button type="primary" size="small" ghost onClick={() => onViewTask(r)}>📋 详情</Button>
+              {canCancel(r.status) && <Button type="primary" size="small" danger onClick={() => handleCancel(r)}>⏹ 取消</Button>}
             </Space>
           )},
         ]} />

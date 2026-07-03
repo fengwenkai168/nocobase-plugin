@@ -147,6 +147,14 @@ export function TaskSummaryCard({ task, api, tableTitles, fieldTitles }: any) {
             <Descriptions.Item label="包含附件">
               <Tag color={task.includeAttachments ? '#059669' : '#9ca3af'}>{task.includeAttachments ? '✅ 是' : '— 否'}</Tag>
             </Descriptions.Item>
+            <Descriptions.Item label="关联数据Sheet">
+              <Tag color={task.includeAssociationSheet ? '#059669' : '#9ca3af'}>{task.includeAssociationSheet ? '✅ 是' : '— 否'}</Tag>
+            </Descriptions.Item>
+            {task.includeAssociationSheet && task.associationSheetTables?.length > 0 && (
+              <Descriptions.Item label="包含的关联表">
+                <span style={{ color: '#059669' }}>{task.associationSheetTables.join('、')}</span>
+              </Descriptions.Item>
+            )}
           </Descriptions>
         </div>
       )}
@@ -368,23 +376,54 @@ export function DataPreviewCard({ task, api, fieldTitles }: any) {
   const isImport = task.taskType === 'import';
 
   // 失败任务：展示错误明细
-  if (task.status === 'failed' && errorLogs.length > 0) {
+  if (task.status === 'failed' && (errorLogs.length > 0 || task.errorMessage)) {
     const displayLogs = errorLogs.slice(0, 10);
+
+    // 从 errorLogs snapshot 提取失败行数据做表格
+    const failRows: any[] = [];
+    const failCols: string[] = [];
+    if (displayLogs.length > 0) {
+      const colSet = new Set<string>();
+      for (const l of displayLogs) {
+        try {
+          const snap = typeof l.snapshot === 'string' ? JSON.parse(l.snapshot) : (l.snapshot || {});
+          const row: any = { _row: l.excelRow ? `第${l.excelRow}行` : (l.row ? `第${l.row}行` : '—') };
+          Object.keys(snap).forEach(k => { colSet.add(k); row[k] = snap[k]; });
+          failRows.push(row);
+        } catch {}
+      }
+      failCols.push(...Array.from(colSet));
+    }
+
     return (
-      <CollapseCard title={`失败明细（${errorLogs.length} 条，显示前 ${displayLogs.length} 条）`} defaultOpen={false}>
-        <Table dataSource={displayLogs.map((l: any, i: number) => ({ key: i, ...l }))} pagination={false} size="small"
-          columns={[
-            { title: 'Excel 行', dataIndex: 'excelRow', width: 80, render: (v: any) => v ? `第 ${v} 行` : '—' },
-            { title: '错误原因', dataIndex: 'reason', ellipsis: true },
-            { title: '字段快照', dataIndex: 'snapshot', ellipsis: true, render: (v: any) => {
-              if (!v) return '—';
-              try {
-                const obj = typeof v === 'string' ? JSON.parse(v) : v;
-                return Object.entries(obj).map(([k, val]: any) => `${k}=${val}`).join(', ').substring(0, 200);
-              } catch { return String(v).substring(0, 200); }
-            }},
-          ]} />
-      </CollapseCard>
+      <>
+        <CollapseCard title={`失败明细（${errorLogs.length} 条${errorLogs.length > 10 ? '，显示前 10 条' : ''}）`} defaultOpen={!!task.errorMessage}>
+          {task.errorMessage && (
+            <div style={{ color: '#b91c1c', fontSize: 13, marginBottom: 8 }}>⚠ {task.errorMessage}</div>
+          )}
+          {displayLogs.length > 0 && (
+            <Table dataSource={displayLogs.map((l: any, i: number) => ({ key: i, ...l }))} pagination={false} size="small"
+              columns={[
+                { title: '行号', dataIndex: 'excelRow', width: 80, render: (v: any) => v ? `第 ${v} 行` : '—' },
+                { title: '错误原因', dataIndex: 'reason', ellipsis: true },
+                { title: '字段快照', dataIndex: 'snapshot', ellipsis: true, render: (v: any) => {
+                  if (!v) return '—';
+                  try { const obj = typeof v === 'string' ? JSON.parse(v) : v; return Object.entries(obj).map(([k, val]: any) => `${k}=${val}`).join(', '); }
+                  catch { return String(v); }
+                }},
+              ]} />
+          )}
+        </CollapseCard>
+        {failRows.length > 0 && (
+          <CollapseCard title={`失败数据预览（${failRows.length} 行）`}>
+            <Table dataSource={failRows.map((r: any, i: number) => ({ key: i, ...r }))} pagination={false} size="small" scroll={{ x: 'max-content' }}
+              columns={[
+                { title: '行号', dataIndex: '_row', width: 80, fixed: 'left' },
+                ...failCols.map(c => ({ title: c, dataIndex: c, ellipsis: true, width: 120 })),
+              ]} />
+          </CollapseCard>
+        )}
+      </>
     );
   }
 
@@ -428,10 +467,24 @@ function ImportPreviewCard({ task, api }: any) {
   }, [task.id]);
 
   if (loading) return <CardWrap title="数据预览"><div style={{ textAlign: 'center', padding: 20 }}><Spin /> 加载中...</div></CardWrap>;
-  if (!previewData?.preview || !previewData.preview.length) return null;
+  if (!previewData?.preview || !previewData.preview.length) {
+    return (
+      <CollapseCard title="数据预览">
+        <div style={{ color: '#6b7280', fontSize: 12, marginBottom: 8 }}>
+          导入完成，共处理 {task.totalRows || 0} 行，成功 {task.processedRows || 0} 行
+        </div>
+        <div style={{ textAlign: 'center', padding: 16, color: '#9ca3af', fontSize: 12 }}>无法加载预览数据（文件可能已删除或格式不支持预览）</div>
+      </CollapseCard>
+    );
+  }
 
   const rows = previewData.preview;
-  const cols = Object.keys(rows[0] || {}).map(k => ({ title: k, dataIndex: k, ellipsis: true }));
+  // 只显示映射的 Excel 列（与导入步骤3的预览一致）
+  const mappedExcelCols = Object.values(task.fieldMapping || {}).filter(
+    (v: any) => v && v !== '__ignore__' && v !== '__custom__'
+  );
+  const cols = (mappedExcelCols.length > 0 ? mappedExcelCols : Object.keys(rows[0] || {}))
+    .map(k => ({ title: k, dataIndex: k, ellipsis: true }));
 
   return (
     <CollapseCard title={`数据预览（前 ${rows.length} 条）`}>

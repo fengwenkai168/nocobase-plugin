@@ -102,7 +102,7 @@ export function TaskDetail({ api, task, open, onClose, tableTitles }: any) {
           <RelationTablesCard task={detail} tableTitles={tableTitles} assocFieldMap={assocFieldMap} api={api} />
           {detail.taskType === 'import' && <ImportConfigCard task={detail} fieldTitles={fieldTitles} />}
           {detail.taskType === 'import' && <FieldMappingCard task={detail} fieldTitles={fieldTitles} />}
-          <DataPreviewCard task={detail} api={api} fieldTitles={fieldTitles} />
+          {detail.tableName !== '__all__' && <DataPreviewCard task={detail} api={api} fieldTitles={fieldTitles} />}
           <ExecutionLogCard task={detail} api={api} />
         </div>
       ) : (

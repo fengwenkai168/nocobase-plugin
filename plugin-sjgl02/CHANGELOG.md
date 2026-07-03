@@ -1,5 +1,54 @@
 # CHANGELOG
 
+## 1.0.106 (2026-07-03) — 失败逐行定位 + 失败数据预览
+- **新增**：方案 C — Phase 2 批次 INSERT 失败时拆分重试（5000→500→1），定位到具体行号
+- **新增**：失败任务详情显示"失败数据预览"卡片，从 errorLogs.snapshot 解析出失败行原始数据表格
+- **修复**：catch 块 errorLogs/snapshot 作用域问题 → 提升到函数顶层
+
+## 1.0.105 (2026-07-03) — 自定义主键适配
+- **修复**：硬编码 `c !== 'id'` 无法识别自定义主键名（如 `order_code`）→ 查 `information_schema.table_constraints` 动态获取 PRIMARY KEY 列名
+- **兼容**：不管主键叫 `id`、`ID`、`order_code`、`user_no` 还是任何名字，全部自动识别并排除，INSERT 时不写入主键列
+
+## 1.0.104 (2026-07-03) — headers 实时回调 + 预览修复
+- **修复**：Phase 1 `isEmptyRow` headers 空数组误判 → `streamProcessExcel` 增加 `onHeader` 回调，表头读到立即赋值
+- **修复**：uploadParse 预览数据全是 `{}` → 先收集 rawRows 流结束后重建
+- **修复**：preview 同上
+- **修复**：Sheet 列表写死一个 → 用 `exceljs.readFile` 读取全部 Sheet 名
+- **修复**：Phase 2 同步用 `onHeader` 回调，不再依赖前一阶段结果
+
+## 1.0.103 (2026-07-03) — UI 修复 + 导出优化
+- **优化**：任务列表操作按钮改为胶囊按钮（📋 详情 / ⏹ 取消），宽度增至170
+- **修复**：导入失败任务详情缺少失败明细卡片（兼容 errorMessage 兜底）
+- **修复**：导入完成预览数据为空时完全隐藏卡片 → 改为显示摘要+兜底提示
+- **重构**：`__all__` 最终合并用系统 `zip -0` 替代 archiver（C 原生，10x 快且省内存）
+- **新增**：合并前后写进度日志、合并前 `SET statement_timeout = 0` 防 PG 超时
+
+## 1.0.102 (2026-07-03) — 测试通过
+
+**三阶段导入 10万行 × 3种ID类型 全部通过**
+
+| # | 表 | 模式 | 唯一值 | 耗时 | 状态 |
+|---|-----|------|--------|------|------|
+| 1-3 | int/uuid/snowflake | insert | — | 15.5s | ✅ |
+| 4 | int | update | field_str | 15.3s | ✅ |
+| 5 | int | update | field_str+int | 15.5s | ✅ |
+| 6 | int | upsert | field_str | 18.4s | ✅ |
+| 7 | int | upsert | field_str+int | 18.3s | ✅ |
+| 8 | int | upsert | field_str | null blank | 15.3s | ✅ |
+| 9 | int | upsert | field_str | skip blank | 15.4s | ✅ |
+
+**修复的 Bug：**
+- Phase 2 `phase2Headers` 空数组误判 → 复用 `phase1Headers`
+- `ALTER COLUMN id DROP DEFAULT` → 移除，Phase 2 非 id 列 INSERT
+- UPSERT `ON CONFLICT` 缺 DB 约束 → 两步 SQL
+
+**环境**：用户A(insert/3字段) + 测试角色(update+upsert/3字段)，三表已建权限
+
+## 1.0.101 (2026-07-03)
+- **新增**：任务摘要卡片显示"关联数据Sheet"状态和包含的关联表列表
+- **新增**：导出面板步骤 1 增加权限方案切换（admin/root），可切换已配置的用户/角色方案预览字段过滤效果
+- **UI**：方案下拉框与原导入面板一致（用户/角色/管理员完整权限三级）
+
 ## 1.0.100 (2026-07-03)
 - **修复**：一对多/多对多/一对一关联字段导出为空 — `appendFields` 补全 hasMany/belongsToMany(非附件)/hasOne
 - **新增**：数组型关联字段格式化 `名称(主键：ID)`，如 `张三(主键：42), 李四(主键：57)`

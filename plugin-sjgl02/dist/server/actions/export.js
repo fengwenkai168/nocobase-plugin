@@ -52,6 +52,7 @@ var import_async_mutex = require("async-mutex");
 var import_permission_check = require("./permission-check");
 var import_taskLogs = require("./taskLogs");
 var import_cancel_state = require("./cancel-state");
+var import_child_process = require("child_process");
 const exportMutex = new import_async_mutex.Mutex();
 function sanitizeSheetName(name) {
   return name.replace(/[\\\/\*\?\[\]:!@#\$%\^&\(\)]/g, "_").substring(0, 31);
@@ -739,27 +740,44 @@ async function processExportAsync(db, taskId, params) {
     if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
       mergedFilePath = outputFiles[0];
     } else {
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u6700\u7EC8\u5408\u5E76 ${outputFiles.length} \u4E2A\u6587\u4EF6${allAttachFileEntries.length > 0 ? " + " + allAttachFileEntries.length + " \u4E2A\u9644\u4EF6" : ""}...`);
+      try {
+        await db.sequelize.query("SET SESSION statement_timeout = 0");
+      } catch {
+      }
       const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
       mergedFilePath = import_path.default.join(tempDir, zipName);
-      const output = import_fs.default.createWriteStream(mergedFilePath);
-      const archive = (0, import_archiver.default)("zip", { zlib: { level: 0 } });
-      await new Promise((resolve, reject) => {
+      const stagingDir = import_path.default.join(tempDir, `staging_${taskId}`);
+      try {
+        import_fs.default.rmSync(stagingDir, { recursive: true });
+      } catch {
+      }
+      import_fs.default.mkdirSync(stagingDir, { recursive: true });
+      for (const fp of outputFiles) {
         try {
-          output.on("close", resolve);
-          output.on("error", reject);
-          archive.on("error", reject);
-          archive.pipe(output);
-          for (const fp of outputFiles) {
-            archive.file(fp, { name: import_path.default.basename(fp) });
-          }
-          for (const af of allAttachFileEntries) {
-            archive.file(af.diskPath, { name: af.entryName });
-          }
-          archive.finalize();
-        } catch (err) {
-          reject(err);
+          import_fs.default.symlinkSync(fp, import_path.default.join(stagingDir, import_path.default.basename(fp)));
+        } catch {
         }
-      });
+      }
+      for (const af of allAttachFileEntries) {
+        try {
+          const dest = import_path.default.join(stagingDir, af.entryName);
+          import_fs.default.mkdirSync(import_path.default.dirname(dest), { recursive: true });
+          import_fs.default.symlinkSync(af.diskPath, dest);
+        } catch {
+        }
+      }
+      try {
+        (0, import_child_process.execSync)(`cd "${stagingDir}" && zip -0 -q -r "${mergedFilePath}" .`, { stdio: "pipe", timeout: 6e5 });
+        await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", "\u6700\u7EC8\u5408\u5E76\u5B8C\u6210");
+      } catch (zipErr) {
+        await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `zip \u5408\u5E76\u5931\u8D25: ${(zipErr.stderr || zipErr.message || "").toString().slice(0, 200)}`);
+        throw zipErr;
+      }
+      try {
+        import_fs.default.rmSync(stagingDir, { recursive: true });
+      } catch {
+      }
       for (const fp of outputFiles) {
         try {
           import_fs.default.unlinkSync(fp);
