@@ -31,7 +31,7 @@ export function TaskSummaryCard({ task, api, tableTitles, fieldTitles }: any) {
   const { message, modal } = App.useApp();
   const isImport = task.taskType === 'import';
   const fileExt = task._fileExt || '';
-  const isZip = fileExt === 'zip' || (task.taskType === 'export' && (task.includeAttachments || task.tableName === '__all__'));
+  const isPkg = fileExt === 'gz' || (task.taskType === 'export' && (task.includeAttachments || task.tableName === '__all__'));
   const fileId = isImport ? task.importFileId : task.exportFileId;
   const hasFile = fileId && (task.status === 'completed' || task.status === 'failed');
 
@@ -124,7 +124,7 @@ export function TaskSummaryCard({ task, api, tableTitles, fieldTitles }: any) {
         <div style={{ background: '#f9fafb', borderRadius: 8, padding: 12, marginTop: 12, border: '1px solid #e5e7eb' }}>
           <div style={{ fontWeight: 600, color: '#1f2937', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
             <span>📄 {task.fileName || task._fileName || `${isImport ? '导入' : '导出'}文件`}</span>
-            {isZip && <Tag color="#7c3aed" style={{ fontSize: 11 }}>ZIP压缩包 · 含Excel + 附件</Tag>}
+            {isPkg && <Tag color="#7c3aed" style={{ fontSize: 11 }}>ZIP压缩包 · 含Excel + 附件</Tag>}
           </div>
           <div style={{ color: '#6b7280', fontSize: 12, marginBottom: 8 }}>
             {fileLabel}: {formatTime(isImport ? task.createdAt : task.completedAt)}
@@ -132,7 +132,7 @@ export function TaskSummaryCard({ task, api, tableTitles, fieldTitles }: any) {
             {fileExt ? ` / .${fileExt}` : ''}
           </div>
           <Space>
-            {!isZip && hasFile && <Button size="small" onClick={previewFile}>👁 预览{isImport ? '源文件' : '文件'}</Button>}
+            {!isPkg && hasFile && <Button size="small" onClick={previewFile}>👁 预览{isImport ? '源文件' : '文件'}</Button>}
             {hasFile && <Button size="small" type="primary" ghost onClick={downloadFile}>⬇ 下载{isImport ? '源文件' : '文件'}</Button>}
           </Space>
         </div>

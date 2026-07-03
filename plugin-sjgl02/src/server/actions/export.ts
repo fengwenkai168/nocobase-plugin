@@ -228,6 +228,19 @@ export async function executeExport(ctx: Context, next: Next) {
     allowedTableList = names;
   }
 
+  // 预计总行数（用于进度显示分母）
+  let estimatedTotal = 0;
+  try {
+    if (tableName === '__all__' && allowedTableList) {
+      for (const t of allowedTableList) {
+        try { const repo = ctx.db.getRepository(t); if (repo) estimatedTotal += await repo.count({ filter: exportFilter || {} }); } catch {}
+      }
+    } else {
+      const tRepo = ctx.db.getRepository(tableName);
+      if (tRepo) estimatedTotal = await tRepo.count({ filter: exportFilter || {} });
+    }
+  } catch {}
+
   const repo = ctx.db.getRepository('sjgl02_tasks');
   const task = await repo.create({
     values: {
@@ -240,9 +253,9 @@ export async function executeExport(ctx: Context, next: Next) {
       includeAssociationSheet: includeAssociationSheet || false,
       associationSheetTables: associationSheetTables || [],
       includeAttachments: includeAttachments || false,
-      totalRows: 0,
+      totalRows: estimatedTotal,
       progress: 0,
-      fileName: tableName === '__all__' ? `全部数据表_${new Date().toISOString().slice(0, 10)}.zip` : '',
+      fileName: tableName === '__all__' ? `全部数据表_${new Date().toISOString().slice(0, 10)}.tar.gz` : '',
       createdById: ctx.state.currentUser?.id,
       headerStyle: headerStyle || 'title_id',
     },
@@ -302,13 +315,29 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
     let totalRows = 0;
+    // 获取预估总行数（用于进度分母）
+    try {
+      const t = await repo.findOne({ filter: { id: taskId }, raw: true });
+      if ((t as any)?.totalRows > 0) totalRows = (t as any).totalRows;
+    } catch {}
+
     let processedRows = 0;
     const outputFiles: string[] = [];
     let cancelled = false;
-    // 全部数据表增量 ZIP 路径（生成即追加，每秒删原文件）
-    let mergedZipPath = '';
     // 全部数据表模式：延迟附件打包到最终合并
     const allAttachFileEntries: Array<{ entryName: string; diskPath: string }> = [];
+
+    // 全部数据表：提前创建流式 archiver（每表生成即追加，不积压文件）
+    let streamArchive: any = null;
+    let streamOutput: fs.WriteStream | null = null;
+    let streamZipPath = '';
+    if (isAllTables) {
+      streamZipPath = path.join(tempDir, `sjgl02_export_${taskId}_${Date.now()}.tar.gz`);
+      streamOutput = fs.createWriteStream(streamZipPath);
+      streamArchive = archiver('tar', { gzip: true, gzipOptions: { level: 1 } });
+      streamArchive.pipe(streamOutput);
+      streamArchive.on('error', (e: any) => { throw e; });
+    }
 
     for (const tblName of tableList) {
       if (cancelFlags.has(taskId)) { cancelled = true; break; }
@@ -417,7 +446,6 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
             }
             mainSheet.addRow(row).commit();
             processedRows++;
-            totalRows++;
           }
           lastId = Number((pageRecords[pageRecords.length - 1] as any).id);
           const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
@@ -473,7 +501,6 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
             }
             mainSheet.addRow(row).commit();
             processedRows++;
-            totalRows++;
           }
           const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
           try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } }); } catch {}
@@ -514,7 +541,6 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
             }
             mainSheet.addRow(row).commit();
             processedRows++;
-            totalRows++;
           }
           offset += PAGE_SIZE;
           const progress = Math.min(100, Math.floor((offset * 100) / Math.max(1, collectionTotal)));
@@ -561,7 +587,7 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
                 row[f] = formatValue(val);
               }
               assocSheet.addRow(row).commit();
-              totalRows++; processedRows++;
+              processedRows++;
             }
             aOff += PAGE_SIZE;
             const ap = Math.min(100, Math.floor((aOff * 100) / Math.max(1, assocTotal)));
@@ -599,7 +625,8 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
               if (!fs.existsSync(realPath)) continue;
               const afName = attachFieldMap.get(aid) || '附件';
               const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
-              attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
+              const attPrefix = isAllTables ? `${collDisplay}/` : '';
+              attachmentFiles.push({ entryName: `${attPrefix}${folderName}/${fn}`, diskPath: realPath });
             }
             if (attachmentFiles.length > 0) {
               if (isAllTables) {
@@ -607,11 +634,11 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
                 allAttachFileEntries.push(...attachmentFiles);
               } else {
                 // 单表：直接创建 per-table ZIP
-                const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
+                const zipName = `sjgl02_export_${taskId}_${Date.now()}.tar.gz`;
                 const zipPath = path.join(tempDir, zipName);
                 try {
                   const zipOutput = fs.createWriteStream(zipPath);
-                  const zipArchive = archiver('zip', { zlib: { level: 1 } });
+                  const zipArchive = archiver('tar', { gzip: true, gzipOptions: { level: 1 } });
                   await new Promise<void>((resolve, reject) => {
                     zipArchive.on('error', reject);
                     zipOutput.on('close', resolve);
@@ -635,19 +662,23 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
         }
       }
 
-      if (!outputFiles.includes(finalFilePath)) {
-        outputFiles.push(finalFilePath);
-      }
-
-      // 全部数据表模式：生成即追加到 ZIP，追加完删原文件（控制磁盘峰值）
-      if (isAllTables && !cancelled) {
+      // 全部数据表模式：生成即追加到流式 archiver
+      if (isAllTables && !cancelled && streamArchive) {
         try {
-          if (!mergedZipPath) {
-            mergedZipPath = path.join(tempDir, `sjgl02_export_${taskId}_${Date.now()}.zip`);
-          }
-          execSync(`cd "${tempDir}" && zip -0 -q "${mergedZipPath}" "${path.basename(finalFilePath)}"`, { stdio: 'pipe' });
-          try { fs.unlinkSync(finalFilePath); } catch {}
-        } catch {}
+          // 先改名为可读格式再追加到 tar.gz
+          const internalName = `${collDisplay}.xlsx`;
+          const readablePath = path.join(path.dirname(finalFilePath), internalName);
+          fs.renameSync(finalFilePath, readablePath);
+          finalFilePath = readablePath;
+          streamArchive.file(readablePath, { name: internalName });
+          outputFiles.push(finalFilePath); // 暂存，最后统一删
+        } catch (zipErr: any) {
+          await writeTaskLog(db, taskId, 'WARN', `追加到 ZIP 失败(${tblName}): ${zipErr.message || ''}`);
+        }
+      } else if (!isAllTables) {
+        if (!outputFiles.includes(finalFilePath)) {
+          outputFiles.push(finalFilePath);
+        }
       }
 
       await repo.update({
@@ -656,9 +687,32 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       });
     }
 
+    // 全部数据表：关闭流式 archiver，追加附件
+    if (isAllTables && streamArchive && !cancelled) {
+      try {
+        // 追加附件
+        for (const af of allAttachFileEntries) {
+          try { streamArchive.file(af.diskPath, { name: af.entryName }); } catch {}
+        }
+        await new Promise<void>((resolve, reject) => {
+          if (streamOutput) streamOutput.on('close', resolve);
+          streamArchive.on('error', reject);
+          streamArchive.finalize();
+        });
+        if (streamOutput?.bytesWritten === 0) {
+          // ZIP 为空，回退
+          try { fs.unlinkSync(streamZipPath); } catch {}
+          streamZipPath = '';
+        }
+      } catch (archErr: any) {
+        await writeTaskLog(db, taskId, 'ERROR', `流式ZIP失败: ${archErr.message || ''}`);
+        try { streamZipPath = ''; } catch {}
+      }
+    }
+
     if (cancelled) {
-      // 取消：删除生成的临时文件和增量 ZIP
-      if (mergedZipPath) { try { fs.unlinkSync(mergedZipPath); } catch {} }
+      // 取消：删除临时文件和流式 ZIP
+      if (streamZipPath) { try { fs.unlinkSync(streamZipPath); } catch {} }
       for (const fp of outputFiles) { try { fs.unlinkSync(fp); } catch {} }
       await writeTaskLog(db, taskId, 'WARN', '任务已取消');
       await repo.update({ filterByTk: taskId, values: { status: 'cancelled', completedAt: new Date() } });
@@ -666,14 +720,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     }
 
     let mergedFilePath: string;
-    if (isAllTables && mergedZipPath) {
-      // 全部数据表：增量 ZIP 已构建完成，追加附件
-      mergedFilePath = mergedZipPath;
-      if (allAttachFileEntries.length > 0) {
-        try {
-          execSync(`cd "${tempDir}" && zip -0 -q "${mergedFilePath}" ${allAttachFileEntries.map(a => `"${a.diskPath.replace(tempDir + '/', '')}"`).join(' ')}`, { stdio: 'pipe' });
-        } catch {}
-      }
+    if (isAllTables && streamZipPath && fs.existsSync(streamZipPath) && outputFiles.length === 0) {
+      // 全部数据表：流式 archiver 已构建完成
+      mergedFilePath = streamZipPath;
     } else if (outputFiles.length === 0) {
       throw new Error('没有数据可导出');
     } else if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
@@ -682,62 +731,46 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       await writeTaskLog(db, taskId, 'INFO', `最终合并 ${outputFiles.length} 个文件${allAttachFileEntries.length > 0 ? ' + ' + allAttachFileEntries.length + ' 个附件' : ''}...`);
       try { await db.sequelize.query("SET SESSION statement_timeout = 0"); } catch {}
 
-      const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
+      const zipName = `sjgl02_export_${taskId}_${Date.now()}.tar.gz`;
       mergedFilePath = path.join(tempDir, zipName);
 
-      // 创建临时目录，symlink 所有文件到一起，用系统 zip 打包
-      const stagingDir = path.join(tempDir, `staging_${taskId}`);
-      try { fs.rmSync(stagingDir, { recursive: true }); } catch {}
-      fs.mkdirSync(stagingDir, { recursive: true });
-
-      // 链入导出文件
-      for (const fp of outputFiles) {
-        try { fs.symlinkSync(fp, path.join(stagingDir, path.basename(fp))); } catch {}
-      }
-      // 链入附件文件（保留目录结构）
-      for (const af of allAttachFileEntries) {
+      const output = fs.createWriteStream(mergedFilePath);
+      const archive = archiver('tar', { gzip: true, gzipOptions: { level: 1 } });
+      await new Promise<void>((resolve, reject) => {
         try {
-          const dest = path.join(stagingDir, af.entryName);
-          fs.mkdirSync(path.dirname(dest), { recursive: true });
-          fs.symlinkSync(af.diskPath, dest);
-        } catch {}
-      }
-
-      // 系统 zip 打包（C 原生，快且省内存）
-      try {
-        execSync(`cd "${stagingDir}" && zip -0 -q -r "${mergedFilePath}" .`, { stdio: 'pipe', timeout: 600000 });
-        await writeTaskLog(db, taskId, 'SUCC', '最终合并完成');
-      } catch (zipErr: any) {
-        await writeTaskLog(db, taskId, 'ERROR', `zip 合并失败: ${(zipErr.stderr || zipErr.message || '').toString().slice(0, 200)}`);
-        throw zipErr;
-      }
-      // 清理临时目录
-      try { fs.rmSync(stagingDir, { recursive: true }); } catch {}
-      for (const fp of outputFiles) {
-        try { fs.unlinkSync(fp); } catch {}
-      }
+          output.on('close', resolve);
+          output.on('error', reject);
+          archive.on('error', reject);
+          archive.pipe(output);
+          for (const fp of outputFiles) { archive.file(fp, { name: path.basename(fp) }); }
+          for (const af of allAttachFileEntries) { archive.file(af.diskPath, { name: af.entryName }); }
+          archive.finalize();
+        } catch (err) { reject(err); }
+      });
+      await writeTaskLog(db, taskId, 'SUCC', '最终合并完成');
+      for (const fp of outputFiles) { try { fs.unlinkSync(fp); } catch {} }
     }
 
     // 将临时文件重命名为可读格式（表名称(表标识)_日期，无前缀）
     const d = new Date();
     const padDate = (n: number) => String(n).padStart(2, '0');
     const dateStr = `${d.getFullYear()}${padDate(d.getMonth() + 1)}${padDate(d.getDate())}${padDate(d.getHours())}${padDate(d.getMinutes())}${padDate(d.getSeconds())}`;
-    const isZip = mergedFilePath.endsWith('.zip');
+    const isPkg = mergedFilePath.endsWith('.tar.gz');
     let finalDisplayName: string;
     if (tableName === '__all__') {
-      finalDisplayName = isZip ? `全部数据表_${dateStr}.zip` : `全部数据表_${dateStr}.xlsx`;
+      finalDisplayName = isPkg ? `全部数据表_${dateStr}.tar.gz` : `全部数据表_${dateStr}.xlsx`;
     } else {
       const exportColl = db.getCollection(tableName);
       const collDisplayName = exportColl
         ? sanitizeSheetName(getCollDisplayName(exportColl, headerStyle)).replace(/\s+/g, '_')
         : tableName;
-      finalDisplayName = `${collDisplayName}_${dateStr}${isZip ? '.zip' : '.xlsx'}`;
+      finalDisplayName = `${collDisplayName}_${dateStr}${isPkg ? '.tar.gz' : '.xlsx'}`;
     }
     let finalFilePath = path.join(tempDir, finalDisplayName);
     let suffix = 0;
     while (fs.existsSync(finalFilePath)) {
       suffix++;
-      finalFilePath = path.join(tempDir, finalDisplayName.replace(/\.(xlsx|zip)$/, `_${suffix}.${isZip ? 'zip' : 'xlsx'}`));
+      finalFilePath = path.join(tempDir, finalDisplayName.replace(/\.(xlsx|tar\.gz)$/, `_${suffix}.${isPkg ? 'tar.gz' : 'xlsx'}`));
     }
     fs.renameSync(mergedFilePath, finalFilePath);
     mergedFilePath = finalFilePath;
@@ -749,8 +782,8 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
         title: path.basename(mergedFilePath),
         filename: path.basename(mergedFilePath),
         extname: path.extname(mergedFilePath),
-        mimetype: mergedFilePath.endsWith('.zip')
-          ? 'application/zip'
+        mimetype: mergedFilePath.endsWith('.tar.gz')
+          ? 'application/gzip'
           : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         size: stats.size,
         path: path.relative(storageDir, mergedFilePath).replace(/\\/g, '/'),

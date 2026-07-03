@@ -52,7 +52,6 @@ var import_async_mutex = require("async-mutex");
 var import_permission_check = require("./permission-check");
 var import_taskLogs = require("./taskLogs");
 var import_cancel_state = require("./cancel-state");
-var import_child_process = require("child_process");
 const exportMutex = new import_async_mutex.Mutex();
 function sanitizeSheetName(name) {
   return name.replace(/[\\\/\*\?\[\]:!@#\$%\^&\(\)]/g, "_").substring(0, 31);
@@ -276,6 +275,22 @@ async function executeExport(ctx, next) {
     }
     allowedTableList = names;
   }
+  let estimatedTotal = 0;
+  try {
+    if (tableName === "__all__" && allowedTableList) {
+      for (const t of allowedTableList) {
+        try {
+          const repo2 = ctx.db.getRepository(t);
+          if (repo2) estimatedTotal += await repo2.count({ filter: exportFilter || {} });
+        } catch {
+        }
+      }
+    } else {
+      const tRepo = ctx.db.getRepository(tableName);
+      if (tRepo) estimatedTotal = await tRepo.count({ filter: exportFilter || {} });
+    }
+  } catch {
+  }
   const repo = ctx.db.getRepository("sjgl02_tasks");
   const task = await repo.create({
     values: {
@@ -288,9 +303,9 @@ async function executeExport(ctx, next) {
       includeAssociationSheet: includeAssociationSheet || false,
       associationSheetTables: associationSheetTables || [],
       includeAttachments: includeAttachments || false,
-      totalRows: 0,
+      totalRows: estimatedTotal,
       progress: 0,
-      fileName: tableName === "__all__" ? `\u5168\u90E8\u6570\u636E\u8868_${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.zip` : "",
+      fileName: tableName === "__all__" ? `\u5168\u90E8\u6570\u636E\u8868_${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.tar.gz` : "",
       createdById: (_a = ctx.state.currentUser) == null ? void 0 : _a.id,
       headerStyle: headerStyle || "title_id"
     }
@@ -340,11 +355,27 @@ async function processExportAsync(db, taskId, params) {
     const tempDir = import_path.default.join(storageDir, "exports");
     if (!import_fs.default.existsSync(tempDir)) import_fs.default.mkdirSync(tempDir, { recursive: true });
     let totalRows = 0;
+    try {
+      const t = await repo.findOne({ filter: { id: taskId }, raw: true });
+      if ((t == null ? void 0 : t.totalRows) > 0) totalRows = t.totalRows;
+    } catch {
+    }
     let processedRows = 0;
     const outputFiles = [];
     let cancelled = false;
-    let mergedZipPath = "";
     const allAttachFileEntries = [];
+    let streamArchive = null;
+    let streamOutput = null;
+    let streamZipPath = "";
+    if (isAllTables) {
+      streamZipPath = import_path.default.join(tempDir, `sjgl02_export_${taskId}_${Date.now()}.tar.gz`);
+      streamOutput = import_fs.default.createWriteStream(streamZipPath);
+      streamArchive = (0, import_archiver.default)("tar", { gzip: true, gzipOptions: { level: 1 } });
+      streamArchive.pipe(streamOutput);
+      streamArchive.on("error", (e) => {
+        throw e;
+      });
+    }
     for (const tblName of tableList) {
       if (import_cancel_state.cancelFlags.has(taskId)) {
         cancelled = true;
@@ -460,7 +491,6 @@ async function processExportAsync(db, taskId, params) {
             }
             mainSheet.addRow(row).commit();
             processedRows++;
-            totalRows++;
           }
           lastId = Number(pageRecords[pageRecords.length - 1].id);
           const progress = Math.min(100, Math.floor(processedRows / Math.max(1, collectionTotal) * 100));
@@ -530,7 +560,6 @@ async function processExportAsync(db, taskId, params) {
             }
             mainSheet.addRow(row).commit();
             processedRows++;
-            totalRows++;
           }
           const progress = Math.min(100, Math.floor(processedRows / Math.max(1, collectionTotal) * 100));
           try {
@@ -584,7 +613,6 @@ async function processExportAsync(db, taskId, params) {
             }
             mainSheet.addRow(row).commit();
             processedRows++;
-            totalRows++;
           }
           offset += PAGE_SIZE;
           const progress = Math.min(100, Math.floor(offset * 100 / Math.max(1, collectionTotal)));
@@ -637,7 +665,6 @@ async function processExportAsync(db, taskId, params) {
                 row[f] = formatValue(val);
               }
               assocSheet.addRow(row).commit();
-              totalRows++;
               processedRows++;
             }
             aOff += PAGE_SIZE;
@@ -678,17 +705,18 @@ async function processExportAsync(db, taskId, params) {
               if (!import_fs.default.existsSync(realPath)) continue;
               const afName = attachFieldMap.get(aid) || "\u9644\u4EF6";
               const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
-              attachmentFiles.push({ entryName: `${folderName}/${fn}`, diskPath: realPath });
+              const attPrefix = isAllTables ? `${collDisplay}/` : "";
+              attachmentFiles.push({ entryName: `${attPrefix}${folderName}/${fn}`, diskPath: realPath });
             }
             if (attachmentFiles.length > 0) {
               if (isAllTables) {
                 allAttachFileEntries.push(...attachmentFiles);
               } else {
-                const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
+                const zipName = `sjgl02_export_${taskId}_${Date.now()}.tar.gz`;
                 const zipPath = import_path.default.join(tempDir, zipName);
                 try {
                   const zipOutput = import_fs.default.createWriteStream(zipPath);
-                  const zipArchive = (0, import_archiver.default)("zip", { zlib: { level: 1 } });
+                  const zipArchive = (0, import_archiver.default)("tar", { gzip: true, gzipOptions: { level: 1 } });
                   await new Promise((resolve, reject) => {
                     zipArchive.on("error", reject);
                     zipOutput.on("close", resolve);
@@ -715,20 +743,20 @@ async function processExportAsync(db, taskId, params) {
           }
         }
       }
-      if (!outputFiles.includes(finalFilePath2)) {
-        outputFiles.push(finalFilePath2);
-      }
-      if (isAllTables && !cancelled) {
+      if (isAllTables && !cancelled && streamArchive) {
         try {
-          if (!mergedZipPath) {
-            mergedZipPath = import_path.default.join(tempDir, `sjgl02_export_${taskId}_${Date.now()}.zip`);
-          }
-          (0, import_child_process.execSync)(`cd "${tempDir}" && zip -0 -q "${mergedZipPath}" "${import_path.default.basename(finalFilePath2)}"`, { stdio: "pipe" });
-          try {
-            import_fs.default.unlinkSync(finalFilePath2);
-          } catch {
-          }
-        } catch {
+          const internalName = `${collDisplay}.xlsx`;
+          const readablePath = import_path.default.join(import_path.default.dirname(finalFilePath2), internalName);
+          import_fs.default.renameSync(finalFilePath2, readablePath);
+          finalFilePath2 = readablePath;
+          streamArchive.file(readablePath, { name: internalName });
+          outputFiles.push(finalFilePath2);
+        } catch (zipErr) {
+          await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", `\u8FFD\u52A0\u5230 ZIP \u5931\u8D25(${tblName}): ${zipErr.message || ""}`);
+        }
+      } else if (!isAllTables) {
+        if (!outputFiles.includes(finalFilePath2)) {
+          outputFiles.push(finalFilePath2);
         }
       }
       await repo.update({
@@ -736,10 +764,38 @@ async function processExportAsync(db, taskId, params) {
         values: { progress: Math.min(100, Math.floor(processedRows / Math.max(totalRows, 1) * 100)), processedRows, totalRows }
       });
     }
-    if (cancelled) {
-      if (mergedZipPath) {
+    if (isAllTables && streamArchive && !cancelled) {
+      try {
+        for (const af of allAttachFileEntries) {
+          try {
+            streamArchive.file(af.diskPath, { name: af.entryName });
+          } catch {
+          }
+        }
+        await new Promise((resolve, reject) => {
+          if (streamOutput) streamOutput.on("close", resolve);
+          streamArchive.on("error", reject);
+          streamArchive.finalize();
+        });
+        if ((streamOutput == null ? void 0 : streamOutput.bytesWritten) === 0) {
+          try {
+            import_fs.default.unlinkSync(streamZipPath);
+          } catch {
+          }
+          streamZipPath = "";
+        }
+      } catch (archErr) {
+        await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `\u6D41\u5F0FZIP\u5931\u8D25: ${archErr.message || ""}`);
         try {
-          import_fs.default.unlinkSync(mergedZipPath);
+          streamZipPath = "";
+        } catch {
+        }
+      }
+    }
+    if (cancelled) {
+      if (streamZipPath) {
+        try {
+          import_fs.default.unlinkSync(streamZipPath);
         } catch {
         }
       }
@@ -754,14 +810,8 @@ async function processExportAsync(db, taskId, params) {
       return;
     }
     let mergedFilePath;
-    if (isAllTables && mergedZipPath) {
-      mergedFilePath = mergedZipPath;
-      if (allAttachFileEntries.length > 0) {
-        try {
-          (0, import_child_process.execSync)(`cd "${tempDir}" && zip -0 -q "${mergedFilePath}" ${allAttachFileEntries.map((a) => `"${a.diskPath.replace(tempDir + "/", "")}"`).join(" ")}`, { stdio: "pipe" });
-        } catch {
-        }
-      }
+    if (isAllTables && streamZipPath && import_fs.default.existsSync(streamZipPath) && outputFiles.length === 0) {
+      mergedFilePath = streamZipPath;
     } else if (outputFiles.length === 0) {
       throw new Error("\u6CA1\u6709\u6570\u636E\u53EF\u5BFC\u51FA");
     } else if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
@@ -772,39 +822,28 @@ async function processExportAsync(db, taskId, params) {
         await db.sequelize.query("SET SESSION statement_timeout = 0");
       } catch {
       }
-      const zipName = `sjgl02_export_${taskId}_${Date.now()}.zip`;
+      const zipName = `sjgl02_export_${taskId}_${Date.now()}.tar.gz`;
       mergedFilePath = import_path.default.join(tempDir, zipName);
-      const stagingDir = import_path.default.join(tempDir, `staging_${taskId}`);
-      try {
-        import_fs.default.rmSync(stagingDir, { recursive: true });
-      } catch {
-      }
-      import_fs.default.mkdirSync(stagingDir, { recursive: true });
-      for (const fp of outputFiles) {
+      const output = import_fs.default.createWriteStream(mergedFilePath);
+      const archive = (0, import_archiver.default)("tar", { gzip: true, gzipOptions: { level: 1 } });
+      await new Promise((resolve, reject) => {
         try {
-          import_fs.default.symlinkSync(fp, import_path.default.join(stagingDir, import_path.default.basename(fp)));
-        } catch {
+          output.on("close", resolve);
+          output.on("error", reject);
+          archive.on("error", reject);
+          archive.pipe(output);
+          for (const fp of outputFiles) {
+            archive.file(fp, { name: import_path.default.basename(fp) });
+          }
+          for (const af of allAttachFileEntries) {
+            archive.file(af.diskPath, { name: af.entryName });
+          }
+          archive.finalize();
+        } catch (err) {
+          reject(err);
         }
-      }
-      for (const af of allAttachFileEntries) {
-        try {
-          const dest = import_path.default.join(stagingDir, af.entryName);
-          import_fs.default.mkdirSync(import_path.default.dirname(dest), { recursive: true });
-          import_fs.default.symlinkSync(af.diskPath, dest);
-        } catch {
-        }
-      }
-      try {
-        (0, import_child_process.execSync)(`cd "${stagingDir}" && zip -0 -q -r "${mergedFilePath}" .`, { stdio: "pipe", timeout: 6e5 });
-        await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", "\u6700\u7EC8\u5408\u5E76\u5B8C\u6210");
-      } catch (zipErr) {
-        await (0, import_taskLogs.writeTaskLog)(db, taskId, "ERROR", `zip \u5408\u5E76\u5931\u8D25: ${(zipErr.stderr || zipErr.message || "").toString().slice(0, 200)}`);
-        throw zipErr;
-      }
-      try {
-        import_fs.default.rmSync(stagingDir, { recursive: true });
-      } catch {
-      }
+      });
+      await (0, import_taskLogs.writeTaskLog)(db, taskId, "SUCC", "\u6700\u7EC8\u5408\u5E76\u5B8C\u6210");
       for (const fp of outputFiles) {
         try {
           import_fs.default.unlinkSync(fp);
@@ -815,20 +854,20 @@ async function processExportAsync(db, taskId, params) {
     const d = /* @__PURE__ */ new Date();
     const padDate = (n) => String(n).padStart(2, "0");
     const dateStr = `${d.getFullYear()}${padDate(d.getMonth() + 1)}${padDate(d.getDate())}${padDate(d.getHours())}${padDate(d.getMinutes())}${padDate(d.getSeconds())}`;
-    const isZip = mergedFilePath.endsWith(".zip");
+    const isPkg = mergedFilePath.endsWith(".tar.gz");
     let finalDisplayName;
     if (tableName === "__all__") {
-      finalDisplayName = isZip ? `\u5168\u90E8\u6570\u636E\u8868_${dateStr}.zip` : `\u5168\u90E8\u6570\u636E\u8868_${dateStr}.xlsx`;
+      finalDisplayName = isPkg ? `\u5168\u90E8\u6570\u636E\u8868_${dateStr}.tar.gz` : `\u5168\u90E8\u6570\u636E\u8868_${dateStr}.xlsx`;
     } else {
       const exportColl = db.getCollection(tableName);
       const collDisplayName = exportColl ? sanitizeSheetName(getCollDisplayName(exportColl, headerStyle)).replace(/\s+/g, "_") : tableName;
-      finalDisplayName = `${collDisplayName}_${dateStr}${isZip ? ".zip" : ".xlsx"}`;
+      finalDisplayName = `${collDisplayName}_${dateStr}${isPkg ? ".tar.gz" : ".xlsx"}`;
     }
     let finalFilePath = import_path.default.join(tempDir, finalDisplayName);
     let suffix = 0;
     while (import_fs.default.existsSync(finalFilePath)) {
       suffix++;
-      finalFilePath = import_path.default.join(tempDir, finalDisplayName.replace(/\.(xlsx|zip)$/, `_${suffix}.${isZip ? "zip" : "xlsx"}`));
+      finalFilePath = import_path.default.join(tempDir, finalDisplayName.replace(/\.(xlsx|tar\.gz)$/, `_${suffix}.${isPkg ? "tar.gz" : "xlsx"}`));
     }
     import_fs.default.renameSync(mergedFilePath, finalFilePath);
     mergedFilePath = finalFilePath;
@@ -839,7 +878,7 @@ async function processExportAsync(db, taskId, params) {
         title: import_path.default.basename(mergedFilePath),
         filename: import_path.default.basename(mergedFilePath),
         extname: import_path.default.extname(mergedFilePath),
-        mimetype: mergedFilePath.endsWith(".zip") ? "application/zip" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        mimetype: mergedFilePath.endsWith(".tar.gz") ? "application/gzip" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         size: stats.size,
         path: import_path.default.relative(storageDir, mergedFilePath).replace(/\\/g, "/")
       }

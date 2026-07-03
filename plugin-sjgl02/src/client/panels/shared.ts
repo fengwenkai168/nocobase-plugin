@@ -1,4 +1,4 @@
-const VERSION = 'v1.0.110';
+const VERSION = 'v1.0.115';
 
 function apiRequest(client: any, url: string, opts: any = {}) {
   if (!client || !client.request) {
