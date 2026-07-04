@@ -1,4 +1,37 @@
 import { Context, Next } from '@nocobase/actions';
+import { PermissionService } from '../services/permission-service';
+
+function isAdminOrRoot(ctx: Context): boolean {
+  try {
+    const roleNames = (ctx.state.currentUser?.roles || []).map((r: any) => r.name);
+    return roleNames.some((n: string) => n === 'admin' || n === 'root');
+  } catch {
+    return false;
+  }
+}
+
+export async function getExportScopes(ctx: Context, next: Next) {
+  const params = ctx.action.params.values || ctx.action.params;
+  const { tableName } = params;
+  const currentUserId = ctx.state.currentUser?.id;
+  if (!currentUserId) {
+    ctx.throw(401, 'Unauthorized');
+  }
+  if (!tableName) {
+    ctx.throw(400, 'tableName is required');
+  }
+  const service = new PermissionService(ctx.db);
+  let permSource = null;
+  if (isAdminOrRoot(ctx)) {
+    const { permSourceType, permSourceId } = params;
+    if (permSourceType && permSourceId) {
+      permSource = { type: permSourceType, id: String(permSourceId) };
+    }
+  }
+  const scopes = await service.getExportScopes(Number(currentUserId), tableName, permSource);
+  ctx.body = { options: scopes };
+  await next();
+}
 
 export async function getUserRoleList(ctx: Context, next: Next) {
   const userRepo = ctx.db.getRepository('users');
@@ -47,9 +80,7 @@ export async function getTables(ctx: Context, next: Next) {
         }
       }
     }
-  } catch {
-    // fallback: return empty
-  }
+  } catch {}
   ctx.body = collections;
   await next();
 }
@@ -63,136 +94,103 @@ export async function getPermissions(ctx: Context, next: Next) {
     return;
   }
 
-  const repo = ctx.db.getRepository('sjgl02_table_permissions');
+  const service = new PermissionService(ctx.db);
 
-  if (targetType === 'user') {
-    let rolePerms: any[] = [];
-    try {
-      const userRepo = ctx.db.getRepository('users');
-      const user = await userRepo.findOne({ filterByTk: Number(targetId), appends: ['roles'] });
-      const roleNames = (user?.roles || []).map((r: any) => r.name);
-      if (roleNames.length > 0) {
-        rolePerms = (await repo.find({ filter: { targetType: 'role', targetId: { $in: roleNames } } })).map((p: any) => ({ ...(p.toJSON ? p.toJSON() : p), _inherited: true }));
-      }
-    } catch {}
-    const userPerms = (await repo.find({ filter: { targetType: 'user', targetId: String(targetId) } })).map((p: any) => ({ ...(p.toJSON ? p.toJSON() : p), _inherited: false }));
-    ctx.body = { custom: userPerms, inherited: rolePerms };
+  if (targetType === 'role') {
+    ctx.body = await service.getRolePermissions(String(targetId));
     await next();
     return;
   }
 
-  if (targetType === 'role') {
-    try {
-      const roleRepo = ctx.db.getRepository('roles');
-      const role = await roleRepo.findOne({ filter: { name: targetId } });
-      if (role?.name === 'admin' || role?.name === 'root') {
-        const existing = await repo.find({ filter: { targetType: 'role', targetId: String(targetId) } });
-        const existingNames = new Set(existing.map((p: any) => p.tableName));
-        const tables = ctx.db.collections;
-        const toCreate: any[] = [];
-        for (const [name] of tables) {
-          if (!existingNames.has(name)) {
-            toCreate.push({
-              targetType: 'role',
-              targetId: String(targetId),
-              targetName: role?.name === 'root' ? '超级管理员' : '管理员',
-              tableName: name,
-              canImport: true,
-              canExport: true,
-              importMode: ['insert', 'update', 'upsert'],
-              uniqueFields: [],
-              requiredFields: [],
-              importFields: [],
-              exportFields: [],
-            });
-          }
-        }
-        if (toCreate.length > 0) {
-          for (const item of toCreate) {
-            await repo.create({ values: item });
-          }
-        }
-      }
-    } catch {}
+  if (targetType === 'user') {
+    ctx.body = await service.getUserPermissions(Number(targetId));
+    await next();
+    return;
   }
 
-  const permissions = (await repo.find({ filter: { targetType, targetId: String(targetId) } })).map((p: any) => ({ ...(p.toJSON ? p.toJSON() : p) }));
-  if (targetType === 'role') {
-    try {
-      const r = await ctx.db.getRepository('roles').findOne({ filter: { name: targetId } });
-      if (r?.name === 'admin' || r?.name === 'root') {
-        permissions.forEach((p: any) => { p._inherited = true; p._systemManaged = true; });
-      }
-    } catch {}
-  }
-  ctx.body = { custom: permissions, inherited: [] };
+  ctx.body = { custom: [], inherited: [] };
   await next();
 }
 
 export async function savePermissions(ctx: Context, next: Next) {
   const params = ctx.action.params.values || ctx.action.params;
   const { permissions } = params;
-  if (!permissions || !Array.isArray(permissions)) {
-    ctx.body = { success: true };
-    await next();
-    return;
-  }
   const repo = ctx.db.getRepository('sjgl02_table_permissions');
-  if (permissions.length === 0) {
-    ctx.body = { success: true };
-    await next();
-    return;
-  }
-  const firstPerm = permissions[0];
-  if (!firstPerm.targetType || !firstPerm.targetId) {
-    ctx.body = { success: true };
-    await next();
-    return;
-  }
-  const filter = { targetType: firstPerm.targetType, targetId: String(firstPerm.targetId) };
-  const existingPerms = await repo.find({ filter });
   const logRepo = ctx.db.getRepository('sjgl02_permission_logs');
-  const operatorId = ctx.state.currentUser?.id;
-  const submittedTableNames = new Set(permissions.map((p: any) => p.tableName));
-  for (const existing of existingPerms) {
-    if (!submittedTableNames.has(existing.tableName)) {
-      await repo.destroy({ filterByTk: existing.id });
-      try {
-        await logRepo.create({ values: {
-          action: 'delete', targetType: existing.targetType, targetId: existing.targetId,
-          targetName: existing.targetName, tableName: existing.tableName,
-          changes: { before: existing.toJSON?.() || existing },
-          operatorId, createdAt: new Date(),
-        }});
-      } catch {}
-    }
+  const sequelize = ctx.db.sequelize;
+
+  let targetType = '';
+  let targetId = '';
+  if (permissions && permissions.length > 0) {
+    targetType = permissions[0].targetType || '';
+    targetId = String(permissions[0].targetId || '');
+  } else {
+    targetType = ctx.action.params.values?.targetType || ctx.request.query?.targetType || '';
+    targetId = ctx.action.params.values?.targetId || ctx.request.query?.targetId || '';
   }
-  for (const perm of permissions) {
-    if (perm.canImport && (!perm.importMode || !Array.isArray(perm.importMode) || perm.importMode.length === 0)) {
-      perm.importMode = ['insert', 'update', 'upsert'];
+
+  if (targetType === 'role' && (targetId === 'admin' || targetId === 'root')) {
+    ctx.body = { success: true };
+    await next();
+    return;
+  }
+
+  if (!permissions || !Array.isArray(permissions) || permissions.length === 0) {
+    ctx.body = { success: true };
+    await next();
+    return;
+  }
+
+  const filter = { targetType, targetId: String(targetId) };
+  const existingPerms = await repo.find({ filter });
+  const operatorId = ctx.state.currentUser?.id;
+
+  const transaction = await sequelize.transaction();
+  try {
+    const submittedTableNames = new Set(permissions.map((p: any) => p.tableName));
+    for (const existing of existingPerms) {
+      if (!submittedTableNames.has(existing.tableName)) {
+        await repo.destroy({ filterByTk: existing.id, transaction });
+        try {
+          await logRepo.create({ values: {
+            action: 'delete', targetType: existing.targetType, targetId: existing.targetId,
+            targetName: existing.targetName, tableName: existing.tableName,
+            changes: { before: existing.toJSON?.() || existing },
+            operatorId, createdAt: new Date(),
+          }, transaction });
+        } catch {}
+      }
     }
-    const existing = existingPerms.find((e: any) => e.tableName === perm.tableName);
-    if (perm.id && existing) {
-      await repo.update({ filterByTk: perm.id, values: perm });
-      try {
-        await logRepo.create({ values: {
-          action: 'update', targetType: perm.targetType, targetId: perm.targetId,
-          targetName: perm.targetName, tableName: perm.tableName,
-          changes: { before: existing.toJSON?.() || existing, after: perm },
-          operatorId, createdAt: new Date(),
-        }});
-      } catch {}
-    } else if (!perm.id) {
-      await repo.create({ values: perm });
-      try {
-        await logRepo.create({ values: {
-          action: 'create', targetType: perm.targetType, targetId: perm.targetId,
-          targetName: perm.targetName, tableName: perm.tableName,
-          changes: { after: perm },
-          operatorId, createdAt: new Date(),
-        }});
-      } catch {}
+    for (const perm of permissions) {
+      if (perm.canImport && (!perm.importMode || !Array.isArray(perm.importMode) || perm.importMode.length === 0)) {
+        perm.importMode = ['insert', 'update', 'upsert'];
+      }
+      const existing = existingPerms.find((e: any) => e.tableName === perm.tableName);
+      if (perm.id && existing) {
+        await repo.update({ filterByTk: perm.id, values: perm, transaction });
+        try {
+          await logRepo.create({ values: {
+            action: 'update', targetType: perm.targetType, targetId: perm.targetId,
+            targetName: perm.targetName, tableName: perm.tableName,
+            changes: { before: existing.toJSON?.() || existing, after: perm },
+            operatorId, createdAt: new Date(),
+          }, transaction });
+        } catch {}
+      } else if (!perm.id) {
+        await repo.create({ values: { ...perm, targetType, targetId: String(targetId), operatorId }, transaction });
+        try {
+          await logRepo.create({ values: {
+            action: 'create', targetType, targetId: String(targetId),
+            tableName: perm.tableName, changes: { after: perm },
+            operatorId, createdAt: new Date(),
+          }, transaction });
+        } catch {}
+      }
     }
+    await transaction.commit();
+  } catch (err) {
+    try { await transaction.rollback(); } catch {}
+    throw err;
   }
   ctx.body = { success: true };
   await next();

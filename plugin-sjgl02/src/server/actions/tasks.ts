@@ -1,6 +1,21 @@
 import { Context, Next } from '@nocobase/actions';
 import { cancelFlags } from './cancel-state';
 
+function quoteIdentifier(name: string): string {
+  const DQ = String.fromCharCode(34);
+  const DDQ = DQ + DQ;
+  return DQ + name.replace(new RegExp(DQ, 'g'), DDQ) + DQ;
+}
+
+function isAdminOrRoot(ctx: Context): boolean {
+  try {
+    const roleNames = (ctx.state.currentUser?.roles || []).map((r: any) => r.name);
+    return roleNames.some((n: string) => n === 'admin' || n === 'root');
+  } catch {
+    return false;
+  }
+}
+
 export async function listTasks(ctx: Context, next: Next) {
   const { taskType, status, search } = ctx.action.params;
   const page = Math.max(1, parseInt(ctx.action.params.page || '1', 10) || 1);
@@ -82,17 +97,39 @@ export async function cancelTask(ctx: Context, next: Next) {
   if (!task) {
     ctx.throw(404, 'Task not found');
   }
+  const currentUserId = ctx.state.currentUser?.id;
+  if (!isAdminOrRoot(ctx) && task.createdById !== currentUserId) {
+    ctx.throw(403, '只能取消自己创建的任务');
+  }
   if (['completed', 'failed', 'cancelled'].includes(task.status)) {
     ctx.throw(400, 'Cannot cancel a completed/failed/cancelled task');
   }
   cancelFlags.add(Number(taskId));
   try {
-    await ctx.db.sequelize.query(`DROP TABLE IF EXISTS "_sjgl02_import_${taskId}"`);
+    const quotedShadow = quoteIdentifier('_sjgl02_import_' + taskId);
+    await ctx.db.sequelize.query('DROP TABLE IF EXISTS ' + quotedShadow);
   } catch {}
   await repo.update({
     filterByTk: task.id,
     values: { status: 'cancelled', progress: task.progress },
   });
+  ctx.body = { success: true };
+  await next();
+}
+
+export async function deleteTask(ctx: Context, next: Next) {
+  const params = ctx.action.params.values || ctx.action.params;
+  const { taskId } = params;
+  const repo = ctx.db.getRepository('sjgl02_tasks');
+  const task = await repo.findOne({ filter: { id: taskId } });
+  if (!task) {
+    ctx.throw(404, 'Task not found');
+  }
+  if (!isAdminOrRoot(ctx) && task.createdById !== ctx.state.currentUser?.id) {
+    ctx.throw(403, '只能删除自己创建的任务');
+  }
+  await ctx.db.getRepository('sjgl02_task_logs').destroy({ filter: { taskId } });
+  await repo.destroy({ filterByTk: task.id });
   ctx.body = { success: true };
   await next();
 }

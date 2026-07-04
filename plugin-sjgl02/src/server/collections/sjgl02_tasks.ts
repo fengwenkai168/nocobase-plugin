@@ -30,6 +30,7 @@ export default defineCollection({
     { type: 'json', name: 'customValues' },
     { type: 'json', name: 'selectedFields' },
     { type: 'json', name: 'exportFilter' },
+    { type: 'json', name: 'permSource' },
     { type: 'json', name: 'errorLogs' },
     { type: 'integer', name: 'progress', defaultValue: 0 },
     { type: 'integer', name: 'totalRows', defaultValue: 0 },

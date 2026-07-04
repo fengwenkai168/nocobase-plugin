@@ -3,11 +3,11 @@ import { Tabs, Card } from 'antd';
 import { DatabaseOutlined } from '@ant-design/icons';
 import { BlockModel } from '@nocobase/client-v2';
 import { tExpr } from '../locale';
-import { VERSION } from '../../client/panels/shared';
+import { VERSION } from '../panels/shared';
 
-const ImportPanel = lazy(() => import('../../client/panels/ImportPanel'));
-const ExportPanel = lazy(() => import('../../client/panels/ExportPanel'));
-const TaskPanel = lazy(() => import('../../client/panels/TaskPanel'));
+const ImportPanel = lazy(() => import('../panels/ImportPanel'));
+const ExportPanel = lazy(() => import('../panels/ExportPanel'));
+const TaskPanel = lazy(() => import('../panels/TaskPanel'));
 
 export class SjglBlockModel extends BlockModel {
   renderComponent() {

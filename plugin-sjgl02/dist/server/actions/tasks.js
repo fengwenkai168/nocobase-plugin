@@ -27,11 +27,26 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var tasks_exports = {};
 __export(tasks_exports, {
   cancelTask: () => cancelTask,
+  deleteTask: () => deleteTask,
   getTaskDetail: () => getTaskDetail,
   listTasks: () => listTasks
 });
 module.exports = __toCommonJS(tasks_exports);
 var import_cancel_state = require("./cancel-state");
+function quoteIdentifier(name) {
+  const DQ = String.fromCharCode(34);
+  const DDQ = DQ + DQ;
+  return DQ + name.replace(new RegExp(DQ, "g"), DDQ) + DQ;
+}
+function isAdminOrRoot(ctx) {
+  var _a;
+  try {
+    const roleNames = (((_a = ctx.state.currentUser) == null ? void 0 : _a.roles) || []).map((r) => r.name);
+    return roleNames.some((n) => n === "admin" || n === "root");
+  } catch {
+    return false;
+  }
+}
 async function listTasks(ctx, next) {
   var _a, _b;
   const { taskType, status, search } = ctx.action.params;
@@ -101,6 +116,7 @@ async function getTaskDetail(ctx, next) {
   await next();
 }
 async function cancelTask(ctx, next) {
+  var _a;
   const params = ctx.action.params.values || ctx.action.params;
   const { taskId } = params;
   const repo = ctx.db.getRepository("sjgl02_tasks");
@@ -108,18 +124,40 @@ async function cancelTask(ctx, next) {
   if (!task) {
     ctx.throw(404, "Task not found");
   }
+  const currentUserId = (_a = ctx.state.currentUser) == null ? void 0 : _a.id;
+  if (!isAdminOrRoot(ctx) && task.createdById !== currentUserId) {
+    ctx.throw(403, "\u53EA\u80FD\u53D6\u6D88\u81EA\u5DF1\u521B\u5EFA\u7684\u4EFB\u52A1");
+  }
   if (["completed", "failed", "cancelled"].includes(task.status)) {
     ctx.throw(400, "Cannot cancel a completed/failed/cancelled task");
   }
   import_cancel_state.cancelFlags.add(Number(taskId));
   try {
-    await ctx.db.sequelize.query(`DROP TABLE IF EXISTS "_sjgl02_import_${taskId}"`);
+    const quotedShadow = quoteIdentifier("_sjgl02_import_" + taskId);
+    await ctx.db.sequelize.query("DROP TABLE IF EXISTS " + quotedShadow);
   } catch {
   }
   await repo.update({
     filterByTk: task.id,
     values: { status: "cancelled", progress: task.progress }
   });
+  ctx.body = { success: true };
+  await next();
+}
+async function deleteTask(ctx, next) {
+  var _a;
+  const params = ctx.action.params.values || ctx.action.params;
+  const { taskId } = params;
+  const repo = ctx.db.getRepository("sjgl02_tasks");
+  const task = await repo.findOne({ filter: { id: taskId } });
+  if (!task) {
+    ctx.throw(404, "Task not found");
+  }
+  if (!isAdminOrRoot(ctx) && task.createdById !== ((_a = ctx.state.currentUser) == null ? void 0 : _a.id)) {
+    ctx.throw(403, "\u53EA\u80FD\u5220\u9664\u81EA\u5DF1\u521B\u5EFA\u7684\u4EFB\u52A1");
+  }
+  await ctx.db.getRepository("sjgl02_task_logs").destroy({ filter: { taskId } });
+  await repo.destroy({ filterByTk: task.id });
   ctx.body = { success: true };
   await next();
 }
@@ -145,6 +183,7 @@ async function getTaskViewScope(ctx) {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   cancelTask,
+  deleteTask,
   getTaskDetail,
   listTasks
 });

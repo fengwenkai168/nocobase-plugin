@@ -43,4 +43,5 @@ export interface PermissionFormValues {
     requiredFields: string[];
     importFields: string[];
     exportFields: string[];
+    exportFilter: Record<string, unknown> | null;
 }

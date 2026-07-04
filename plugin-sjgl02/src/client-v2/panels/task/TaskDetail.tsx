@@ -4,6 +4,7 @@ import { Drawer, Spin, Empty } from 'antd';
 import {
   TaskSummaryCard, ExportFieldsCard, RelationTablesCard,
   ImportConfigCard, FieldMappingCard, DataPreviewCard, ExecutionLogCard,
+  ExportFilterCard,
 } from './TaskCards';
 
 export function TaskDetail({ api, task, open, onClose, tableTitles }: any) {
@@ -98,6 +99,7 @@ export function TaskDetail({ api, task, open, onClose, tableTitles }: any) {
       ) : detail ? (
         <div>
           <TaskSummaryCard task={detail} api={api} tableTitles={tableTitles} fieldTitles={fieldTitles} />
+          {detail.taskType === 'export' && <ExportFilterCard task={detail} fieldTitles={fieldTitles} />}
           {detail.taskType === 'export' && <ExportFieldsCard task={detail} fieldTitles={fieldTitles} tableTitles={tableTitles} assocFieldTitles={assocFieldTitles} assocFieldMap={assocFieldMap} />}
           <RelationTablesCard task={detail} tableTitles={tableTitles} assocFieldMap={assocFieldMap} api={api} />
           {detail.taskType === 'import' && <ImportConfigCard task={detail} fieldTitles={fieldTitles} />}

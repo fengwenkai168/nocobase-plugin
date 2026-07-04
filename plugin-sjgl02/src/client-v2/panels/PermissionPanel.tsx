@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Card, Row, Col, Select, Tag, Button, Space, Switch, Checkbox, Popconfirm,
   Modal, Form, Input, Empty, Radio, Spin, Pagination, Alert, Table, Descriptions, App,
@@ -7,6 +7,16 @@ import { useTranslation } from 'react-i18next';
 import { useAPI } from '../utils/api';
 import { NAMESPACE } from '../locale';
 import { useTargetList, useTableList, useViewScope, usePermissions, usePermissionFilter, useTableFields } from '../hooks';
+import { useApp, CollectionFilterPanel } from '@nocobase/client-v2';
+
+function useCollectionForTable(tableName: string) {
+  const app = useApp<any>();
+  return useMemo(() => {
+    if (!tableName) return undefined;
+    const ds = app?.dataSourceManager?.getDataSource?.('main');
+    return ds?.getCollection?.(tableName);
+  }, [app, tableName]);
+}
 
 export default function PermissionTab() {
   const api = useAPI();
@@ -21,6 +31,7 @@ export default function PermissionTab() {
   const [formCanImport, setFormCanImport] = useState(true);
   const [formCanExport, setFormCanExport] = useState(true);
   const [formMode, setFormMode] = useState<string[]>(['insert']);
+  const [exportFilterTable, setExportFilterTable] = useState<string>('');
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [subTab, setSubTab] = useState('perm');
   const [inheritedOpen, setInheritedOpen] = useState(true);
@@ -31,7 +42,7 @@ export default function PermissionTab() {
 
   const { targets, loading: loadingTargets } = useTargetList(api);
   const { tables } = useTableList(api);
-  const { viewScope, setViewScope } = useViewScope(api);
+  const { viewScope, setViewScope } = useViewScope(api, selectedTarget);
   const { fields, loading: loadingFields, loadFields } = useTableFields(api);
   const {
     perms, inheritedPerms, customPerms,
@@ -39,6 +50,13 @@ export default function PermissionTab() {
     toggle, remove, save,
   } = usePermissions(api, selectedTarget);
   const filter = usePermissionFilter(perms, tables, permSearch, 10);
+
+  const editCollection = useCollectionForTable(exportFilterTable || editModal.perm?.tableName || form.getFieldValue('tableName'));
+
+  useEffect(() => {
+    const tableName = editModal.perm?.tableName || form.getFieldValue('tableName');
+    setExportFilterTable(tableName || '');
+  }, [editModal.open, editModal.perm?.tableName, form.getFieldValue('tableName')]);
 
   const loadAuditLogs = () => {
     setLogLoading(true);
@@ -95,7 +113,7 @@ export default function PermissionTab() {
             <Button size="small" type="link" onClick={() => setDetailModal({ open: true, perm })}>查看详情</Button>
           ) : (
             <>
-              <Button size="small" type="link" onClick={() => { form.setFieldsValue(perm); loadFields(perm.tableName); setFormCanImport(perm.canImport !== false); setFormCanExport(perm.canExport !== false); setFormMode(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode || 'insert']); setEditModal({ open: true, perm }); }}>编辑</Button>
+              <Button size="small" type="link" onClick={() => { form.setFieldsValue(perm); loadFields(perm.tableName); setFormCanImport(perm.canImport !== false); setFormCanExport(perm.canExport !== false); setFormMode(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode || 'insert']); setExportFilterTable(perm.tableName); setEditModal({ open: true, perm }); }}>编辑</Button>
               <Button size="small" type="link" danger onClick={() => remove(perm.tableName)}>删除</Button>
             </>
           )}
@@ -265,7 +283,7 @@ export default function PermissionTab() {
       </Row>
 
       {/* 编辑弹窗 */}
-      <Modal title={editModal.perm ? '编辑权限' : t('Add permission')} open={editModal.open} onCancel={() => setEditModal({ open: false })} onOk={handleSave} width={720}>
+      <Modal title={editModal.perm ? '编辑权限' : t('Add permission')} open={editModal.open} onCancel={() => setEditModal({ open: false })} onOk={handleSave} width={820}>
         <Form form={form} layout="vertical">
           <Form.Item label={t('Select table')} name="tableName" rules={[{ required: true }]}>
             <Select showSearch optionFilterProp="label" placeholder="选择数据表"
@@ -294,8 +312,22 @@ export default function PermissionTab() {
             </>
           )}
           {formCanExport && (
-            <Form.Item label={t('Exportable fields')} name="exportFields">
-              <Select mode="multiple" showSearch placeholder="空=全部允许" loading={loadingFields} filterOption={(input, option) => (option?.label as string || '').toLowerCase().includes(input.toLowerCase())} options={fields.map(v => ({ value: v.name, label: v.label }))} /></Form.Item>
+            <>
+              <Form.Item label={t('Exportable fields')} name="exportFields">
+                <Select mode="multiple" showSearch placeholder="空=全部允许" loading={loadingFields} filterOption={(input, option) => (option?.label as string || '').toLowerCase().includes(input.toLowerCase())} options={fields.map(v => ({ value: v.name, label: v.label }))} /></Form.Item>
+              <Form.Item label="数据范围" name="exportFilter">
+                {editCollection ? (
+                  <CollectionFilterPanel
+                    collection={editCollection}
+                    initialValue={form.getFieldValue('exportFilter') || null}
+                    onChange={(filter) => form.setFieldValue('exportFilter', filter)}
+                    t={t as any}
+                  />
+                ) : (
+                  <Alert type="info" message="请先选择数据表" />
+                )}
+              </Form.Item>
+            </>
           )}
         </Form>
       </Modal>
@@ -313,7 +345,7 @@ export default function PermissionTab() {
               <Descriptions.Item label="唯一值字段">{detailModal.perm.uniqueFields?.length > 0 ? detailModal.perm.uniqueFields.join(', ') : '—'}</Descriptions.Item>
               <Descriptions.Item label="必填字段">{detailModal.perm.requiredFields?.length > 0 ? detailModal.perm.requiredFields.join(', ') : '—'}</Descriptions.Item>
               <Descriptions.Item label="可导入字段">{detailModal.perm.importFields?.length > 0 ? detailModal.perm.importFields.join(', ') : '全部字段允许'}</Descriptions.Item>
-              <Descriptions.Item label="可导出字段">{detailModal.perm.exportFields?.length > 0 ? detailModal.perm.exportFields.join(', ') : '全部字段允许'}</Descriptions.Item>
+              <Descriptions.Item label="数据范围">{detailModal.perm.exportFilter && Object.keys(detailModal.perm.exportFilter).length > 0 ? JSON.stringify(detailModal.perm.exportFilter) : '—'}</Descriptions.Item>
             </Descriptions>
           </div>
         )}

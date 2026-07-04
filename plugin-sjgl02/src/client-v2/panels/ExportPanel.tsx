@@ -1,15 +1,16 @@
-// @ts-nocheck
 import React from 'react';
-import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload, Pagination, Alert, App } from 'antd';
-import { InboxOutlined, TableOutlined } from '@ant-design/icons';
+import { Card, Button, Space, Select, Tag, Statistic, Row, Col, Input, Checkbox, Switch, Steps, Alert, App, Radio } from 'antd';
 import { VERSION, apiRequest } from './shared';
-import { useAPI } from '../../client-v2/utils/api';
-
-const { Dragger } = Upload;
+import { useAPI } from '../utils/api';
+import { useApp, CollectionFilterPanel } from '@nocobase/client-v2';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../locale';
 
 export default function ExportPanel() {
   const client = useAPI();
+  const app = useApp<any>();
   const { message, modal } = App.useApp();
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const [step, setStep] = React.useState(0);
   const [tables, setTables] = React.useState<any[]>([]);
   const [selTable, setSelTable] = React.useState('');
@@ -28,9 +29,13 @@ export default function ExportPanel() {
   const [includeAttachments, setIncludeAttachments] = React.useState(false);
   const [estimatedRows, setEstimatedRows] = React.useState<number | null>(null);
   const [headerStyle, setHeaderStyle] = React.useState<string>('title_id');
-  const [permSource, setPermSource] = React.useState<{ type: string; id?: string; label?: string }>({ type: 'admin' });
+  const [permSource, setPermSource] = React.useState<{ type: string; id?: string; label?: string } | null>(null);
   const [permSourceOptions, setPermSourceOptions] = React.useState<any[]>([]);
   const [permExportFields, setPermExportFields] = React.useState<string[]>([]);
+  const [exportScopes, setExportScopes] = React.useState<any[]>([]);
+  const [currentUserFilter, setCurrentUserFilter] = React.useState<Record<string, any> | null>(null);
+  const [loadingScopes, setLoadingScopes] = React.useState(false);
+  const [scopeSourceLabel, setScopeSourceLabel] = React.useState<string>('');
 
   React.useEffect(() => {
     apiRequest(client, 'sjgl02Permissions:tables').then((data) => {
@@ -50,17 +55,67 @@ export default function ExportPanel() {
     apiRequest(client, 'auth:check').then((userData: any) => {
       const roles = (userData?.data?.roles || userData?.roles || []).map((r: any) => r.name || '');
       const isAdmin = roles.includes('admin') || roles.includes('root');
+      const uid = userData?.data?.id || userData?.id;
       setIsAdminOrRoot(isAdmin);
-      if (isAdmin) {
-        apiRequest(client, 'sjgl02Permissions:userRoleList').then((list: any) => {
-          const opts: any[] = [{ value: 'admin', label: '管理员完整权限', type: 'admin' }];
-          (list?.users || []).forEach((u: any) => { opts.push({ value: `user:${u.id}`, label: `👤 ${u.nickname || u.username || u.id} — 用户方案`, type: 'user', id: String(u.id) }); });
-          (list?.roles || []).forEach((r: any) => { opts.push({ value: `role:${r.name}`, label: `👥 ${r.title || r.name} — 角色方案`, type: 'role', id: r.name }); });
-          setPermSourceOptions(opts);
-        }).catch(() => {});
-      }
+      apiRequest(client, 'sjgl02Permissions:userRoleList').then((list: any) => {
+        const opts: any[] = [];
+        if (isAdmin) {
+          opts.push({ value: 'admin', label: '管理员完整权限', type: 'admin' });
+        }
+        if (!isAdmin && uid) {
+          opts.push({ value: `user:${uid}`, label: '👤 当前用户 — 用户方案', type: 'user', id: String(uid) });
+        }
+        (list?.users || []).forEach((u: any) => {
+          if (isAdmin || String(u.id) === String(uid)) {
+            opts.push({ value: `user:${u.id}`, label: `👤 ${u.nickname || u.username || u.id} — 用户方案`, type: 'user', id: String(u.id) });
+          }
+        });
+        (list?.roles || []).forEach((r: any) => {
+          if (isAdmin || roles.includes(r.name)) {
+            opts.push({ value: `role:${r.name}`, label: `👥 ${r.title || r.name} — 角色方案`, type: 'role', id: r.name });
+          }
+        });
+        setPermSourceOptions(opts);
+        if (isAdmin) {
+          setPermSource({ type: 'admin', label: '管理员完整权限' });
+        } else if (opts.length > 0) {
+          const first = opts[0];
+          setPermSource({ type: first.type, id: first.id, label: first.label });
+        }
+      }).catch(() => {});
     }).catch(() => {});
   }, []);
+
+  React.useEffect(() => {
+    if (!selTable || selTable === '__all__') return;
+    setLoadingScopes(true);
+    const params: any = { tableName: selTable };
+    if (permSource && permSource.type !== 'admin' && permSource.id) {
+      params.permSourceType = permSource.type;
+      params.permSourceId = permSource.id;
+    }
+    apiRequest(client, 'sjgl02Permissions:scopes', { data: params }).then((res: any) => {
+      const scopes = res?.options || [];
+      setExportScopes(scopes);
+      const withFilter = scopes.find((s: any) => s.exportFilter && Object.keys(s.exportFilter).length > 0);
+      if (withFilter) {
+        setPermSource({ type: withFilter.type, id: withFilter.id, label: withFilter.label });
+        setScopeSourceLabel(withFilter.label);
+        setCurrentUserFilter(withFilter.exportFilter);
+      } else if (scopes.length > 0) {
+        const first = scopes[0];
+        setPermSource({ type: first.type, id: first.id, label: first.label });
+        setScopeSourceLabel(first.label);
+        setCurrentUserFilter(null);
+      } else {
+        setScopeSourceLabel(permSource?.label || '');
+        setCurrentUserFilter(null);
+      }
+    }).catch(() => {
+      setExportScopes([]);
+      setCurrentUserFilter(null);
+    }).finally(() => setLoadingScopes(false));
+  }, [selTable, permSource?.type, permSource?.id]);
 
   React.useEffect(() => {
     if (!selTable || selTable === '__all__' || !isAdminOrRoot) return;
@@ -78,18 +133,20 @@ export default function ExportPanel() {
   }, [selTable, isAdminOrRoot]);
 
   const handlePermSourceChange = (val: string) => {
-    if (val === 'admin') { setPermSource({ type: 'admin' }); setPermExportFields([]); return; }
+    if (val === 'admin') { setPermSource({ type: 'admin', label: '管理员完整权限' }); setPermExportFields([]); setCurrentUserFilter(null); setScopeSourceLabel('管理员完整权限'); return; }
     const [type, id] = val.split(':');
     const option = permSourceOptions.find(o => o.value === val);
     setPermSource({ type, id, label: option?.label });
+    setScopeSourceLabel(option?.label || '');
     apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: type, targetId: id } }).then((permData: any) => {
-      const perm = (permData?.custom || []).find((p: any) => p.tableName === selTable);
+      const perm = (permData?.custom || []).concat(permData?.inherited || []).find((p: any) => p.tableName === selTable);
       if (perm?.canExport && perm?.exportFields?.length > 0) {
         setPermExportFields(perm.exportFields);
       } else {
         setPermExportFields([]);
       }
-    }).catch(() => setPermExportFields([]));
+      setCurrentUserFilter(perm?.exportFilter || null);
+    }).catch(() => { setPermExportFields([]); setCurrentUserFilter(null); });
   };
 
   // 权限方案切换时重载字段
@@ -100,18 +157,18 @@ export default function ExportPanel() {
         const fArr = res?.data?.data || [];
         if (!Array.isArray(fArr)) return;
         const allFields = fArr.map((f: any) => ({ ...f, displayName: f.name }));
-        if (permSource.type === 'admin') {
+        if (!permSource || permSource.type === 'admin') {
           setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); return;
         }
         apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: permSource.type, targetId: permSource.id } }).then((permData: any) => {
-          const perm = (permData?.custom || []).find((p: any) => p.tableName === selTable);
+          const perm = (permData?.custom || []).concat(permData?.inherited || []).find((p: any) => p.tableName === selTable);
           if (perm?.canExport && perm?.exportFields?.length > 0) {
             const filtered = allFields.filter((f: any) => perm.exportFields.includes(f.name));
             setFields(filtered); setSelFields(filtered.map((f: any) => f.name));
           } else { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); }
         }).catch(() => { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); });
       }).catch(() => {});
-  }, [permSource.type, permSource.id]);
+  }, [permSource?.type, permSource?.id]);
 
   // 当 selTable 变化时加载字段
   React.useEffect(() => {
@@ -125,9 +182,9 @@ export default function ExportPanel() {
             const uid = userData?.data?.id || userData?.id;
             const roles = (userData?.roles || userData?.data?.roles || []).map((r: any) => r.name || '');
             if (roles.includes('admin') || roles.includes('root')) {
-              if (permSource.type === 'admin') { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); return; }
+              if (!permSource || permSource.type === 'admin') { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); return; }
               apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: permSource.type, targetId: permSource.id } }).then((permData: any) => {
-                const perm = (permData?.custom || []).find((p: any) => p.tableName === selTable);
+                const perm = (permData?.custom || []).concat(permData?.inherited || []).find((p: any) => p.tableName === selTable);
                 if (perm?.canExport && perm?.exportFields?.length > 0) {
                   const filtered = allFields.filter((f: any) => perm.exportFields.includes(f.name));
                   setFields(filtered); setSelFields(filtered.map((f: any) => f.name));
@@ -150,7 +207,7 @@ export default function ExportPanel() {
             }).catch(() => { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); });
           }).catch(() => { setFields(allFields); setSelFields(allFields.map((f: any) => f.name)); });
         }).catch(() => {});
-      client.request({ url: 'sjgl02Export:previewCount', method: 'post', data: { tableName: selTable } })
+      client.request({ url: 'sjgl02Export:previewCount', method: 'post', data: { tableName: selTable, permSource: permSource || null } })
         .then((res: any) => { const c = res?.data?.data?.estimatedRows; if (typeof c === 'number') setEstimatedRows(c); })
         .catch(() => {});
     } else if (selTable === '__all__') {
@@ -159,6 +216,12 @@ export default function ExportPanel() {
         .catch(() => {});
     }
   }, [selTable]);
+
+  const selTableCollection = React.useMemo(() => {
+    if (!selTable || selTable === '__all__') return undefined;
+    const ds = app?.dataSourceManager?.getDataSource?.('main');
+    return ds?.getCollection?.(selTable);
+  }, [app, selTable]);
 
   const toggleField = (name: string) => setSelFields(p => p.includes(name) ? p.filter(f => f !== name) : [...p, name]);
   const regular = fields.filter(f => !['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(f.type) && !f.isForeignKey);
@@ -182,6 +245,8 @@ export default function ExportPanel() {
               associationSheetTables: selectedAssocTables,
               includeAttachments,
               headerStyle,
+              filter: currentUserFilter,
+              permSource: permSource || null,
             },
           });
           message.success('导出任务已提交，请在任务管理中查看进度和下载');
@@ -230,7 +295,7 @@ export default function ExportPanel() {
             <Card size="small" style={{ marginBottom: 12, backgroundColor: '#f0f7ff', border: '1px solid #bae0ff' }}>
               <Space>
                 <span style={{ color: '#666', fontSize: 13 }}>切换已配置的方案：</span>
-                <Select value={permSource.type === 'admin' ? 'admin' : `${permSource.type}:${permSource.id}`}
+                <Select value={permSource?.type === 'admin' ? 'admin' : (permSource ? `${permSource.type}:${permSource.id}` : 'admin')}
                   onChange={handlePermSourceChange} style={{ minWidth: 220 }} size="small"
                   options={permSourceOptions} />
               </Space>
@@ -295,6 +360,42 @@ export default function ExportPanel() {
                 </Card>
               )}
             </>
+          )}
+          {!isAllTables && (
+            <Card title="📊 数据范围" size="small" style={{ marginBottom: 12 }} loading={loadingScopes}>
+              <div style={{ marginBottom: 10 }}>
+                <Alert type="info" showIcon message={`⚙️ 当前权限方案：${scopeSourceLabel || '默认'}`} />
+              </div>
+              {currentUserFilter && Object.keys(currentUserFilter).length > 0 ? (
+                <>
+                  <Alert type="warning" showIcon message="当前方案已限定导出范围，不可修改" style={{ marginBottom: 10 }} />
+                  {selTableCollection ? (
+                    <CollectionFilterPanel
+                      collection={selTableCollection}
+                      initialValue={currentUserFilter}
+                      onChange={() => {}}
+                      t={t as any}
+                    />
+                  ) : (
+                    <pre style={{ background: '#f5f5f5', padding: 10, borderRadius: 4 }}>{JSON.stringify(currentUserFilter, null, 2)}</pre>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Alert type="info" showIcon message="当前方案未配置固定范围，可自定义筛选条件" style={{ marginBottom: 10 }} />
+                  {selTableCollection ? (
+                    <CollectionFilterPanel
+                      collection={selTableCollection}
+                      initialValue={currentUserFilter || undefined}
+                      onChange={(filter) => setCurrentUserFilter(filter || null)}
+                      t={t as any}
+                    />
+                  ) : (
+                    <Alert type="warning" message="无法加载数据表集合，暂不支持自定义筛选" />
+                  )}
+                </>
+              )}
+            </Card>
           )}
           <Card title="⚙️ 高级选项" size="small">
             <Space style={{ marginBottom: 12 }}>

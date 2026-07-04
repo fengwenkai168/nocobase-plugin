@@ -31,9 +31,11 @@ export function useTablePermission(api: any, tableName: string | undefined) {
           }
           return;
         }
-        const rolePerm = (data.inherited || []).find((p: any) => p.tableName === tableName && p.canImport);
-        if (rolePerm?.importMode) {
-          setAllowedModes(Array.isArray(rolePerm.importMode) ? rolePerm.importMode : [rolePerm.importMode]);
+        const rolePerms = (data.inherited || []).filter((p: any) => p.tableName === tableName && p.canImport);
+        if (rolePerms.length > 0) {
+          // 多角色取并集（与后端 checkImportPermission 一致）
+          const mergedModes = [...new Set(rolePerms.flatMap((p: any) => (Array.isArray(p.importMode) ? p.importMode : [p.importMode]).filter(Boolean)))] as string[];
+          setAllowedModes(mergedModes.length > 0 ? mergedModes : ['insert', 'update', 'upsert']);
         } else {
           setAllowedModes(['insert', 'update', 'upsert']);
         }

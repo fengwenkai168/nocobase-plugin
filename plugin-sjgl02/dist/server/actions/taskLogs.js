@@ -30,10 +30,28 @@ __export(taskLogs_exports, {
   writeTaskLog: () => writeTaskLog
 });
 module.exports = __toCommonJS(taskLogs_exports);
+function isAdminOrRoot(ctx) {
+  var _a;
+  try {
+    const roleNames = (((_a = ctx.state.currentUser) == null ? void 0 : _a.roles) || []).map((r) => r.name);
+    return roleNames.some((n) => n === "admin" || n === "root");
+  } catch {
+    return false;
+  }
+}
 async function listTaskLogs(ctx, next) {
+  var _a;
   const { taskId } = ctx.action.params;
   const page = Math.max(1, parseInt(ctx.action.params.page || "1", 10) || 1);
   const pageSize = Math.min(500, Math.max(1, parseInt(ctx.action.params.pageSize || "100", 10) || 100));
+  const taskRepo = ctx.db.getRepository("sjgl02_tasks");
+  const task = await taskRepo.findOne({ filter: { id: parseInt(taskId, 10) || 0 } });
+  if (!task) {
+    ctx.throw(404, "\u4EFB\u52A1\u4E0D\u5B58\u5728");
+  }
+  if (!isAdminOrRoot(ctx) && task.createdById !== ((_a = ctx.state.currentUser) == null ? void 0 : _a.id)) {
+    ctx.throw(403, "\u53EA\u80FD\u67E5\u770B\u81EA\u5DF1\u4EFB\u52A1\u7684\u65E5\u5FD7");
+  }
   const repo = ctx.db.getRepository("sjgl02_task_logs");
   const [rows, total] = await repo.findAndCount({
     filter: { taskId: parseInt(taskId, 10) || 0 },

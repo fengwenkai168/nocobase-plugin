@@ -67,7 +67,7 @@ export function ExecutionLogViewer({ api, taskId, status }: { api: any; taskId: 
       </div>
       <div ref={scrollRef} style={{
         background: '#1e293b', borderRadius: '0 0 8px 8px', padding: '12px 16px',
-        maxHeight: 300, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.8,
+        maxHeight: 420, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12, lineHeight: 1.8,
       }}>
         {loading && logs.length === 0 ? (
           <div style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>加载中...</div>
@@ -78,12 +78,12 @@ export function ExecutionLogViewer({ api, taskId, status }: { api: any; taskId: 
           </div>
         ) : (
           logs.map((log: any, i: number) => (
-            <div key={i} style={{ color: '#e2e8f0', marginBottom: 2 }}>
+             <div key={i} style={{ color: '#e2e8f0', marginBottom: 4, wordBreak: 'break-word' }}>
               <span style={{ color: '#64748b' }}>{formatTime(log.timestamp).split(' ')[1]}</span>
               {'  '}
-              <span style={{ color: LOG_LEVEL_COLORS[log.level] || '#e2e8f0', fontWeight: 600 }}>[{log.level}]</span>
+              <span style={{ color: LOG_LEVEL_COLORS[log.level] || '#e2e8f0', fontWeight: 600, minWidth: 52, display: 'inline-block' }}>[{log.level}]</span>
               {'  '}
-              <span style={{ color: '#e2e8f0' }}>{log.message}</span>
+              <span style={{ color: log.level === 'ERROR' ? '#fca5a5' : '#e2e8f0', whiteSpace: 'pre-wrap' }}>{log.message}</span>
             </div>
           ))
         )}

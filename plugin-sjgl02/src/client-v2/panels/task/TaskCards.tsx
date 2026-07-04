@@ -1,7 +1,8 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Card, Descriptions, Tag, Table, Button, Space, Tabs, Modal, Spin, App } from 'antd';
+import { Card, Descriptions, Tag, Table, Button, Space, Tabs, Modal, Spin, App, Alert } from 'antd';
 import { CaretRightOutlined, CaretDownOutlined } from '@ant-design/icons';
+import { useApp, CollectionFilterPanel } from '@nocobase/client-v2';
 import { StatusBadge, TableTag, FieldTag, DataDot, formatTime, formatFileSize, formatDuration } from './shared';
 import { ExecutionLogViewer } from './ExecutionLogViewer';
 
@@ -404,8 +405,13 @@ export function DataPreviewCard({ task, api, fieldTitles }: any) {
           {displayLogs.length > 0 && (
             <Table dataSource={displayLogs.map((l: any, i: number) => ({ key: i, ...l }))} pagination={false} size="small"
               columns={[
-                { title: '行号', dataIndex: 'excelRow', width: 80, render: (v: any) => v ? `第 ${v} 行` : '—' },
-                { title: '错误原因', dataIndex: 'reason', ellipsis: true },
+                { title: '行号', dataIndex: 'row', width: 80, render: (v: any, record: any) => {
+                  if (record.excelRow) return `Excel 第 ${record.excelRow} 行`;
+                  return v ? `第 ${v} 行` : '—';
+                }},
+                { title: '错误原因', dataIndex: 'reason', ellipsis: true, render: (v: any) => (
+                  <span style={{ color: '#b91c1c', whiteSpace: 'pre-wrap' }}>{String(v || '—')}</span>
+                )},
                 { title: '字段快照', dataIndex: 'snapshot', ellipsis: true, render: (v: any) => {
                   if (!v) return '—';
                   try { const obj = typeof v === 'string' ? JSON.parse(v) : v; return Object.entries(obj).map(([k, val]: any) => `${k}=${val}`).join(', '); }
@@ -560,6 +566,43 @@ function ExportPreviewCard({ task, api, fieldTitles }: any) {
       <Table dataSource={previewRows.map((r: any, i: number) => ({ key: i, ...r }))}
         columns={cols} pagination={false} size="small" scroll={{ x: 'max-content' }} />
     </CollapseCard>
+  );
+}
+
+export function ExportFilterCard({ task, fieldTitles }: any) {
+  const app = useApp<any>();
+  const { t } = App.useApp();
+  if (!task || task.taskType !== 'export' || task.tableName === '__all__') return null;
+  const collection = app?.dataSourceManager?.getDataSource?.('main')?.getCollection?.(task.tableName);
+  const permSource = task.permSource || {};
+  const sourceLabel = permSource.label || (permSource.type === 'admin' ? '管理员完整权限' : permSource.type === 'user' ? '当前用户' : permSource.id || '默认');
+  const exportFilter = task.exportFilter || {};
+  const hasFilter = exportFilter && Object.keys(exportFilter).length > 0;
+  const isCustom = permSource.type !== 'admin' && !task._fixedScope;
+
+  return (
+    <CardWrap title="📊 数据范围">
+      <Descriptions column={1} size="small" bordered>
+        <Descriptions.Item label="权限方案">{sourceLabel}</Descriptions.Item>
+      </Descriptions>
+      {hasFilter ? (
+        <>
+          <Alert type="info" showIcon message={isCustom ? '用户自定义筛选条件' : '管理员配置的固定范围'} style={{ margin: '10px 0' }} />
+          {collection ? (
+            <CollectionFilterPanel
+              collection={collection}
+              initialValue={exportFilter}
+              onChange={() => {}}
+              t={t as any}
+            />
+          ) : (
+            <pre style={{ background: '#f5f5f5', padding: 10, borderRadius: 4 }}>{JSON.stringify(exportFilter, null, 2)}</pre>
+          )}
+        </>
+      ) : (
+        <Alert type="info" showIcon message="未设置数据范围，导出全部数据" style={{ marginTop: 10 }} />
+      )}
+    </CardWrap>
   );
 }
 

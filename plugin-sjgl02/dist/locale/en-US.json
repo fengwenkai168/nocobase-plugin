@@ -111,5 +111,18 @@
   "User": "User",
   "Role": "Role",
   "No permission configured": "No Permissions Configured",
-  "Import info": "Supports .xlsx / .xls / .csv, max 50MB. Three modes: Insert, Update, Upsert"
+  "Import info": "Supports .xlsx / .xls / .csv, max 50MB. Three modes: Insert, Update, Upsert",
+  "Current permission scheme": "Current Permission Scheme",
+  "Fixed scope by admin": "Fixed scope configured by admin",
+  "Custom user filter": "Custom user filter",
+  "No data range": "No data range configured, export all data",
+  "Scheme switch": "Switch configured scheme",
+  "Admin full permission": "Admin full permission",
+  "Current user scheme": "Current user scheme",
+  "User scheme": "User scheme",
+  "Role scheme": "Role scheme",
+  "Scope readonly tip": "Current scheme has fixed export scope, cannot modify",
+  "Scope custom tip": "Current scheme has no fixed scope, you can customize filter",
+  "Please select table first": "Please select a table first",
+  "Collection not loaded": "Collection not loaded, custom filter unavailable"
 }

@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { NAMESPACE } from '../locale';
 
 const TABS = {
-  import: { key: 'import', label: '⬇ 导入', loader: () => import('../../client/panels/ImportPanel') },
-  export: { key: 'export', label: '⬆ 导出', loader: () => import('../../client/panels/ExportPanel') },
-  tasks: { key: 'tasks', label: '☰ 任务管理', loader: () => import('../../client/panels/TaskPanel') },
-  permissions: { key: 'permissions', label: '✓ 权限管理', loader: () => import('./PermissionTab') },
+  import: { key: 'import', label: '⬇ 导入', loader: () => import('../panels/ImportPanel') },
+  export: { key: 'export', label: '⬆ 导出', loader: () => import('../panels/ExportPanel') },
+  tasks: { key: 'tasks', label: '☰ 任务管理', loader: () => import('../panels/TaskPanel') },
+  permissions: { key: 'permissions', label: '✓ 权限管理', loader: () => import('../panels/PermissionPanel') },
 };
 
 export default function Sjgl02SettingsPage() {
@@ -48,7 +48,7 @@ export default function Sjgl02SettingsPage() {
           padding: '4px 14px',
           fontSize: 11,
         }}>
-          @my-project/plugin-sjgl02 v1.0.95
+          @my-project/plugin-sjgl02 v1.0.129
         </div>
       </div>
       <Card style={{ borderRadius: 10, minHeight: 600 }}>

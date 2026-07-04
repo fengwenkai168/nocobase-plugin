@@ -34,13 +34,16 @@ export function usePermissions(api: any, target: Target | null) {
 
   const autoSave = useCallback((updatedPerms: Permission[]) => {
     const nonInherited = updatedPerms.filter((p) => !p._inherited);
-    if (nonInherited.length === 0) return;
     api.request({
       url: 'sjgl02Permissions:save',
       method: 'post',
-      data: { permissions: nonInherited },
+      data: {
+        permissions: nonInherited,
+        targetType: target?.type || '',
+        targetId: target?.id || '',
+      },
     }).catch(() => {});
-  }, [api]);
+  }, [api, target?.type, target?.id]);
 
   const refresh = useCallback(() => {
     if (!target) return;
@@ -97,7 +100,7 @@ export function usePermissions(api: any, target: Target | null) {
           requiredFields: values.requiredFields || [],
           importFields: values.importFields || [],
           exportFields: values.exportFields || [],
-          exportFilter: null,
+          exportFilter: values.exportFilter || null,
         },
       ];
     }

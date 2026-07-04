@@ -1,5 +1,99 @@
 # CHANGELOG
 
+## 1.0.129 (2026-07-04) — 导出数据范围（exportFilter）
+- **新增**：权限管理中可为每张表配置导出数据范围，使用 NocoBase 系统 `CollectionFilterPanel` 组件
+- **新增**：导出面板第二步增加「数据范围」卡片，支持只读展示固定范围或自定义筛选
+- **新增**：权限方案下拉支持切换用户自身/角色方案，admin/root 额外支持切换其他用户/角色和管理员完整权限
+- **新增**：服务端 `PermissionService.getExportScopes()` 与 `sjgl02Permissions:scopes` 接口，返回所有可用导出方案及数据范围
+- **新增**：任务详情显示「数据范围」卡片，展示任务使用的权限方案和筛选条件
+- **新增**：`sjgl02_tasks` 表新增 `permSource` JSON 字段，保存任务创建时使用的权限方案
+- **变更**：导出时优先使用权限配置的 `exportFilter`；未配置时允许用户自定义筛选；全表导出不应用数据范围
+- **变更**：`previewCount` 同步按权限范围计算预计行数
+- **版本**：1.0.128 → 1.0.129
+
+## 1.0.128 (2026-07-04) — 修复 insert/upsert-insert 创建人/更新人失效 + v1 添加区块入口
+- **修复**：`insert` / `upsert-insert` 模式下，直接对 `createdById` / `updatedById` 赋值会被 NocoBase context 字段钩子覆盖，导致创建人/更新人仍为 NULL
+- **重构**：`targetRepo.create()` 调用时注入 `context: { state: { currentUser: { id: userId } } }`，让 NocoBase 自动填充任务创建人
+- **新增**：`repo.create` 后通过 `UPDATE ... FROM (VALUES ...)` 按影子表数据二次修正 `createdById` / `updatedById` / `createdAt` / `updatedAt`，确保用户显式映射的系统字段优先写入
+- **修复**：v1 页面「添加区块 → 其他」中「数据管理」入口消失的问题；将 `schemaInitializerManager.addItem` 的 `Component` 从错误的 `SjglBlockInitializer` 改为正确的 `Sjgl02BlockInitializer`
+- **影响**：未映射系统字段时自动写入任务创建人和当前时间；映射后按 Excel 值写入，符合「映射即写入，未映射即系统维护」规则
+
+- **修复**：`insert` / `upsert-insert` 模式下，直接对 `createdById` / `updatedById` 赋值会被 NocoBase context 字段钩子覆盖，导致创建人/更新人仍为 NULL
+- **重构**：`targetRepo.create()` 调用时注入 `context: { state: { currentUser: { id: userId } } }`，让 NocoBase 自动填充任务创建人
+- **新增**：`repo.create` 后通过 `UPDATE ... FROM (VALUES ...)` 按影子表数据二次修正 `createdById` / `updatedById` / `createdAt` / `updatedAt`，确保用户显式映射的系统字段优先写入
+- **影响**：未映射系统字段时自动写入任务创建人和当前时间；映射后按 Excel 值写入，符合「映射即写入，未映射即系统维护」规则
+
+## 1.0.127 (2026-07-04) — 导入自动填充创建人/更新人
+- **修复**：异步后台导入时 `createdById` / `updatedById` / `createdAt` / `updatedAt` 未生效的问题
+- **新增**：`insert` / `upsert-insert` 模式下，若用户未映射系统字段，自动写入当前任务创建人作为 `createdById` / `updatedById`，当前时间作为 `createdAt` / `updatedAt`
+- **修复**：`update` / `upsert-update` 模式下 `updatedById` 使用 `COALESCE` 导致无法覆盖旧值的问题，改为强制更新为当前任务创建人
+
+## 1.0.126 (2026-07-04) — 导入主键全面适配 Snowflake/UUID/Nano ID
+- **重构**：影子表去掉 `INCLUDING CONSTRAINTS`，不再复制真实表主键的 `NOT NULL` 约束
+- **新增**：影子表增加自增列 `__import_row_id__` 作为主键，用于阶段三分批读取
+- **重构**：阶段三改为按 `__import_row_id__` 键集分页，每批 5000 行流式处理
+- **重构**：`insert` / `upsert-insert` 分支改走 `targetRepo.create()`，未映射主键由 NocoBase 应用层生成
+- **新增**：支持 Snowflake ID (53-bit)、UUID、Nano ID、自增整数等全部 NocoBase 预置主键类型
+- **新增**：允许用户在 Excel 中填写主键值；填写时阶段一检测 Excel 内部重复，阶段三检测与数据库已有记录冲突
+- **修复**：移除 `applyPrimaryKeyDefaults` 对数据库默认值（`nextval`/`gen_random_uuid`）的硬性依赖
+- **修复**：`update` / `upsert-update` 的 SET 子句排除主键列，避免误更新主键
+- **变更**：`update` 模式改为分批 SQL UPDATE，进度实时刷新，避免一次性锁定大表
+- **变更**：`upsert` 模式先分批 UPDATE 匹配行，再分批 CREATE 未匹配行
+- **变更**：主键映射后单元格为空时，视为由系统生成（而非报错）
+
+## 1.0.125 (2026-07-04) — 影子表主键自动生成 + 任务日志增强
+- **重构**：影子表创建后动态识别主键列（支持单字段/组合主键）
+- **新增**：复制真实表主键的自动生成规则到影子表（自增序列、UUID v4、UUID v7 等）
+- **变更**：主键能自动生成时，Excel 未映射主键也可正常插入；不能自动生成时则要求 Excel 必须映射
+- **修复**：新增/upsert 模式因影子表 `id` 无默认值导致 NOT NULL 失败的问题
+- **修复**：任务详情失败明细行号显示逻辑，优先显示 Excel 原始行号
+- **优化**：执行日志查看器支持长错误信息自动换行、区域加高、ERROR 级别高亮为红色
+
+## 1.0.124 (2026-07-04) — 权限服务重构与导出权限方案切换
+- **重构**：新增 `PermissionService` 统一封装权限查询、角色来源、权限合并逻辑
+- **重构**：`permission-check.ts` / `permissions.ts` 全部改用 `PermissionService`，消除重复逻辑
+- **修复**：统一从 `rolesUsers` 表获取用户角色，不再依赖不稳定的 `users.appends('roles')`
+- **修复**：权限配置查询改用底层 SQL，绕过 NocoBase ACL 对自定义 action 内部查询的拦截
+- **新增**：导出接口支持 `permSource` 参数，管理员可切换模拟权限方案执行导出
+- **优化**：导入/导出面板的「权限方案」下拉框对普通用户默认不选中管理员方案，admin 默认选中完整权限
+
+## 1.0.123 (2026-07-04) — 导入系统字段与主键动态化
+- **重构**：移除硬编码系统字段排除列表（`id/createdAt/updatedAt/createdById/updatedById/createdBy/updatedBy`）
+- **新增**：动态识别主键列名（兼容 `id`、自定义主键如 `order_code`）
+- **变更**：导入时只要字段在 Excel 中映射了就写入；未映射的字段交给数据库/系统自动处理
+- **变更**：更新模式自动维护 `updatedAt` 和 `updatedById`（字段存在时），若用户已映射则使用 Excel 值
+- **修复**：创建人、创建时间、主键等字段在映射后仍被错误排除的问题
+- **修复**：前端字段列表隐藏 `createdBy`/`updatedBy` 虚拟关联字段，仅保留实际外键 `createdById`/`updatedById`
+
+## 1.0.122 (2026-07-04) — 架构统一与深度修复
+- **重构**：公共面板统一至 `client-v2/panels/`，v1 仅保留插件注册壳，避免双套面板重复维护
+- **修复（安全）**：导入流程中 `DROP TABLE IF EXISTS` 与标识符均使用 `quoteIdentifier()` 转义，消除 SQL 注入风险
+- **修复（内存）**：导入阶段二改为流式批量写入，按列数动态计算 batch size，避免全量 Excel 数据进内存
+- **修复（类型）**：导入字段按目标字段类型转换，空字符串对非字符串字段自动转 `null`
+- **修复（权限）**：admin/root 模拟权限方案时优先按 `permSource` 校验；业务集合直接 REST 仅管理员可见
+- **修复（权限）**：admin/root 角色及用户默认拥有所有数据表的全权限（导入/导出、全部导入模式），无记录时实时补齐
+- **修复（任务）**：取消/删除任务和查看任务日志增加创建人归属校验，非 admin 只能操作自己的任务
+- **修复（启动清理）**：影子表 LIKE 查询加 ESCAPE，DROP 表名使用双引号转义
+
+## 1.0.119 (2026-07-04) — Phase 3 INSERT 走 NocoBase ORM
+- **重构**：INSERT/UPSERT-INSERT 改用 `repo.create()`（NocoBase 自动生成 id + 系统字段）
+- **删除**：临时序列逻辑（不再需要）
+- **删除**：系统字段 COALESCE SQL（NocoBase 自动填）
+
+## 1.0.118 (2026-07-04) — 权限前端修复（4 项）
+- **修复**：v1 auto-save 空数组也发请求 + 加 targetType/targetId
+- **修复**：v2 useViewScope 保存时传 userId
+- **修复**：v2 useTablePermission 多角色 importMode 取并集
+- **修复**：v2 PermissionTab useViewScope 传 selectedTarget
+
+## 1.0.117 (2026-07-03) — 权限系统深度修复（6 项缺陷）
+- **修复 #1**：删除最后一条权限不生效 → 空数组时也执行删除循环，前端始终发送 targetType/targetId
+- **修复 #2**：保存权限无事务保护 → 加 `sequelize.transaction()` 包裹
+- **修复 #3**：permSource 跳过 admin/root → 管理员判定移到 permSource 之前
+- **修复 #4**：多角色仅合并 importMode → 全字段取并集/最宽松值
+- **修复 #5**：autoSave 为空时不发请求 → 删除早期 return
+- **修复 #6**：get 时重复补齐 admin 权限 → 去掉冗余逻辑（install 已有）
+
 ## 1.0.116 (2026-07-03) — 压缩包内部文件名修复
 - **修复**：`__all__` tar.gz 内文件名改为可读表名（`renameSync` 后追加）
 - **修复**：附件按表归类到子目录（`表名/附件字段/文件`）

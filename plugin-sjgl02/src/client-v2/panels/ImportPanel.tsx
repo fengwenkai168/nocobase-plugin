@@ -3,7 +3,7 @@ import React from 'react';
 import { Card, Tabs, Button, Space, Select, Table, Tag, Statistic, Row, Col, Input, InputNumber, Checkbox, Switch, Steps, Progress, Empty, Descriptions, Drawer, Modal, Form, Radio, Upload, Pagination, Alert, App } from 'antd';
 import { InboxOutlined, TableOutlined } from '@ant-design/icons';
 import { VERSION, apiRequest } from './shared';
-import { useAPI } from '../../client-v2/utils/api';
+import { useAPI } from '../utils/api';
 
 const { Dragger } = Upload;
 
@@ -28,7 +28,7 @@ export default function ImportPanel() {
   const [previewModal, setPreviewModal] = React.useState(false);
   const [blankCellMode, setBlankCellMode] = React.useState('update');
   const [isAdminOrRoot, setIsAdminOrRoot] = React.useState(false);
-  const [permSource, setPermSource] = React.useState<{ type: string; id?: string; label?: string }>({ type: 'admin' });
+  const [permSource, setPermSource] = React.useState<{ type: string; id?: string; label?: string } | null>(null);
   const [permSourceOptions, setPermSourceOptions] = React.useState<any[]>([]);
   const [previewMeta, setPreviewMeta] = React.useState<any>(null);
 
@@ -61,12 +61,15 @@ export default function ImportPanel() {
         const isAdmin = roles.includes('admin') || roles.includes('root');
         setIsAdminOrRoot(isAdmin);
         if (isAdmin) {
+          setPermSource({ type: 'admin' });
           apiRequest(client, 'sjgl02Permissions:userRoleList').then((list: any) => {
             const opts: any[] = [{ value: 'admin', label: '管理员完整权限', type: 'admin' }];
             (list?.users || []).forEach((u: any) => { opts.push({ value: `user:${u.id}`, label: `👤 ${u.nickname || u.username || u.id} — 用户方案`, type: 'user', id: String(u.id) }); });
             (list?.roles || []).forEach((r: any) => { opts.push({ value: `role:${r.name}`, label: `👥 ${r.title || r.name} — 角色方案`, type: 'role', id: r.name }); });
             setPermSourceOptions(opts);
           }).catch(() => {});
+        } else {
+          setPermSource(null);
         }
         if (!uid) { setTables(allTables); return; }
         apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: 'user', targetId: String(uid) } }).then((permData: any) => {
@@ -115,7 +118,7 @@ export default function ImportPanel() {
       const currentUserId = userData?.data?.id || userData?.id;
       const roles = (userData?.roles || userData?.data?.roles || []).map((r: any) => r.name || '');
       if (roles.includes('admin') || roles.includes('root')) {
-        if (permSource.type !== 'admin' && permSource.id) {
+        if (permSource && permSource.type !== 'admin' && permSource.id) {
           apiRequest(client, 'sjgl02Permissions:get', { params: { targetType: permSource.type, targetId: permSource.id } }).then((permData: any) => {
             const perm = (permData?.custom || []).find((p: any) => p.tableName === selectedTable.name);
             if (perm?.canImport && perm.importMode) {
@@ -287,7 +290,7 @@ export default function ImportPanel() {
             importMode,
             uniqueFields,
             blankCellMode,
-            permSource: permSource.type === 'admin' ? null : permSource,
+            permSource: permSource || null,
           },
         }).then(() => {
           message.success('导入任务已提交，可在任务管理中查看进度');
@@ -407,7 +410,7 @@ export default function ImportPanel() {
                       <Space>
                         <span style={{ color: '#999', fontSize: 12 }}>切换已配置的方案：</span>
                         <Select
-                          value={permSource.type === 'admin' ? 'admin' : `${permSource.type}:${permSource.id}`}
+                          value={permSource?.type === 'admin' ? 'admin' : (permSource ? `${permSource.type}:${permSource.id}` : 'admin')}
                           onChange={handlePermSourceChange} style={{ minWidth: 200 }} size="small"
                           options={permSourceOptions} />
                       </Space>

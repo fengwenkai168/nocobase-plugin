@@ -139,7 +139,9 @@ export async function getExportTableFields(ctx: Context, next: Next) {
       fkSet.add(f.options.foreignKey);
     }
   });
-  const fields = rawFields.map((f: any) => {
+  const fields = rawFields.filter((f: any) => {
+    return f.name !== 'createdBy' && f.name !== 'updatedBy';
+  }).map((f: any) => {
     let title = f.options?.uiSchema?.title || null;
     if (title && /^\{\{/.test(title)) title = null;
     if (!title) title = f.name;
@@ -159,7 +161,7 @@ export async function getExportTableFields(ctx: Context, next: Next) {
 
 export async function previewCount(ctx: Context, next: Next) {
   const params = ctx.action.params.values || ctx.action.params;
-  const { tableName, filter } = params;
+  const { tableName, filter, permSource } = params;
   if (!tableName || tableName === '__all__') {
     let total = 0;
     const collections = ctx.db.collections;
@@ -173,8 +175,15 @@ export async function previewCount(ctx: Context, next: Next) {
     await next();
     return;
   }
+  let effectiveFilter = filter || {};
+  try {
+    const exportPerm = await checkExportPermission(ctx, tableName, permSource);
+    if (exportPerm.exportFilter && Object.keys(exportPerm.exportFilter).length > 0) {
+      effectiveFilter = exportPerm.exportFilter as Record<string, any>;
+    }
+  } catch {}
   const repo = ctx.db.getRepository(tableName);
-  const count = repo ? await repo.count({ filter: filter || {} }) : 0;
+  const count = repo ? await repo.count({ filter: effectiveFilter }) : 0;
   ctx.body = { estimatedRows: count };
   await next();
 }
@@ -184,9 +193,10 @@ export async function executeExport(ctx: Context, next: Next) {
   const {
     tableName, selectedFields, associationDisplayMode, includeAssociationSheet,
     associationSheetTables, filter, fileNameTemplate, includeAttachments, headerStyle,
+    permSource,
   } = params;
 
-  const exportFilter = (() => {
+  const userFilter = (() => {
     if (!filter) return {};
     if (Array.isArray(filter)) {
       const obj: Record<string, any> = {};
@@ -205,8 +215,11 @@ export async function executeExport(ctx: Context, next: Next) {
     ctx.throw(400, 'tableName is required');
   }
 
+  let permissionExportFilter: Record<string, any> | null = null;
+
   if (tableName !== '__all__') {
-    const exportPerm = await checkExportPermission(ctx, tableName);
+    const exportPerm = await checkExportPermission(ctx, tableName, permSource);
+    permissionExportFilter = exportPerm.exportFilter as Record<string, any> | null;
     if (exportPerm.exportFields && exportPerm.exportFields.length > 0 && selectedFields && selectedFields.length > 0) {
       const invalidFields = selectedFields.filter((f: string) => !exportPerm.exportFields.includes(f));
       if (invalidFields.length > 0) {
@@ -215,13 +228,19 @@ export async function executeExport(ctx: Context, next: Next) {
     }
   }
 
+  const exportFilter = tableName === '__all__'
+    ? {}
+    : (permissionExportFilter && Object.keys(permissionExportFilter).length > 0
+        ? permissionExportFilter
+        : userFilter);
+
   let allowedTableList: string[] | null = null;
   if (tableName === '__all__') {
     const names: string[] = [];
     const collections = ctx.db.collections;
     for (const [name] of collections) {
       try {
-        const permCheck = await checkExportPermission(ctx, name);
+        const permCheck = await checkExportPermission(ctx, name, permSource);
         if (permCheck.canExport) names.push(name);
       } catch { }
     }
@@ -249,6 +268,7 @@ export async function executeExport(ctx: Context, next: Next) {
       status: 'pending',
       selectedFields: selectedFields || [],
       exportFilter: exportFilter || {},
+      permSource: permSource || null,
       associationDisplayMode: associationDisplayMode || {},
       includeAssociationSheet: includeAssociationSheet || false,
       associationSheetTables: associationSheetTables || [],

@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { useAPI } from '../../client-v2/utils/api';
+import { useAPI } from '../utils/api';
 import { TaskList } from './task/TaskList';
 import { TaskDetail } from './task/TaskDetail';
 

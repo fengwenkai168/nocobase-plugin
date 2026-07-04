@@ -17,6 +17,7 @@ import {
   listTasks,
   getTaskDetail,
   cancelTask,
+  deleteTask,
 } from './actions/tasks';
 import {
   getUserRoleList,
@@ -25,6 +26,7 @@ import {
   savePermissions,
   getSettings,
   saveSettings,
+  getExportScopes,
 } from './actions/permissions';
 import {
   listTaskLogs,
@@ -42,7 +44,6 @@ export class PluginSjgl02Server extends Plugin {
     try {
       const sequelize = this.db.sequelize;
 
-      // 1. 清理残留任务（5 分钟窗口）
       const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
       await this.db.getRepository('sjgl02_tasks').update({
         filter: {
@@ -56,18 +57,17 @@ export class PluginSjgl02Server extends Plugin {
         },
       });
 
-      // 2. 清理残留影子表
       const [shadowTables] = await sequelize.query(
-        `SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02_import_%' AND schemaname = current_schema()`,
+        "SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02\\_import\\_%' ESCAPE '\\' AND schemaname = current_schema()",
         { raw: true },
       );
       for (const row of (shadowTables as any[])) {
         try {
-          await sequelize.query(`DROP TABLE IF EXISTS "${row.tablename}"`);
+          const quoted = '"' + String(row.tablename).replace(/"/g, '""') + '"';
+          await sequelize.query('DROP TABLE IF EXISTS ' + quoted);
         } catch {}
       }
 
-      // 3. 清理残留导出文件
       const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
       const exportDir = storageDir + '/exports';
       if (fs.existsSync(exportDir)) {
@@ -109,6 +109,7 @@ export class PluginSjgl02Server extends Plugin {
         list: listTasks,
         detail: getTaskDetail,
         cancel: cancelTask,
+        delete: deleteTask,
       },
     });
 
@@ -121,6 +122,7 @@ export class PluginSjgl02Server extends Plugin {
         save: savePermissions,
         settings: getSettings,
         saveSettings,
+        scopes: getExportScopes,
       },
     });
 
@@ -138,12 +140,14 @@ export class PluginSjgl02Server extends Plugin {
     acl.allow('sjgl02Export', '*', 'loggedIn');
     acl.allow('sjgl02Tasks', '*', 'loggedIn');
     acl.allow('sjgl02Permissions', '*', 'loggedIn');
-    acl.allow('sjgl02_tasks', '*', 'loggedIn');
-    acl.allow('sjgl02_table_permissions', '*', 'loggedIn');
-    acl.allow('sjgl02_settings', '*', 'loggedIn');
-    acl.allow('sjgl02_permission_logs', '*', 'loggedIn');
     acl.allow('sjgl02TaskLogs', '*', 'loggedIn');
-    acl.allow('sjgl02_task_logs', '*', 'loggedIn');
+
+    // 业务数据集合仅允许通过自定义 action 间接操作；直接 REST 仅管理员
+    acl.allow('sjgl02_tasks', '*', 'admin');
+    acl.allow('sjgl02_table_permissions', '*', 'admin');
+    acl.allow('sjgl02_settings', '*', 'admin');
+    acl.allow('sjgl02_permission_logs', '*', 'admin');
+    acl.allow('sjgl02_task_logs', '*', 'admin');
   }
 
   async install() {

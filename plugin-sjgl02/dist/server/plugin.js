@@ -70,12 +70,13 @@ class PluginSjgl02Server extends import_server.Plugin {
         }
       });
       const [shadowTables] = await sequelize.query(
-        `SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02_import_%' AND schemaname = current_schema()`,
+        "SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02\\_import\\_%' ESCAPE '\\' AND schemaname = current_schema()",
         { raw: true }
       );
       for (const row of shadowTables) {
         try {
-          await sequelize.query(`DROP TABLE IF EXISTS "${row.tablename}"`);
+          const quoted = '"' + String(row.tablename).replace(/"/g, '""') + '"';
+          await sequelize.query("DROP TABLE IF EXISTS " + quoted);
         } catch {
         }
       }
@@ -120,7 +121,8 @@ class PluginSjgl02Server extends import_server.Plugin {
       actions: {
         list: import_tasks.listTasks,
         detail: import_tasks.getTaskDetail,
-        cancel: import_tasks.cancelTask
+        cancel: import_tasks.cancelTask,
+        delete: import_tasks.deleteTask
       }
     });
     this.app.resourceManager.define({
@@ -131,7 +133,8 @@ class PluginSjgl02Server extends import_server.Plugin {
         get: import_permissions.getPermissions,
         save: import_permissions.savePermissions,
         settings: import_permissions.getSettings,
-        saveSettings: import_permissions.saveSettings
+        saveSettings: import_permissions.saveSettings,
+        scopes: import_permissions.getExportScopes
       }
     });
     this.app.resourceManager.define({
@@ -147,12 +150,12 @@ class PluginSjgl02Server extends import_server.Plugin {
     acl.allow("sjgl02Export", "*", "loggedIn");
     acl.allow("sjgl02Tasks", "*", "loggedIn");
     acl.allow("sjgl02Permissions", "*", "loggedIn");
-    acl.allow("sjgl02_tasks", "*", "loggedIn");
-    acl.allow("sjgl02_table_permissions", "*", "loggedIn");
-    acl.allow("sjgl02_settings", "*", "loggedIn");
-    acl.allow("sjgl02_permission_logs", "*", "loggedIn");
     acl.allow("sjgl02TaskLogs", "*", "loggedIn");
-    acl.allow("sjgl02_task_logs", "*", "loggedIn");
+    acl.allow("sjgl02_tasks", "*", "admin");
+    acl.allow("sjgl02_table_permissions", "*", "admin");
+    acl.allow("sjgl02_settings", "*", "admin");
+    acl.allow("sjgl02_permission_logs", "*", "admin");
+    acl.allow("sjgl02_task_logs", "*", "admin");
   }
   async install() {
     const settingRepo = this.db.getRepository("sjgl02_settings");
