@@ -1,2 +1,2 @@
-import React from 'react';
-export default function ExportPanel(): React.JSX.Element;
+declare const _default: any;
+export default _default;

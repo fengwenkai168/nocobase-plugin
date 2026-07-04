@@ -20,13 +20,15 @@ function sanitizeSheetName(name: string): string {
 function formatFileName(template: string, tableName: string): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(
+    d.getMinutes(),
+  )}${pad(d.getSeconds())}`;
   return template.replace(/\{表名\}/g, tableName).replace(/\{日期\}/g, date);
 }
 
 function getFieldDisplayName(coll: any, fieldName: string, style?: string): string {
   try {
-    const f = (coll.fields instanceof Map ? coll.fields.get(fieldName) : null);
+    const f = coll.fields instanceof Map ? coll.fields.get(fieldName) : null;
     const title = f?.options?.uiSchema?.title;
     if (title && !/^\{\{/.test(title)) {
       if (style === 'id') return fieldName;
@@ -58,7 +60,9 @@ function formatValue(val: any): string {
   if (val === null || val === undefined) return '';
   if (val instanceof Date) {
     const pad = (n: number) => String(n).padStart(2, '0');
-    return `${val.getFullYear()}-${pad(val.getMonth() + 1)}-${pad(val.getDate())} ${pad(val.getHours())}:${pad(val.getMinutes())}:${pad(val.getSeconds())}`;
+    return `${val.getFullYear()}-${pad(val.getMonth() + 1)}-${pad(val.getDate())} ${pad(val.getHours())}:${pad(
+      val.getMinutes(),
+    )}:${pad(val.getSeconds())}`;
   }
   if (typeof val === 'object') return JSON.stringify(val);
   return String(val);
@@ -105,10 +109,14 @@ function detectPkType(coll: any): 'int_auto' | 'uuid' | 'other' {
     const pkType = String(pk.type || '');
     if (pkType.includes('UUID') || pkType.includes('uuid')) return 'uuid';
     const autoIncr = pk.options?.autoIncrement;
-    if (autoIncr !== false && (pkType.includes('INT') || pkType.includes('int') || pkType === 'bigInt' || pkType === 'BIGINT')) {
+    if (
+      autoIncr !== false &&
+      (pkType.includes('INT') || pkType.includes('int') || pkType === 'bigInt' || pkType === 'BIGINT')
+    ) {
       return 'int_auto';
     }
-    if (pkType.includes('INT') || pkType.includes('int') || pkType === 'bigInt' || pkType === 'BIGINT') return 'int_auto';
+    if (pkType.includes('INT') || pkType.includes('int') || pkType === 'bigInt' || pkType === 'BIGINT')
+      return 'int_auto';
     return 'other';
   } catch {
     return 'other';
@@ -139,22 +147,24 @@ export async function getExportTableFields(ctx: Context, next: Next) {
       fkSet.add(f.options.foreignKey);
     }
   });
-  const fields = rawFields.filter((f: any) => {
-    return f.name !== 'createdBy' && f.name !== 'updatedBy';
-  }).map((f: any) => {
-    let title = f.options?.uiSchema?.title || null;
-    if (title && /^\{\{/.test(title)) title = null;
-    if (!title) title = f.name;
-    return {
-      name: f.name,
-      type: f.type,
-      uiSchema: { ...(f.options?.uiSchema || {}), title },
-      interface: f.options?.interface || null,
-      isRequired: autoFields.includes(f.name) ? false : f.options?.allowNull === false,
-      isAssociation: ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(f.type),
-      isForeignKey: fkSet.has(f.name),
-    };
-  });
+  const fields = rawFields
+    .filter((f: any) => {
+      return f.name !== 'createdBy' && f.name !== 'updatedBy';
+    })
+    .map((f: any) => {
+      let title = f.options?.uiSchema?.title || null;
+      if (title && /^\{\{/.test(title)) title = null;
+      if (!title) title = f.name;
+      return {
+        name: f.name,
+        type: f.type,
+        uiSchema: { ...(f.options?.uiSchema || {}), title },
+        interface: f.options?.interface || null,
+        isRequired: autoFields.includes(f.name) ? false : f.options?.allowNull === false,
+        isAssociation: ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(f.type),
+        isForeignKey: fkSet.has(f.name),
+      };
+    });
   ctx.body = fields;
   await next();
 }
@@ -191,8 +201,15 @@ export async function previewCount(ctx: Context, next: Next) {
 export async function executeExport(ctx: Context, next: Next) {
   const params = ctx.action.params.values || ctx.action.params;
   const {
-    tableName, selectedFields, associationDisplayMode, includeAssociationSheet,
-    associationSheetTables, filter, fileNameTemplate, includeAttachments, headerStyle,
+    tableName,
+    selectedFields,
+    associationDisplayMode,
+    includeAssociationSheet,
+    associationSheetTables,
+    filter,
+    fileNameTemplate,
+    includeAttachments,
+    headerStyle,
     permSource,
   } = params;
 
@@ -228,11 +245,12 @@ export async function executeExport(ctx: Context, next: Next) {
     }
   }
 
-  const exportFilter = tableName === '__all__'
-    ? {}
-    : (permissionExportFilter && Object.keys(permissionExportFilter).length > 0
+  const exportFilter =
+    tableName === '__all__'
+      ? {}
+      : permissionExportFilter && Object.keys(permissionExportFilter).length > 0
         ? permissionExportFilter
-        : userFilter);
+        : userFilter;
 
   let allowedTableList: string[] | null = null;
   if (tableName === '__all__') {
@@ -242,7 +260,7 @@ export async function executeExport(ctx: Context, next: Next) {
       try {
         const permCheck = await checkExportPermission(ctx, name, permSource);
         if (permCheck.canExport) names.push(name);
-      } catch { }
+      } catch {}
     }
     allowedTableList = names;
   }
@@ -252,7 +270,10 @@ export async function executeExport(ctx: Context, next: Next) {
   try {
     if (tableName === '__all__' && allowedTableList) {
       for (const t of allowedTableList) {
-        try { const repo = ctx.db.getRepository(t); if (repo) estimatedTotal += await repo.count({ filter: exportFilter || {} }); } catch {}
+        try {
+          const repo = ctx.db.getRepository(t);
+          if (repo) estimatedTotal += await repo.count({ filter: exportFilter || {} });
+        } catch {}
       }
     } else {
       const tRepo = ctx.db.getRepository(tableName);
@@ -289,8 +310,15 @@ export async function executeExport(ctx: Context, next: Next) {
 
   setImmediate(() => {
     processExportAsync(db, taskId, {
-      tableName, selectedFields, associationDisplayMode, includeAssociationSheet,
-      associationSheetTables, exportFilter, fileNameTemplate, includeAttachments, headerStyle,
+      tableName,
+      selectedFields,
+      associationDisplayMode,
+      includeAssociationSheet,
+      associationSheetTables,
+      exportFilter,
+      fileNameTemplate,
+      includeAttachments,
+      headerStyle,
       allowedTableList,
     });
   });
@@ -311,8 +339,15 @@ interface ExportAsyncParams {
 
 async function processExportAsync(db: Database, taskId: number, params: ExportAsyncParams) {
   const {
-    tableName, selectedFields, associationDisplayMode, includeAssociationSheet,
-    associationSheetTables, exportFilter, fileNameTemplate, includeAttachments, headerStyle,
+    tableName,
+    selectedFields,
+    associationDisplayMode,
+    includeAssociationSheet,
+    associationSheetTables,
+    exportFilter,
+    fileNameTemplate,
+    includeAttachments,
+    headerStyle,
     allowedTableList,
   } = params;
 
@@ -323,12 +358,15 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     await repo.update({ filterByTk: taskId, values: { status: 'processing' } });
 
     await writeTaskLog(db, taskId, 'INFO', '开始执行导出任务');
-    await writeTaskLog(db, taskId, 'INFO', `目标数据表: ${tableName}${tableName === '__all__' ? '（全部数据表）' : ''}`);
+    await writeTaskLog(
+      db,
+      taskId,
+      'INFO',
+      `目标数据表: ${tableName}${tableName === '__all__' ? '（全部数据表）' : ''}`,
+    );
 
     const isAllTables = tableName === '__all__';
-    const tableList: string[] = isAllTables
-      ? (allowedTableList || [])
-      : [tableName];
+    const tableList: string[] = isAllTables ? allowedTableList || [] : [tableName];
 
     const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
     const tempDir = path.join(storageDir, 'exports');
@@ -356,11 +394,16 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       streamOutput = fs.createWriteStream(streamZipPath);
       streamArchive = archiver('tar', { gzip: true, gzipOptions: { level: 1 } });
       streamArchive.pipe(streamOutput);
-      streamArchive.on('error', (e: any) => { throw e; });
+      streamArchive.on('error', (e: any) => {
+        throw e;
+      });
     }
 
     for (const tblName of tableList) {
-      if (cancelFlags.has(taskId)) { cancelled = true; break; }
+      if (cancelFlags.has(taskId)) {
+        cancelled = true;
+        break;
+      }
 
       const coll: any = db.getCollection(tblName);
       if (!coll) continue;
@@ -390,17 +433,18 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
               if (!appendFields.includes((f as any).name)) appendFields.push((f as any).name);
             }
           }
-          if (includeAttachments && ((f as any).type === 'integer') && /FileId$/.test((f as any).name)) {
+          if (includeAttachments && (f as any).type === 'integer' && /FileId$/.test((f as any).name)) {
             fileIdFieldNames.push((f as any).name);
           }
         }
       } catch {}
-      try { const [, c] = await targetRepo.findAndCount({ filter: exportFilter || {}, limit: 1 }); collectionTotal = c; } catch {}
+      try {
+        const [, c] = await targetRepo.findAndCount({ filter: exportFilter || {}, limit: 1 });
+        collectionTotal = c;
+      } catch {}
       if (collectionTotal === 0) continue;
 
-      const fieldNames: string[] = (selectedFields && selectedFields.length > 0)
-        ? selectedFields
-        : getScalarFields(coll);
+      const fieldNames: string[] = selectedFields && selectedFields.length > 0 ? selectedFields : getScalarFields(coll);
       if (!fieldNames || fieldNames.length === 0) continue;
 
       const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, '_');
@@ -408,14 +452,17 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       const filePath = path.join(tempDir, xlsxName);
 
       const streamWriter = new ExcelJS.stream.xlsx.WorkbookWriter({
-        filename: filePath, useStyles: true, useSharedStrings: true,
+        filename: filePath,
+        useStyles: true,
+        useSharedStrings: true,
       });
       streamWriter.creator = 'NocoBase @my-project/plugin-sjgl02';
       const mainSheet = streamWriter.addWorksheet(
-        ensureUniqueSheetName(streamWriter as any, sanitizeSheetName(getCollDisplayName(coll, headerStyle)))
+        ensureUniqueSheetName(streamWriter as any, sanitizeSheetName(getCollDisplayName(coll, headerStyle))),
       );
       mainSheet.columns = fieldNames.map((name: string) => ({
-        header: getFieldDisplayName(coll, name, headerStyle), key: name,
+        header: getFieldDisplayName(coll, name, headerStyle),
+        key: name,
         width: Math.max(getFieldDisplayName(coll, name, headerStyle).length + 4, 20),
       }));
       (mainSheet.getRow(1) as any).font = { bold: true };
@@ -432,7 +479,10 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
         // 游标分页：WHERE id > ? ORDER BY id LIMIT ?
         let lastId = 0;
         while (true) {
-          if (cancelFlags.has(taskId)) { cancelled = true; break; }
+          if (cancelFlags.has(taskId)) {
+            cancelled = true;
+            break;
+          }
           const pageRecords = await targetRepo.find({
             filter: { ...(exportFilter || {}), id: { $gt: lastId } },
             sort: ['id'],
@@ -446,20 +496,29 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
               let val = record[f];
               if (attachmentFieldNames.includes(f)) {
                 if (Array.isArray(val) && val.length > 0) {
-                  for (const a of val) { if (a?.id && !attachIds.has(a.id)) { attachIds.add(a.id); attachFieldMap.set(a.id, f); } }
+                  for (const a of val) {
+                    if (a?.id && !attachIds.has(a.id)) {
+                      attachIds.add(a.id);
+                      attachFieldMap.set(a.id, f);
+                    }
+                  }
                   val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
                 } else val = '';
               } else if (fileIdFieldNames.includes(f)) {
                 if (val !== null && val !== undefined && !attachIds.has(Number(val))) {
-                  attachIds.add(Number(val)); attachFieldMap.set(Number(val), f);
+                  attachIds.add(Number(val));
+                  attachFieldMap.set(Number(val), f);
                 }
                 val = val !== null && val !== undefined ? String(val) : '';
-               } else if (Array.isArray(val)) {
-                  val = val.map((item: any) => {
+              } else if (Array.isArray(val)) {
+                val = val
+                  .map((item: any) => {
                     const name = item.nickname || item.name || item.title || item.id || '';
                     return name ? `${name}(主键：${item.id})` : '';
-                  }).filter(Boolean).join(', ');
-                } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
+                  })
+                  .filter(Boolean)
+                  .join(', ');
+              } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
                 val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
               }
               row[f] = formatValue(val);
@@ -469,11 +528,15 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           }
           lastId = Number((pageRecords[pageRecords.length - 1] as any).id);
           const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
-          try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } }); } catch {}
+          try {
+            await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
+          } catch {}
         }
       } else if (pkType === 'uuid') {
         // UUID：预取 ID 数组 → IN 分批
-        try { await db.sequelize.query("SET SESSION statement_timeout = '30min'"); } catch {}
+        try {
+          await db.sequelize.query("SET SESSION statement_timeout = '30min'");
+        } catch {}
         const allIds: any[] = [];
         let uuidOffset = 0;
         while (true) {
@@ -488,7 +551,10 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           uuidOffset += PAGE_SIZE;
         }
         for (let bi = 0; bi < allIds.length; bi += PAGE_SIZE) {
-          if (cancelFlags.has(taskId)) { cancelled = true; break; }
+          if (cancelFlags.has(taskId)) {
+            cancelled = true;
+            break;
+          }
           const batch = allIds.slice(bi, bi + PAGE_SIZE);
           const pageRecords = await targetRepo.find({
             filter: { ...(exportFilter || {}), id: { $in: batch } },
@@ -501,20 +567,29 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
               let val = record[f];
               if (attachmentFieldNames.includes(f)) {
                 if (Array.isArray(val) && val.length > 0) {
-                  for (const a of val) { if (a?.id && !attachIds.has(a.id)) { attachIds.add(a.id); attachFieldMap.set(a.id, f); } }
+                  for (const a of val) {
+                    if (a?.id && !attachIds.has(a.id)) {
+                      attachIds.add(a.id);
+                      attachFieldMap.set(a.id, f);
+                    }
+                  }
                   val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
                 } else val = '';
               } else if (fileIdFieldNames.includes(f)) {
                 if (val !== null && val !== undefined && !attachIds.has(Number(val))) {
-                  attachIds.add(Number(val)); attachFieldMap.set(Number(val), f);
+                  attachIds.add(Number(val));
+                  attachFieldMap.set(Number(val), f);
                 }
                 val = val !== null && val !== undefined ? String(val) : '';
-               } else if (Array.isArray(val)) {
-                  val = val.map((item: any) => {
+              } else if (Array.isArray(val)) {
+                val = val
+                  .map((item: any) => {
                     const name = item.nickname || item.name || item.title || item.id || '';
                     return name ? `${name}(主键：${item.id})` : '';
-                  }).filter(Boolean).join(', ');
-                } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
+                  })
+                  .filter(Boolean)
+                  .join(', ');
+              } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
                 val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
               }
               row[f] = formatValue(val);
@@ -523,15 +598,22 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
             processedRows++;
           }
           const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
-          try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } }); } catch {}
+          try {
+            await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
+          } catch {}
         }
       } else {
         // 其他主键类型：传统 offset/limit 分页
         let offset = 0;
         while (offset < collectionTotal) {
-          if (cancelFlags.has(taskId)) { cancelled = true; break; }
+          if (cancelFlags.has(taskId)) {
+            cancelled = true;
+            break;
+          }
           const pageRecords = await targetRepo.find({
-            filter: exportFilter || {}, offset, limit: PAGE_SIZE,
+            filter: exportFilter || {},
+            offset,
+            limit: PAGE_SIZE,
             ...(appendFields.length > 0 ? { appends: appendFields } : {}),
           });
           if (pageRecords.length === 0) break;
@@ -541,20 +623,29 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
               let val = record[f];
               if (attachmentFieldNames.includes(f)) {
                 if (Array.isArray(val) && val.length > 0) {
-                  for (const a of val) { if (a?.id && !attachIds.has(a.id)) { attachIds.add(a.id); attachFieldMap.set(a.id, f); } }
+                  for (const a of val) {
+                    if (a?.id && !attachIds.has(a.id)) {
+                      attachIds.add(a.id);
+                      attachFieldMap.set(a.id, f);
+                    }
+                  }
                   val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
                 } else val = '';
               } else if (fileIdFieldNames.includes(f)) {
                 if (val !== null && val !== undefined && !attachIds.has(Number(val))) {
-                  attachIds.add(Number(val)); attachFieldMap.set(Number(val), f);
+                  attachIds.add(Number(val));
+                  attachFieldMap.set(Number(val), f);
                 }
                 val = val !== null && val !== undefined ? String(val) : '';
-               } else if (Array.isArray(val)) {
-                  val = val.map((item: any) => {
+              } else if (Array.isArray(val)) {
+                val = val
+                  .map((item: any) => {
                     const name = item.nickname || item.name || item.title || item.id || '';
                     return name ? `${name}(主键：${item.id})` : '';
-                  }).filter(Boolean).join(', ');
-                } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
+                  })
+                  .filter(Boolean)
+                  .join(', ');
+              } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
                 val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
               }
               row[f] = formatValue(val);
@@ -564,7 +655,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           }
           offset += PAGE_SIZE;
           const progress = Math.min(100, Math.floor((offset * 100) / Math.max(1, collectionTotal)));
-          try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } }); } catch {}
+          try {
+            await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
+          } catch {}
         }
       }
 
@@ -577,7 +670,10 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           const assocRepo = db.getRepository(af.target);
           if (!assocRepo) continue;
           let assocTotal = 0;
-          try { const [, cnt] = await assocRepo.findAndCount({ limit: 1 }); assocTotal = cnt; } catch {}
+          try {
+            const [, cnt] = await assocRepo.findAndCount({ limit: 1 });
+            assocTotal = cnt;
+          } catch {}
           if (assocTotal === 0) continue;
           const assocColl = db.getCollection(af.target);
           const assocScalarFields = getScalarFields(assocColl);
@@ -585,10 +681,14 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
 
           const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
           const sheetDisplay = getCollDisplayName(assocColl, headerStyle);
-          const sheetName = ensureUniqueSheetName(streamWriter as any, sanitizeSheetName(fieldDisplay + '-' + sheetDisplay).substring(0, 31));
+          const sheetName = ensureUniqueSheetName(
+            streamWriter as any,
+            sanitizeSheetName(fieldDisplay + '-' + sheetDisplay).substring(0, 31),
+          );
           const assocSheet = streamWriter.addWorksheet(sheetName);
           assocSheet.columns = assocScalarFields.map((n: string) => ({
-            header: getFieldDisplayName(assocColl, n, headerStyle), key: n,
+            header: getFieldDisplayName(assocColl, n, headerStyle),
+            key: n,
             width: Math.max(getFieldDisplayName(assocColl, n, headerStyle).length + 4, 20),
           }));
           (assocSheet.getRow(1) as any).font = { bold: true };
@@ -596,14 +696,17 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
 
           let aOff = 0;
           while (aOff < assocTotal) {
-            if (cancelFlags.has(taskId)) { cancelled = true; break; }
+            if (cancelFlags.has(taskId)) {
+              cancelled = true;
+              break;
+            }
             const aRecs = await assocRepo.find({ offset: aOff, limit: PAGE_SIZE });
             for (const rec of aRecs) {
               const row: Record<string, any> = {};
               for (const f of assocScalarFields) {
                 let val = rec[f];
                 if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date))
-                  val = (val.nickname || val.title || val.name || val.id || JSON.stringify(val));
+                  val = val.nickname || val.title || val.name || val.id || JSON.stringify(val);
                 row[f] = formatValue(val);
               }
               assocSheet.addRow(row).commit();
@@ -611,7 +714,12 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
             }
             aOff += PAGE_SIZE;
             const ap = Math.min(100, Math.floor((aOff * 100) / Math.max(1, assocTotal)));
-            try { await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress: Math.max(ap, 0) } }); } catch {}
+            try {
+              await repo.update({
+                filterByTk: taskId,
+                values: { processedRows, totalRows, progress: Math.max(ap, 0) },
+              });
+            } catch {}
           }
           if (cancelled) break;
           assocSheet.commit();
@@ -629,7 +737,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
         const fileIdFilenameMap = new Map<number, string>();
         try {
           const ar = await db.getRepository('attachments').find({ filter: { id: Array.from(attachIds) } });
-          ar.forEach((at: any) => { if (at.filename) fileIdFilenameMap.set(at.id, at.filename); });
+          ar.forEach((at: any) => {
+            if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
+          });
         } catch {}
         if (fileIdFilenameMap.size > 0) {
           try {
@@ -670,11 +780,18 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
                     }
                     zipArchive.finalize();
                   });
-                  try { fs.unlinkSync(filePath); } catch {}
+                  try {
+                    fs.unlinkSync(filePath);
+                  } catch {}
                   outputFiles.push(zipPath);
                   finalFilePath = zipPath;
                 } catch (attErr: any) {
-                  await writeTaskLog(db, taskId, 'WARN', `附件打包失败(${tblName}): ${attErr.message || String(attErr)}，跳过打包`);
+                  await writeTaskLog(
+                    db,
+                    taskId,
+                    'WARN',
+                    `附件打包失败(${tblName}): ${attErr.message || String(attErr)}，跳过打包`,
+                  );
                 }
               }
             }
@@ -703,7 +820,11 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
 
       await repo.update({
         filterByTk: taskId,
-        values: { progress: Math.min(100, Math.floor((processedRows / Math.max(totalRows, 1)) * 100)), processedRows, totalRows },
+        values: {
+          progress: Math.min(100, Math.floor((processedRows / Math.max(totalRows, 1)) * 100)),
+          processedRows,
+          totalRows,
+        },
       });
     }
 
@@ -712,7 +833,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       try {
         // 追加附件
         for (const af of allAttachFileEntries) {
-          try { streamArchive.file(af.diskPath, { name: af.entryName }); } catch {}
+          try {
+            streamArchive.file(af.diskPath, { name: af.entryName });
+          } catch {}
         }
         await new Promise<void>((resolve, reject) => {
           if (streamOutput) streamOutput.on('close', resolve);
@@ -721,19 +844,31 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
         });
         if (streamOutput?.bytesWritten === 0) {
           // ZIP 为空，回退
-          try { fs.unlinkSync(streamZipPath); } catch {}
+          try {
+            fs.unlinkSync(streamZipPath);
+          } catch {}
           streamZipPath = '';
         }
       } catch (archErr: any) {
         await writeTaskLog(db, taskId, 'ERROR', `流式ZIP失败: ${archErr.message || ''}`);
-        try { streamZipPath = ''; } catch {}
+        try {
+          streamZipPath = '';
+        } catch {}
       }
     }
 
     if (cancelled) {
       // 取消：删除临时文件和流式 ZIP
-      if (streamZipPath) { try { fs.unlinkSync(streamZipPath); } catch {} }
-      for (const fp of outputFiles) { try { fs.unlinkSync(fp); } catch {} }
+      if (streamZipPath) {
+        try {
+          fs.unlinkSync(streamZipPath);
+        } catch {}
+      }
+      for (const fp of outputFiles) {
+        try {
+          fs.unlinkSync(fp);
+        } catch {}
+      }
       await writeTaskLog(db, taskId, 'WARN', '任务已取消');
       await repo.update({ filterByTk: taskId, values: { status: 'cancelled', completedAt: new Date() } });
       return;
@@ -748,8 +883,17 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     } else if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
       mergedFilePath = outputFiles[0];
     } else {
-      await writeTaskLog(db, taskId, 'INFO', `最终合并 ${outputFiles.length} 个文件${allAttachFileEntries.length > 0 ? ' + ' + allAttachFileEntries.length + ' 个附件' : ''}...`);
-      try { await db.sequelize.query("SET SESSION statement_timeout = 0"); } catch {}
+      await writeTaskLog(
+        db,
+        taskId,
+        'INFO',
+        `最终合并 ${outputFiles.length} 个文件${
+          allAttachFileEntries.length > 0 ? ' + ' + allAttachFileEntries.length + ' 个附件' : ''
+        }...`,
+      );
+      try {
+        await db.sequelize.query('SET SESSION statement_timeout = 0');
+      } catch {}
 
       const zipName = `sjgl02_export_${taskId}_${Date.now()}.tar.gz`;
       mergedFilePath = path.join(tempDir, zipName);
@@ -762,19 +906,31 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           output.on('error', reject);
           archive.on('error', reject);
           archive.pipe(output);
-          for (const fp of outputFiles) { archive.file(fp, { name: path.basename(fp) }); }
-          for (const af of allAttachFileEntries) { archive.file(af.diskPath, { name: af.entryName }); }
+          for (const fp of outputFiles) {
+            archive.file(fp, { name: path.basename(fp) });
+          }
+          for (const af of allAttachFileEntries) {
+            archive.file(af.diskPath, { name: af.entryName });
+          }
           archive.finalize();
-        } catch (err) { reject(err); }
+        } catch (err) {
+          reject(err);
+        }
       });
       await writeTaskLog(db, taskId, 'SUCC', '最终合并完成');
-      for (const fp of outputFiles) { try { fs.unlinkSync(fp); } catch {} }
+      for (const fp of outputFiles) {
+        try {
+          fs.unlinkSync(fp);
+        } catch {}
+      }
     }
 
     // 将临时文件重命名为可读格式（表名称(表标识)_日期，无前缀）
     const d = new Date();
     const padDate = (n: number) => String(n).padStart(2, '0');
-    const dateStr = `${d.getFullYear()}${padDate(d.getMonth() + 1)}${padDate(d.getDate())}${padDate(d.getHours())}${padDate(d.getMinutes())}${padDate(d.getSeconds())}`;
+    const dateStr = `${d.getFullYear()}${padDate(d.getMonth() + 1)}${padDate(d.getDate())}${padDate(
+      d.getHours(),
+    )}${padDate(d.getMinutes())}${padDate(d.getSeconds())}`;
     const isPkg = mergedFilePath.endsWith('.tar.gz');
     let finalDisplayName: string;
     if (tableName === '__all__') {
@@ -790,7 +946,10 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     let suffix = 0;
     while (fs.existsSync(finalFilePath)) {
       suffix++;
-      finalFilePath = path.join(tempDir, finalDisplayName.replace(/\.(xlsx|tar\.gz)$/, `_${suffix}.${isPkg ? 'tar.gz' : 'xlsx'}`));
+      finalFilePath = path.join(
+        tempDir,
+        finalDisplayName.replace(/\.(xlsx|tar\.gz)$/, `_${suffix}.${isPkg ? 'tar.gz' : 'xlsx'}`),
+      );
     }
     fs.renameSync(mergedFilePath, finalFilePath);
     mergedFilePath = finalFilePath;

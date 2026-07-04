@@ -58,7 +58,9 @@ export class PermissionService {
     try {
       const placeholders = roleNames.map((_, i) => '$' + (i + 1)).join(', ');
       const [rows] = await this.db.sequelize.query(
-        'SELECT * FROM "sjgl02_table_permissions" WHERE "targetType" = \'role\' AND "targetId" IN (' + placeholders + ') ORDER BY "id"',
+        'SELECT * FROM "sjgl02_table_permissions" WHERE "targetType" = \'role\' AND "targetId" IN (' +
+          placeholders +
+          ') ORDER BY "id"',
         { bind: roleNames, raw: true },
       );
       return (rows as any[]) || [];
@@ -112,7 +114,11 @@ export class PermissionService {
     }
     const canImport = allowed.some((p) => p.canImport === true);
     const canExport = allowed.some((p) => p.canExport === true);
-    const importMode = [...new Set<string>(allowed.flatMap((p: any) => Array.isArray(p.importMode) ? p.importMode : [p.importMode].filter(Boolean)))];
+    const importMode = [
+      ...new Set<string>(
+        allowed.flatMap((p: any) => (Array.isArray(p.importMode) ? p.importMode : [p.importMode].filter(Boolean))),
+      ),
+    ];
     const hasFullImport = allowed.some((p) => !p.importFields || p.importFields.length === 0);
     const importFields = hasFullImport ? [] : [...new Set<string>(allowed.flatMap((p: any) => p.importFields || []))];
     const hasFullExport = allowed.some((p) => !p.exportFields || p.exportFields.length === 0);
@@ -120,7 +126,7 @@ export class PermissionService {
     const uniqueFields = [...new Set<string>(allowed.flatMap((p: any) => p.uniqueFields || []))];
     const requiredFields = [...new Set<string>(allowed.flatMap((p: any) => p.requiredFields || []))];
     const hasNoFilter = allowed.some((p) => !p.exportFilter || Object.keys(p.exportFilter).length === 0);
-    const exportFilter = hasNoFilter ? null : (allowed[0].exportFilter || null);
+    const exportFilter = hasNoFilter ? null : allowed[0].exportFilter || null;
     return {
       canImport,
       canExport,
@@ -144,13 +150,37 @@ export class PermissionService {
 
     if (isAdmin) {
       if (permSource && permSource.id) {
-        const targetPerm = await this.findPermission(permSource.type, permSource.type === 'user' ? String(permSource.id) : permSource.id, tableName);
+        // admin 选择「管理员完整权限」直接放行
+        if (permSource.type === 'admin') {
+          return this.fullPermission();
+        }
+        // admin 切换为其他用户/角色时，按该目标的真实权限校验（支持继承）
+        if (permSource.type === 'user') {
+          const targetPerms = await this.getUserPermissions(Number(permSource.id));
+          const allPerms = [...(targetPerms.custom || []), ...(targetPerms.inherited || [])];
+          const perm = allPerms.find((p: any) => p.tableName === tableName);
+          if (!perm || !perm[actionType === 'import' ? 'canImport' : 'canExport']) {
+            throw new Error(
+              '所选权限方案没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限',
+            );
+          }
+          return this.permissionFromRecord(perm);
+        }
+        // admin 切换为角色时，允许 admin/root 系统角色直接放行；其他角色按真实记录校验
+        if (permSource.type === 'role' && (permSource.id === 'admin' || permSource.id === 'root')) {
+          return this.fullPermission();
+        }
+        const targetPerm = await this.findPermission(permSource.type, String(permSource.id), tableName);
         if (!targetPerm) {
-          throw new Error('所选权限方案没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限');
+          throw new Error(
+            '所选权限方案没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限',
+          );
         }
         const fieldName = actionType === 'import' ? 'canImport' : 'canExport';
         if (!targetPerm[fieldName]) {
-          throw new Error('所选权限方案没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限');
+          throw new Error(
+            '所选权限方案没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限',
+          );
         }
         return this.permissionFromRecord(targetPerm);
       }
@@ -161,13 +191,21 @@ export class PermissionService {
       if (permSource.type === 'user' && String(permSource.id) === String(currentUserId)) {
         // 降级为自身权限查询
       } else {
-        const targetPerm = await this.findPermission(permSource.type, permSource.type === 'user' ? String(permSource.id) : permSource.id, tableName);
+        const targetPerm = await this.findPermission(
+          permSource.type,
+          permSource.type === 'user' ? String(permSource.id) : permSource.id,
+          tableName,
+        );
         if (!targetPerm) {
-          throw new Error('所选权限方案没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限');
+          throw new Error(
+            '所选权限方案没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限',
+          );
         }
         const fieldName = actionType === 'import' ? 'canImport' : 'canExport';
         if (!targetPerm[fieldName]) {
-          throw new Error('所选权限方案没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限');
+          throw new Error(
+            '所选权限方案没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限',
+          );
         }
         return this.permissionFromRecord(targetPerm);
       }
@@ -177,7 +215,9 @@ export class PermissionService {
     if (userPerm) {
       const fieldName = actionType === 'import' ? 'canImport' : 'canExport';
       if (!userPerm[fieldName]) {
-        throw new Error('您没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限，请联系管理员');
+        throw new Error(
+          '您没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限，请联系管理员',
+        );
       }
       return this.permissionFromRecord(userPerm);
     }
@@ -188,12 +228,20 @@ export class PermissionService {
       const merged = this.mergePermissions(filtered);
       const fieldName = actionType === 'import' ? 'canImport' : 'canExport';
       if (!merged[fieldName]) {
-        throw new Error('您的角色没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限，请联系管理员');
+        throw new Error(
+          '您的角色没有对数据表「' +
+            tableName +
+            '」的' +
+            (actionType === 'import' ? '导入' : '导出') +
+            '权限，请联系管理员',
+        );
       }
       return merged;
     }
 
-    throw new Error('您没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限，请联系管理员');
+    throw new Error(
+      '您没有对数据表「' + tableName + '」的' + (actionType === 'import' ? '导入' : '导出') + '权限，请联系管理员',
+    );
   }
 
   async getAdminAllPermissions(): Promise<any[]> {
@@ -218,7 +266,14 @@ export class PermissionService {
   async getRolePermissions(roleName: string): Promise<{ custom: any[]; inherited: any[] }> {
     if (roleName === 'admin' || roleName === 'root') {
       const perms = await this.getAdminAllPermissions();
-      return { custom: [], inherited: perms.map((p) => ({ ...p, targetId: roleName, targetName: roleName === 'root' ? '超级管理员' : '管理员' })) };
+      return {
+        custom: [],
+        inherited: perms.map((p) => ({
+          ...p,
+          targetId: roleName,
+          targetName: roleName === 'root' ? '超级管理员' : '管理员',
+        })),
+      };
     }
     const perms = await this.findPermissionsByTarget('role', roleName);
     return { custom: perms, inherited: [] };
@@ -260,11 +315,23 @@ export class PermissionService {
     return { custom, inherited };
   }
 
-  async getExportScopes(currentUserId: number, tableName: string, permSource?: PermSource | null): Promise<{ type: string; id: string; label: string; canExport: boolean; exportFilter: Record<string, unknown> | null }[]> {
+  async getExportScopes(
+    currentUserId: number,
+    tableName: string,
+    permSource?: PermSource | null,
+  ): Promise<
+    { type: string; id: string; label: string; canExport: boolean; exportFilter: Record<string, unknown> | null }[]
+  > {
     const effectiveUserId = permSource?.type === 'user' && permSource.id ? Number(permSource.id) : currentUserId;
     const roleNames = await this.getUserRoleNames(effectiveUserId);
     const isAdmin = roleNames.includes('admin') || roleNames.includes('root');
-    const result: { type: string; id: string; label: string; canExport: boolean; exportFilter: Record<string, unknown> | null }[] = [];
+    const result: {
+      type: string;
+      id: string;
+      label: string;
+      canExport: boolean;
+      exportFilter: Record<string, unknown> | null;
+    }[] = [];
 
     const userPerm = await this.findPermission('user', String(effectiveUserId), tableName);
     if (userPerm || isAdmin) {
@@ -273,7 +340,7 @@ export class PermissionService {
         id: String(effectiveUserId),
         label: '当前用户',
         canExport: userPerm ? userPerm.canExport === true : true,
-        exportFilter: userPerm ? (userPerm.exportFilter || null) : null,
+        exportFilter: userPerm ? userPerm.exportFilter || null : null,
       });
     }
 
@@ -289,7 +356,7 @@ export class PermissionService {
             id: rName,
             label: rName,
             canExport: perm ? perm.canExport === true : true,
-            exportFilter: perm ? (perm.exportFilter || null) : null,
+            exportFilter: perm ? perm.exportFilter || null : null,
           });
         }
       }
@@ -322,7 +389,9 @@ export class PermissionService {
           }
         }
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
     return names;
   }
 }

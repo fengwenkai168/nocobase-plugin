@@ -59,7 +59,9 @@ function sanitizeSheetName(name) {
 function formatFileName(template, tableName) {
   const d = /* @__PURE__ */ new Date();
   const pad = (n) => String(n).padStart(2, "0");
-  const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(
+    d.getMinutes()
+  )}${pad(d.getSeconds())}`;
   return template.replace(/\{表名\}/g, tableName).replace(/\{日期\}/g, date);
 }
 function getFieldDisplayName(coll, fieldName, style) {
@@ -96,7 +98,9 @@ function formatValue(val) {
   if (val === null || val === void 0) return "";
   if (val instanceof Date) {
     const pad = (n) => String(n).padStart(2, "0");
-    return `${val.getFullYear()}-${pad(val.getMonth() + 1)}-${pad(val.getDate())} ${pad(val.getHours())}:${pad(val.getMinutes())}:${pad(val.getSeconds())}`;
+    return `${val.getFullYear()}-${pad(val.getMonth() + 1)}-${pad(val.getDate())} ${pad(val.getHours())}:${pad(
+      val.getMinutes()
+    )}:${pad(val.getSeconds())}`;
   }
   if (typeof val === "object") return JSON.stringify(val);
   return String(val);
@@ -150,7 +154,8 @@ function detectPkType(coll) {
     if (autoIncr !== false && (pkType.includes("INT") || pkType.includes("int") || pkType === "bigInt" || pkType === "BIGINT")) {
       return "int_auto";
     }
-    if (pkType.includes("INT") || pkType.includes("int") || pkType === "bigInt" || pkType === "BIGINT") return "int_auto";
+    if (pkType.includes("INT") || pkType.includes("int") || pkType === "bigInt" || pkType === "BIGINT")
+      return "int_auto";
     return "other";
   } catch {
     return "other";
@@ -363,7 +368,12 @@ async function processExportAsync(db, taskId, params) {
   try {
     await repo.update({ filterByTk: taskId, values: { status: "processing" } });
     await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", "\u5F00\u59CB\u6267\u884C\u5BFC\u51FA\u4EFB\u52A1");
-    await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u76EE\u6807\u6570\u636E\u8868: ${tableName}${tableName === "__all__" ? "\uFF08\u5168\u90E8\u6570\u636E\u8868\uFF09" : ""}`);
+    await (0, import_taskLogs.writeTaskLog)(
+      db,
+      taskId,
+      "INFO",
+      `\u76EE\u6807\u6570\u636E\u8868: ${tableName}${tableName === "__all__" ? "\uFF08\u5168\u90E8\u6570\u636E\u8868\uFF09" : ""}`
+    );
     const isAllTables = tableName === "__all__";
     const tableList = isAllTables ? allowedTableList || [] : [tableName];
     const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
@@ -655,7 +665,10 @@ async function processExportAsync(db, taskId, params) {
           if (!assocScalarFields || assocScalarFields.length === 0) continue;
           const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
           const sheetDisplay = getCollDisplayName(assocColl, headerStyle);
-          const sheetName = ensureUniqueSheetName(streamWriter, sanitizeSheetName(fieldDisplay + "-" + sheetDisplay).substring(0, 31));
+          const sheetName = ensureUniqueSheetName(
+            streamWriter,
+            sanitizeSheetName(fieldDisplay + "-" + sheetDisplay).substring(0, 31)
+          );
           const assocSheet = streamWriter.addWorksheet(sheetName);
           assocSheet.columns = assocScalarFields.map((n) => ({
             header: getFieldDisplayName(assocColl, n, headerStyle),
@@ -685,7 +698,10 @@ async function processExportAsync(db, taskId, params) {
             aOff += PAGE_SIZE;
             const ap = Math.min(100, Math.floor(aOff * 100 / Math.max(1, assocTotal)));
             try {
-              await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress: Math.max(ap, 0) } });
+              await repo.update({
+                filterByTk: taskId,
+                values: { processedRows, totalRows, progress: Math.max(ap, 0) }
+              });
             } catch {
             }
           }
@@ -750,7 +766,12 @@ async function processExportAsync(db, taskId, params) {
                   outputFiles.push(zipPath);
                   finalFilePath2 = zipPath;
                 } catch (attErr) {
-                  await (0, import_taskLogs.writeTaskLog)(db, taskId, "WARN", `\u9644\u4EF6\u6253\u5305\u5931\u8D25(${tblName}): ${attErr.message || String(attErr)}\uFF0C\u8DF3\u8FC7\u6253\u5305`);
+                  await (0, import_taskLogs.writeTaskLog)(
+                    db,
+                    taskId,
+                    "WARN",
+                    `\u9644\u4EF6\u6253\u5305\u5931\u8D25(${tblName}): ${attErr.message || String(attErr)}\uFF0C\u8DF3\u8FC7\u6253\u5305`
+                  );
                 }
               }
             }
@@ -776,7 +797,11 @@ async function processExportAsync(db, taskId, params) {
       }
       await repo.update({
         filterByTk: taskId,
-        values: { progress: Math.min(100, Math.floor(processedRows / Math.max(totalRows, 1) * 100)), processedRows, totalRows }
+        values: {
+          progress: Math.min(100, Math.floor(processedRows / Math.max(totalRows, 1) * 100)),
+          processedRows,
+          totalRows
+        }
       });
     }
     if (isAllTables && streamArchive && !cancelled) {
@@ -832,7 +857,12 @@ async function processExportAsync(db, taskId, params) {
     } else if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
       mergedFilePath = outputFiles[0];
     } else {
-      await (0, import_taskLogs.writeTaskLog)(db, taskId, "INFO", `\u6700\u7EC8\u5408\u5E76 ${outputFiles.length} \u4E2A\u6587\u4EF6${allAttachFileEntries.length > 0 ? " + " + allAttachFileEntries.length + " \u4E2A\u9644\u4EF6" : ""}...`);
+      await (0, import_taskLogs.writeTaskLog)(
+        db,
+        taskId,
+        "INFO",
+        `\u6700\u7EC8\u5408\u5E76 ${outputFiles.length} \u4E2A\u6587\u4EF6${allAttachFileEntries.length > 0 ? " + " + allAttachFileEntries.length + " \u4E2A\u9644\u4EF6" : ""}...`
+      );
       try {
         await db.sequelize.query("SET SESSION statement_timeout = 0");
       } catch {
@@ -868,7 +898,9 @@ async function processExportAsync(db, taskId, params) {
     }
     const d = /* @__PURE__ */ new Date();
     const padDate = (n) => String(n).padStart(2, "0");
-    const dateStr = `${d.getFullYear()}${padDate(d.getMonth() + 1)}${padDate(d.getDate())}${padDate(d.getHours())}${padDate(d.getMinutes())}${padDate(d.getSeconds())}`;
+    const dateStr = `${d.getFullYear()}${padDate(d.getMonth() + 1)}${padDate(d.getDate())}${padDate(
+      d.getHours()
+    )}${padDate(d.getMinutes())}${padDate(d.getSeconds())}`;
     const isPkg = mergedFilePath.endsWith(".tar.gz");
     let finalDisplayName;
     if (tableName === "__all__") {
@@ -882,7 +914,10 @@ async function processExportAsync(db, taskId, params) {
     let suffix = 0;
     while (import_fs.default.existsSync(finalFilePath)) {
       suffix++;
-      finalFilePath = import_path.default.join(tempDir, finalDisplayName.replace(/\.(xlsx|tar\.gz)$/, `_${suffix}.${isPkg ? "tar.gz" : "xlsx"}`));
+      finalFilePath = import_path.default.join(
+        tempDir,
+        finalDisplayName.replace(/\.(xlsx|tar\.gz)$/, `_${suffix}.${isPkg ? "tar.gz" : "xlsx"}`)
+      );
     }
     import_fs.default.renameSync(mergedFilePath, finalFilePath);
     mergedFilePath = finalFilePath;

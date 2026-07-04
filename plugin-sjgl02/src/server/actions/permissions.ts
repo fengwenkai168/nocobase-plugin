@@ -152,12 +152,19 @@ export async function savePermissions(ctx: Context, next: Next) {
       if (!submittedTableNames.has(existing.tableName)) {
         await repo.destroy({ filterByTk: existing.id, transaction });
         try {
-          await logRepo.create({ values: {
-            action: 'delete', targetType: existing.targetType, targetId: existing.targetId,
-            targetName: existing.targetName, tableName: existing.tableName,
-            changes: { before: existing.toJSON?.() || existing },
-            operatorId, createdAt: new Date(),
-          }, transaction });
+          await logRepo.create({
+            values: {
+              action: 'delete',
+              targetType: existing.targetType,
+              targetId: existing.targetId,
+              targetName: existing.targetName,
+              tableName: existing.tableName,
+              changes: { before: existing.toJSON?.() || existing },
+              operatorId,
+              createdAt: new Date(),
+            },
+            transaction,
+          });
         } catch {}
       }
     }
@@ -169,27 +176,43 @@ export async function savePermissions(ctx: Context, next: Next) {
       if (perm.id && existing) {
         await repo.update({ filterByTk: perm.id, values: perm, transaction });
         try {
-          await logRepo.create({ values: {
-            action: 'update', targetType: perm.targetType, targetId: perm.targetId,
-            targetName: perm.targetName, tableName: perm.tableName,
-            changes: { before: existing.toJSON?.() || existing, after: perm },
-            operatorId, createdAt: new Date(),
-          }, transaction });
+          await logRepo.create({
+            values: {
+              action: 'update',
+              targetType: perm.targetType,
+              targetId: perm.targetId,
+              targetName: perm.targetName,
+              tableName: perm.tableName,
+              changes: { before: existing.toJSON?.() || existing, after: perm },
+              operatorId,
+              createdAt: new Date(),
+            },
+            transaction,
+          });
         } catch {}
       } else if (!perm.id) {
         await repo.create({ values: { ...perm, targetType, targetId: String(targetId), operatorId }, transaction });
         try {
-          await logRepo.create({ values: {
-            action: 'create', targetType, targetId: String(targetId),
-            tableName: perm.tableName, changes: { after: perm },
-            operatorId, createdAt: new Date(),
-          }, transaction });
+          await logRepo.create({
+            values: {
+              action: 'create',
+              targetType,
+              targetId: String(targetId),
+              tableName: perm.tableName,
+              changes: { after: perm },
+              operatorId,
+              createdAt: new Date(),
+            },
+            transaction,
+          });
         } catch {}
       }
     }
     await transaction.commit();
   } catch (err) {
-    try { await transaction.rollback(); } catch {}
+    try {
+      await transaction.rollback();
+    } catch {}
     throw err;
   }
   ctx.body = { success: true };

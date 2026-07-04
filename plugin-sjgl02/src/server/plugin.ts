@@ -1,24 +1,8 @@
 import { Plugin } from '@nocobase/server';
 import fs from 'fs';
-import {
-  getTableFields,
-  uploadParse,
-  preview,
-  executeImport,
-} from './actions/import';
-import {
-  getExportTableFields,
-  previewCount,
-  executeExport,
-  getProgress,
-  downloadExport,
-} from './actions/export';
-import {
-  listTasks,
-  getTaskDetail,
-  cancelTask,
-  deleteTask,
-} from './actions/tasks';
+import { getTableFields, uploadParse, preview, executeImport } from './actions/import';
+import { getExportTableFields, previewCount, executeExport, getProgress, downloadExport } from './actions/export';
+import { listTasks, getTaskDetail, cancelTask, deleteTask } from './actions/tasks';
 import {
   getUserRoleList,
   getTables,
@@ -28,9 +12,7 @@ import {
   saveSettings,
   getExportScopes,
 } from './actions/permissions';
-import {
-  listTaskLogs,
-} from './actions/taskLogs';
+import { listTaskLogs } from './actions/taskLogs';
 
 export class PluginSjgl02Server extends Plugin {
   async load() {
@@ -61,7 +43,7 @@ export class PluginSjgl02Server extends Plugin {
         "SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02\\_import\\_%' ESCAPE '\\' AND schemaname = current_schema()",
         { raw: true },
       );
-      for (const row of (shadowTables as any[])) {
+      for (const row of shadowTables as any[]) {
         try {
           const quoted = '"' + String(row.tablename).replace(/"/g, '""') + '"';
           await sequelize.query('DROP TABLE IF EXISTS ' + quoted);
@@ -74,7 +56,9 @@ export class PluginSjgl02Server extends Plugin {
         const files = fs.readdirSync(exportDir);
         for (const file of files) {
           if (file.startsWith('sjgl02_export_')) {
-            try { fs.unlinkSync(exportDir + '/' + file); } catch {}
+            try {
+              fs.unlinkSync(exportDir + '/' + file);
+            } catch {}
           }
         }
       }
@@ -193,7 +177,7 @@ export class PluginSjgl02Server extends Plugin {
         }
       }
       if (tablePermissions.length > 0) {
-        await Promise.all(tablePermissions.map(perm => permRepo.create({ values: perm })));
+        await Promise.all(tablePermissions.map((perm) => permRepo.create({ values: perm })));
       }
     }
   }

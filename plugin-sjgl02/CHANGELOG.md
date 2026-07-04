@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 1.0.130 (2026-07-04) — 修复 CollectionFilterPanel 集合加载与 v1 区块空白
+- **修复**：v2 导出页/权限管理页/任务详情页使用 `observer` 监听集合加载，解决 `CollectionFilterPanel` 因集合未就绪而显示 JSON 或「请先选择数据表」的问题
+- **修复**：v1 页面「添加区块 → 其他 → 数据管理」区块空白，新增 `SjglBlock` 组件并注册到 v1 组件表
+- **修复**：权限管理编辑弹窗中「允许导入」「允许导出」开关文字不显示的问题
+- **优化**：导出页/权限页界面分组与间距，固定范围面板增加只读视觉提示
+- **影响文件**：`src/client-v2/panels/ExportPanel.tsx`、`src/client-v2/panels/PermissionPanel.tsx`、`src/client-v2/panels/task/TaskCards.tsx`、`src/client/components/SjglBlock.tsx`、`src/client/plugin.tsx`
+- **版本**：1.0.129 → 1.0.130
+
 ## 1.0.129 (2026-07-04) — 导出数据范围（exportFilter）
 - **新增**：权限管理中可为每张表配置导出数据范围，使用 NocoBase 系统 `CollectionFilterPanel` 组件
 - **新增**：导出面板第二步增加「数据范围」卡片，支持只读展示固定范围或自定义筛选

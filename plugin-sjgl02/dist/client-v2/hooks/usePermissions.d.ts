@@ -8,5 +8,5 @@ export declare function usePermissions(api: any, target: Target | null): {
     toggle: (tableName: string, field: 'canImport' | 'canExport') => void;
     remove: (tableName: string) => void;
     save: (values: PermissionFormValues, editPerm?: Permission) => Promise<boolean>;
-    refresh: () => void;
+    refresh: () => Promise<void>;
 };

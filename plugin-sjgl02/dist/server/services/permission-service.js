@@ -120,7 +120,11 @@ class PermissionService {
     }
     const canImport = allowed.some((p) => p.canImport === true);
     const canExport = allowed.some((p) => p.canExport === true);
-    const importMode = [...new Set(allowed.flatMap((p) => Array.isArray(p.importMode) ? p.importMode : [p.importMode].filter(Boolean)))];
+    const importMode = [
+      ...new Set(
+        allowed.flatMap((p) => Array.isArray(p.importMode) ? p.importMode : [p.importMode].filter(Boolean))
+      )
+    ];
     const hasFullImport = allowed.some((p) => !p.importFields || p.importFields.length === 0);
     const importFields = hasFullImport ? [] : [...new Set(allowed.flatMap((p) => p.importFields || []))];
     const hasFullExport = allowed.some((p) => !p.exportFields || p.exportFields.length === 0);
@@ -145,13 +149,34 @@ class PermissionService {
     const isAdmin = roleNames.includes("admin") || roleNames.includes("root");
     if (isAdmin) {
       if (permSource && permSource.id) {
-        const targetPerm = await this.findPermission(permSource.type, permSource.type === "user" ? String(permSource.id) : permSource.id, tableName);
+        if (permSource.type === "admin") {
+          return this.fullPermission();
+        }
+        if (permSource.type === "user") {
+          const targetPerms = await this.getUserPermissions(Number(permSource.id));
+          const allPerms = [...targetPerms.custom || [], ...targetPerms.inherited || []];
+          const perm = allPerms.find((p) => p.tableName === tableName);
+          if (!perm || !perm[actionType === "import" ? "canImport" : "canExport"]) {
+            throw new Error(
+              "\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650"
+            );
+          }
+          return this.permissionFromRecord(perm);
+        }
+        if (permSource.type === "role" && (permSource.id === "admin" || permSource.id === "root")) {
+          return this.fullPermission();
+        }
+        const targetPerm = await this.findPermission(permSource.type, String(permSource.id), tableName);
         if (!targetPerm) {
-          throw new Error("\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650");
+          throw new Error(
+            "\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650"
+          );
         }
         const fieldName = actionType === "import" ? "canImport" : "canExport";
         if (!targetPerm[fieldName]) {
-          throw new Error("\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650");
+          throw new Error(
+            "\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650"
+          );
         }
         return this.permissionFromRecord(targetPerm);
       }
@@ -160,13 +185,21 @@ class PermissionService {
     if (permSource && permSource.id) {
       if (permSource.type === "user" && String(permSource.id) === String(currentUserId)) {
       } else {
-        const targetPerm = await this.findPermission(permSource.type, permSource.type === "user" ? String(permSource.id) : permSource.id, tableName);
+        const targetPerm = await this.findPermission(
+          permSource.type,
+          permSource.type === "user" ? String(permSource.id) : permSource.id,
+          tableName
+        );
         if (!targetPerm) {
-          throw new Error("\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650");
+          throw new Error(
+            "\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650"
+          );
         }
         const fieldName = actionType === "import" ? "canImport" : "canExport";
         if (!targetPerm[fieldName]) {
-          throw new Error("\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650");
+          throw new Error(
+            "\u6240\u9009\u6743\u9650\u65B9\u6848\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650"
+          );
         }
         return this.permissionFromRecord(targetPerm);
       }
@@ -175,7 +208,9 @@ class PermissionService {
     if (userPerm) {
       const fieldName = actionType === "import" ? "canImport" : "canExport";
       if (!userPerm[fieldName]) {
-        throw new Error("\u60A8\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458");
+        throw new Error(
+          "\u60A8\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458"
+        );
       }
       return this.permissionFromRecord(userPerm);
     }
@@ -185,11 +220,15 @@ class PermissionService {
       const merged = this.mergePermissions(filtered);
       const fieldName = actionType === "import" ? "canImport" : "canExport";
       if (!merged[fieldName]) {
-        throw new Error("\u60A8\u7684\u89D2\u8272\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458");
+        throw new Error(
+          "\u60A8\u7684\u89D2\u8272\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458"
+        );
       }
       return merged;
     }
-    throw new Error("\u60A8\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458");
+    throw new Error(
+      "\u60A8\u6CA1\u6709\u5BF9\u6570\u636E\u8868\u300C" + tableName + "\u300D\u7684" + (actionType === "import" ? "\u5BFC\u5165" : "\u5BFC\u51FA") + "\u6743\u9650\uFF0C\u8BF7\u8054\u7CFB\u7BA1\u7406\u5458"
+    );
   }
   async getAdminAllPermissions() {
     const tables = this.getAllTableNames();
@@ -212,7 +251,14 @@ class PermissionService {
   async getRolePermissions(roleName) {
     if (roleName === "admin" || roleName === "root") {
       const perms2 = await this.getAdminAllPermissions();
-      return { custom: [], inherited: perms2.map((p) => ({ ...p, targetId: roleName, targetName: roleName === "root" ? "\u8D85\u7EA7\u7BA1\u7406\u5458" : "\u7BA1\u7406\u5458" })) };
+      return {
+        custom: [],
+        inherited: perms2.map((p) => ({
+          ...p,
+          targetId: roleName,
+          targetName: roleName === "root" ? "\u8D85\u7EA7\u7BA1\u7406\u5458" : "\u7BA1\u7406\u5458"
+        }))
+      };
     }
     const perms = await this.findPermissionsByTarget("role", roleName);
     return { custom: perms, inherited: [] };

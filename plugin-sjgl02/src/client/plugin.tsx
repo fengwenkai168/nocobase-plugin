@@ -6,6 +6,7 @@ import { SchemaSettingsLinkageRules, LinkageRuleCategory } from '@nocobase/clien
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { SjglBlockModel } from '../client-v2/models/SjglBlockModel';
+import { SjglBlock } from './components/SjglBlock';
 import { Sjgl02BlockInitializer } from '../client-v2/panels/Sjgl02BlockInitializer';
 import Sjgl02SettingsPageV1 from '../client-v2/pages/Sjgl02SettingsPage';
 
@@ -54,7 +55,7 @@ export class PluginSjgl02Client extends Plugin {
       icon: 'DatabaseOutlined',
       Component: Sjgl02SettingsPageV1,
     });
-    this.app.addComponents({ Sjgl02BlockInitializer });
+    this.app.addComponents({ SjglBlock, Sjgl02BlockInitializer });
     this.app.schemaInitializerManager.addItem('page:addBlock', 'otherBlocks.sjgl02Block', {
       title: '{{t("数据管理")}}',
       Component: 'Sjgl02BlockInitializer',
