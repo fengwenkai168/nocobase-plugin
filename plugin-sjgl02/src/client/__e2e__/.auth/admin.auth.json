@@ -1,0 +1,34 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:20000",
+      "localStorage": [
+        {
+          "name": "NOCOBASE_TOKEN",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsInRlbXAiOnRydWUsImlhdCI6MTc4MzMxNTUyMywic2lnbkluVGltZSI6MTc4MzMxNTUyMzA4NiwiZXhwIjoxNzgzNDAxOTIzLCJqdGkiOiIzYzQ5YmIzOC0xZDFiLTQwZWQtODBkOS05ZThiMGVlODE4NjUifQ.8_8rTUCoFb7JfBqySI9b4gjBYgiHQvZiPt6-XnDp9TU"
+        },
+        {
+          "name": "NOCOBASE_AUTH",
+          "value": "basic"
+        },
+        {
+          "name": "NOCOBASE_ROLE",
+          "value": "root"
+        },
+        {
+          "name": "NOCOBASE_LOCALE",
+          "value": "en-US"
+        },
+        {
+          "name": "NOCOBASE_THEME",
+          "value": "{\"id\":1,\"createdAt\":\"2026-07-06T03:39:49.623Z\",\"updatedAt\":\"2026-07-06T03:39:49.623Z\",\"config\":{\"name\":\"Default\"},\"optional\":true,\"isBuiltIn\":true,\"uid\":\"default\",\"default\":true}"
+        },
+        {
+          "name": "NOCOBASE_DESIGNABLE",
+          "value": "true"
+        }
+      ]
+    }
+  ]
+}

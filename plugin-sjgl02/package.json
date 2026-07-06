@@ -1,11 +1,17 @@
 {
   "name": "@my-project/plugin-sjgl02",
-  "version": "1.0.130",
+  "version": "1.0.139",
   "displayName": "@my-project/plugin-sjgl02",
   "displayName.zh-CN": "数据管理",
   "description": "NocoBase data import/export plugin with task management and table-level permission control",
   "description.zh-CN": "NocoBase 数据导入导出插件，支持任务管理和表级权限控制",
   "main": "dist/server/index.js",
+  "scripts": {
+    "test": "APP_ENV_PATH=.env.test.local yarn test packages/plugins/@my-project/plugin-sjgl02/src/server/__tests__",
+    "test:server": "APP_ENV_PATH=.env.test.local yarn test packages/plugins/@my-project/plugin-sjgl02/src/server/__tests__",
+    "test:client": "APP_ENV_PATH=.env.test.local yarn test:client packages/plugins/@my-project/plugin-sjgl02/src/client-v2/__tests__",
+    "test:e2e": "yarn e2e test packages/plugins/@my-project/plugin-sjgl02/src/client/__e2e__"
+  },
   "dependencies": {
     "exceljs": "^4.4.0",
     "async-mutex": "^0.4.0",

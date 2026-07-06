@@ -14,7 +14,7 @@ import type { Database } from '@nocobase/database';
 const exportMutex = new Mutex();
 
 function sanitizeSheetName(name: string): string {
-  return name.replace(/[\\\/\*\?\[\]:!@#\$%\^&\(\)]/g, '_').substring(0, 31);
+  return name.replace(/[\\/:*?[\]:!@#$%^&()]/g, '_').substring(0, 31);
 }
 
 function formatFileName(template: string, tableName: string): string {
@@ -35,7 +35,9 @@ function getFieldDisplayName(coll: any, fieldName: string, style?: string): stri
       if (style === 'title') return title;
       return `${title}(${fieldName})`;
     }
-  } catch {}
+  } catch {
+    /* 忽略 */
+  }
   return fieldName;
 }
 
@@ -78,7 +80,9 @@ function getScalarFields(coll: any): string[] {
         names.push((f as any).name);
       }
     }
-  } catch {}
+  } catch {
+    /* 忽略 */
+  }
   return names;
 }
 
@@ -96,7 +100,9 @@ function getAssociationFields(coll: any): Array<{ name: string; type: string; ta
         });
       }
     }
-  } catch {}
+  } catch {
+    /* 忽略 */
+  }
   return fields;
 }
 
@@ -171,29 +177,24 @@ export async function getExportTableFields(ctx: Context, next: Next) {
 
 export async function previewCount(ctx: Context, next: Next) {
   const params = ctx.action.params.values || ctx.action.params;
-  const { tableName, filter, permSource } = params;
+  const { tableName } = params;
   if (!tableName || tableName === '__all__') {
     let total = 0;
     const collections = ctx.db.collections;
     for (const [name, coll] of collections) {
       try {
         const repo = ctx.db.getRepository(name);
-        if (repo) total += await repo.count({ filter: filter || {} });
-      } catch {}
+        if (repo) total += await repo.count({ filter: {} });
+      } catch {
+        /* 忽略 */
+      }
     }
     ctx.body = { estimatedRows: total };
     await next();
     return;
   }
-  let effectiveFilter = filter || {};
-  try {
-    const exportPerm = await checkExportPermission(ctx, tableName, permSource);
-    if (exportPerm.exportFilter && Object.keys(exportPerm.exportFilter).length > 0) {
-      effectiveFilter = exportPerm.exportFilter as Record<string, any>;
-    }
-  } catch {}
   const repo = ctx.db.getRepository(tableName);
-  const count = repo ? await repo.count({ filter: effectiveFilter }) : 0;
+  const count = repo ? await repo.count({ filter: {} }) : 0;
   ctx.body = { estimatedRows: count };
   await next();
 }
@@ -206,37 +207,18 @@ export async function executeExport(ctx: Context, next: Next) {
     associationDisplayMode,
     includeAssociationSheet,
     associationSheetTables,
-    filter,
     fileNameTemplate,
     includeAttachments,
     headerStyle,
     permSource,
   } = params;
 
-  const userFilter = (() => {
-    if (!filter) return {};
-    if (Array.isArray(filter)) {
-      const obj: Record<string, any> = {};
-      for (const cond of filter) {
-        if (cond.field && cond.op && cond.value !== undefined) {
-          const opMap: Record<string, string> = { eq: '$eq', contains: '$includes', gt: '$gt', lt: '$lt' };
-          obj[cond.field] = { [opMap[cond.op] || '$eq']: cond.value };
-        }
-      }
-      return obj;
-    }
-    return filter;
-  })();
-
   if (!tableName) {
     ctx.throw(400, 'tableName is required');
   }
 
-  let permissionExportFilter: Record<string, any> | null = null;
-
   if (tableName !== '__all__') {
     const exportPerm = await checkExportPermission(ctx, tableName, permSource);
-    permissionExportFilter = exportPerm.exportFilter as Record<string, any> | null;
     if (exportPerm.exportFields && exportPerm.exportFields.length > 0 && selectedFields && selectedFields.length > 0) {
       const invalidFields = selectedFields.filter((f: string) => !exportPerm.exportFields.includes(f));
       if (invalidFields.length > 0) {
@@ -245,12 +227,7 @@ export async function executeExport(ctx: Context, next: Next) {
     }
   }
 
-  const exportFilter =
-    tableName === '__all__'
-      ? {}
-      : permissionExportFilter && Object.keys(permissionExportFilter).length > 0
-        ? permissionExportFilter
-        : userFilter;
+  const filter = {};
 
   let allowedTableList: string[] | null = null;
   if (tableName === '__all__') {
@@ -260,7 +237,9 @@ export async function executeExport(ctx: Context, next: Next) {
       try {
         const permCheck = await checkExportPermission(ctx, name, permSource);
         if (permCheck.canExport) names.push(name);
-      } catch {}
+      } catch {
+        /* 忽略 */
+      }
     }
     allowedTableList = names;
   }
@@ -272,14 +251,18 @@ export async function executeExport(ctx: Context, next: Next) {
       for (const t of allowedTableList) {
         try {
           const repo = ctx.db.getRepository(t);
-          if (repo) estimatedTotal += await repo.count({ filter: exportFilter || {} });
-        } catch {}
+          if (repo) estimatedTotal += await repo.count({ filter: {} });
+        } catch {
+          /* 忽略 */
+        }
       }
     } else {
       const tRepo = ctx.db.getRepository(tableName);
-      if (tRepo) estimatedTotal = await tRepo.count({ filter: exportFilter || {} });
+      if (tRepo) estimatedTotal = await tRepo.count({ filter: {} });
     }
-  } catch {}
+  } catch {
+    /* 忽略 */
+  }
 
   const repo = ctx.db.getRepository('sjgl02_tasks');
   const task = await repo.create({
@@ -288,7 +271,6 @@ export async function executeExport(ctx: Context, next: Next) {
       tableName,
       status: 'pending',
       selectedFields: selectedFields || [],
-      exportFilter: exportFilter || {},
       permSource: permSource || null,
       associationDisplayMode: associationDisplayMode || {},
       includeAssociationSheet: includeAssociationSheet || false,
@@ -315,7 +297,7 @@ export async function executeExport(ctx: Context, next: Next) {
       associationDisplayMode,
       includeAssociationSheet,
       associationSheetTables,
-      exportFilter,
+      filter,
       fileNameTemplate,
       includeAttachments,
       headerStyle,
@@ -330,7 +312,7 @@ interface ExportAsyncParams {
   associationDisplayMode?: Record<string, string>;
   includeAssociationSheet?: boolean;
   associationSheetTables?: string[];
-  exportFilter?: Record<string, any>;
+  filter?: Record<string, any>;
   fileNameTemplate?: string;
   includeAttachments?: boolean;
   headerStyle?: string;
@@ -344,7 +326,7 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     associationDisplayMode,
     includeAssociationSheet,
     associationSheetTables,
-    exportFilter,
+    filter,
     fileNameTemplate,
     includeAttachments,
     headerStyle,
@@ -377,7 +359,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
     try {
       const t = await repo.findOne({ filter: { id: taskId }, raw: true });
       if ((t as any)?.totalRows > 0) totalRows = (t as any).totalRows;
-    } catch {}
+    } catch {
+      /* 忽略 */
+    }
 
     let processedRows = 0;
     const outputFiles: string[] = [];
@@ -437,12 +421,15 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
             fileIdFieldNames.push((f as any).name);
           }
         }
-      } catch {}
+      } catch {
+        /* 忽略 */
+      }
       try {
-        const [, c] = await targetRepo.findAndCount({ filter: exportFilter || {}, limit: 1 });
+        const [, c] = await targetRepo.findAndCount({ filter: filter || {}, limit: 1 });
         collectionTotal = c;
-      } catch {}
-      if (collectionTotal === 0) continue;
+      } catch {
+        /* 忽略 */
+      }
 
       const fieldNames: string[] = selectedFields && selectedFields.length > 0 ? selectedFields : getScalarFields(coll);
       if (!fieldNames || fieldNames.length === 0) continue;
@@ -478,18 +465,23 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       if (pkType === 'int_auto') {
         // 游标分页：WHERE id > ? ORDER BY id LIMIT ?
         let lastId = 0;
-        while (true) {
+        let hasMore = true;
+        while (hasMore) {
           if (cancelFlags.has(taskId)) {
             cancelled = true;
-            break;
+            hasMore = false;
+            continue;
           }
           const pageRecords = await targetRepo.find({
-            filter: { ...(exportFilter || {}), id: { $gt: lastId } },
+            filter: { ...(filter || {}), id: { $gt: lastId } },
             sort: ['id'],
             limit: PAGE_SIZE,
             ...(appendFields.length > 0 ? { appends: appendFields } : {}),
           });
-          if (pageRecords.length === 0) break;
+          if (pageRecords.length === 0) {
+            hasMore = false;
+            continue;
+          }
           for (const record of pageRecords) {
             const row: Record<string, any> = {};
             for (const f of fieldNames) {
@@ -530,25 +522,33 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
           try {
             await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
-          } catch {}
+          } catch {
+            /* 忽略 */
+          }
         }
       } else if (pkType === 'uuid') {
         // UUID：预取 ID 数组 → IN 分批
         try {
           await db.sequelize.query("SET SESSION statement_timeout = '30min'");
-        } catch {}
+        } catch {
+          /* 忽略 */
+        }
         const allIds: any[] = [];
         let uuidOffset = 0;
-        while (true) {
+        let uuidHasMore = true;
+        while (uuidHasMore) {
           const idPage = await targetRepo.find({
-            filter: exportFilter || {},
+            filter: filter || {},
             fields: ['id'],
             offset: uuidOffset,
             limit: PAGE_SIZE,
           });
-          if (idPage.length === 0) break;
-          allIds.push(...idPage.map((r: any) => r.id));
-          uuidOffset += PAGE_SIZE;
+          if (idPage.length === 0) {
+            uuidHasMore = false;
+          } else {
+            allIds.push(...idPage.map((r: any) => r.id));
+            uuidOffset += PAGE_SIZE;
+          }
         }
         for (let bi = 0; bi < allIds.length; bi += PAGE_SIZE) {
           if (cancelFlags.has(taskId)) {
@@ -557,7 +557,7 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           }
           const batch = allIds.slice(bi, bi + PAGE_SIZE);
           const pageRecords = await targetRepo.find({
-            filter: { ...(exportFilter || {}), id: { $in: batch } },
+            filter: { ...(filter || {}), id: { $in: batch } },
             limit: PAGE_SIZE,
             ...(appendFields.length > 0 ? { appends: appendFields } : {}),
           });
@@ -600,7 +600,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
           try {
             await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
-          } catch {}
+          } catch {
+            /* 忽略 */
+          }
         }
       } else {
         // 其他主键类型：传统 offset/limit 分页
@@ -611,7 +613,7 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
             break;
           }
           const pageRecords = await targetRepo.find({
-            filter: exportFilter || {},
+            filter: filter || {},
             offset,
             limit: PAGE_SIZE,
             ...(appendFields.length > 0 ? { appends: appendFields } : {}),
@@ -657,7 +659,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           const progress = Math.min(100, Math.floor((offset * 100) / Math.max(1, collectionTotal)));
           try {
             await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
-          } catch {}
+          } catch {
+            /* 忽略 */
+          }
         }
       }
 
@@ -673,7 +677,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           try {
             const [, cnt] = await assocRepo.findAndCount({ limit: 1 });
             assocTotal = cnt;
-          } catch {}
+          } catch {
+            /* 忽略 */
+          }
           if (assocTotal === 0) continue;
           const assocColl = db.getCollection(af.target);
           const assocScalarFields = getScalarFields(assocColl);
@@ -719,7 +725,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
                 filterByTk: taskId,
                 values: { processedRows, totalRows, progress: Math.max(ap, 0) },
               });
-            } catch {}
+            } catch {
+              /* 忽略 */
+            }
           }
           if (cancelled) break;
           assocSheet.commit();
@@ -740,7 +748,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           ar.forEach((at: any) => {
             if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
           });
-        } catch {}
+        } catch {
+          /* 忽略 */
+        }
         if (fileIdFilenameMap.size > 0) {
           try {
             const attachmentFiles: Array<{ entryName: string; diskPath: string }> = [];
@@ -782,7 +792,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
                   });
                   try {
                     fs.unlinkSync(filePath);
-                  } catch {}
+                  } catch {
+                    /* 忽略 */
+                  }
                   outputFiles.push(zipPath);
                   finalFilePath = zipPath;
                 } catch (attErr: any) {
@@ -795,7 +807,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
                 }
               }
             }
-          } catch {}
+          } catch {
+            /* 忽略 */
+          }
         }
       }
 
@@ -835,7 +849,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
         for (const af of allAttachFileEntries) {
           try {
             streamArchive.file(af.diskPath, { name: af.entryName });
-          } catch {}
+          } catch {
+            /* 忽略 */
+          }
         }
         await new Promise<void>((resolve, reject) => {
           if (streamOutput) streamOutput.on('close', resolve);
@@ -846,14 +862,18 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           // ZIP 为空，回退
           try {
             fs.unlinkSync(streamZipPath);
-          } catch {}
+          } catch {
+            /* 忽略 */
+          }
           streamZipPath = '';
         }
       } catch (archErr: any) {
         await writeTaskLog(db, taskId, 'ERROR', `流式ZIP失败: ${archErr.message || ''}`);
         try {
           streamZipPath = '';
-        } catch {}
+        } catch {
+          /* 忽略 */
+        }
       }
     }
 
@@ -862,12 +882,16 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       if (streamZipPath) {
         try {
           fs.unlinkSync(streamZipPath);
-        } catch {}
+        } catch {
+          /* 忽略 */
+        }
       }
       for (const fp of outputFiles) {
         try {
           fs.unlinkSync(fp);
-        } catch {}
+        } catch {
+          /* 忽略 */
+        }
       }
       await writeTaskLog(db, taskId, 'WARN', '任务已取消');
       await repo.update({ filterByTk: taskId, values: { status: 'cancelled', completedAt: new Date() } });
@@ -893,7 +917,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       );
       try {
         await db.sequelize.query('SET SESSION statement_timeout = 0');
-      } catch {}
+      } catch {
+        /* 忽略 */
+      }
 
       const zipName = `sjgl02_export_${taskId}_${Date.now()}.tar.gz`;
       mergedFilePath = path.join(tempDir, zipName);
@@ -921,7 +947,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
       for (const fp of outputFiles) {
         try {
           fs.unlinkSync(fp);
-        } catch {}
+        } catch {
+          /* 忽略 */
+        }
       }
     }
 
@@ -995,7 +1023,9 @@ async function processExportAsync(db: Database, taskId: number, params: ExportAs
           completedAt: new Date(),
         },
       });
-    } catch {}
+    } catch {
+      /* 忽略 */
+    }
   } finally {
     cancelFlags.delete(taskId);
     release();

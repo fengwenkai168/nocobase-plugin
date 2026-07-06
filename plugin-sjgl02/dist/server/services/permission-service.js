@@ -84,7 +84,6 @@ class PermissionService {
       importMode: ["insert", "update", "upsert"],
       importFields: [],
       exportFields: [],
-      exportFilter: null,
       uniqueFields: [],
       requiredFields: []
     };
@@ -96,14 +95,21 @@ class PermissionService {
       importMode: Array.isArray(record == null ? void 0 : record.importMode) ? record.importMode : [(record == null ? void 0 : record.importMode) || "insert"],
       importFields: (record == null ? void 0 : record.importFields) || [],
       exportFields: (record == null ? void 0 : record.exportFields) || [],
-      exportFilter: (record == null ? void 0 : record.exportFilter) || null,
       uniqueFields: (record == null ? void 0 : record.uniqueFields) || [],
       requiredFields: (record == null ? void 0 : record.requiredFields) || []
     };
   }
   mergePermissions(perms) {
     if (perms.length === 0) {
-      return this.fullPermission();
+      return {
+        canImport: false,
+        canExport: false,
+        importMode: [],
+        importFields: [],
+        exportFields: [],
+        uniqueFields: [],
+        requiredFields: []
+      };
     }
     const allowed = perms.filter((p) => p.canImport === true || p.canExport === true);
     if (allowed.length === 0) {
@@ -113,7 +119,6 @@ class PermissionService {
         importMode: [],
         importFields: [],
         exportFields: [],
-        exportFilter: null,
         uniqueFields: [],
         requiredFields: []
       };
@@ -131,15 +136,12 @@ class PermissionService {
     const exportFields = hasFullExport ? [] : [...new Set(allowed.flatMap((p) => p.exportFields || []))];
     const uniqueFields = [...new Set(allowed.flatMap((p) => p.uniqueFields || []))];
     const requiredFields = [...new Set(allowed.flatMap((p) => p.requiredFields || []))];
-    const hasNoFilter = allowed.some((p) => !p.exportFilter || Object.keys(p.exportFilter).length === 0);
-    const exportFilter = hasNoFilter ? null : allowed[0].exportFilter || null;
     return {
       canImport,
       canExport,
       importMode,
       importFields,
       exportFields,
-      exportFilter,
       uniqueFields,
       requiredFields
     };
@@ -281,7 +283,6 @@ class PermissionService {
         requiredFields: [],
         importFields: [],
         exportFields: [],
-        exportFilter: null,
         _inherited: true,
         _systemManaged: true
       }));
@@ -295,49 +296,6 @@ class PermissionService {
     }
     const custom = await this.findPermissionsByTarget("user", uid);
     return { custom, inherited };
-  }
-  async getExportScopes(currentUserId, tableName, permSource) {
-    const effectiveUserId = (permSource == null ? void 0 : permSource.type) === "user" && permSource.id ? Number(permSource.id) : currentUserId;
-    const roleNames = await this.getUserRoleNames(effectiveUserId);
-    const isAdmin = roleNames.includes("admin") || roleNames.includes("root");
-    const result = [];
-    const userPerm = await this.findPermission("user", String(effectiveUserId), tableName);
-    if (userPerm || isAdmin) {
-      result.push({
-        type: "user",
-        id: String(effectiveUserId),
-        label: "\u5F53\u524D\u7528\u6237",
-        canExport: userPerm ? userPerm.canExport === true : true,
-        exportFilter: userPerm ? userPerm.exportFilter || null : null
-      });
-    }
-    if (roleNames.length > 0) {
-      const rolePerms = await this.findPermissionsByRoles(roleNames);
-      const roleRecords = rolePerms.filter((p) => p.tableName === tableName);
-      const roleNameSet = new Set(roleNames);
-      for (const rName of roleNameSet) {
-        const perm = roleRecords.find((p) => p.targetId === rName);
-        if (perm || isAdmin) {
-          result.push({
-            type: "role",
-            id: rName,
-            label: rName,
-            canExport: perm ? perm.canExport === true : true,
-            exportFilter: perm ? perm.exportFilter || null : null
-          });
-        }
-      }
-    }
-    if (isAdmin) {
-      result.unshift({
-        type: "admin",
-        id: "admin",
-        label: "\u7BA1\u7406\u5458\u5B8C\u6574\u6743\u9650",
-        canExport: true,
-        exportFilter: null
-      });
-    }
-    return result.filter((item) => item.canExport);
   }
   getAllTableNames() {
     const names = [];

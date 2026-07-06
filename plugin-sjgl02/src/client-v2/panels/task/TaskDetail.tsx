@@ -9,7 +9,6 @@ import {
   FieldMappingCard,
   DataPreviewCard,
   ExecutionLogCard,
-  ExportFilterCard,
 } from './TaskCards';
 
 export function TaskDetail({ api, task, open, onClose, tableTitles }: any) {
@@ -136,7 +135,6 @@ export function TaskDetail({ api, task, open, onClose, tableTitles }: any) {
       ) : detail ? (
         <div>
           <TaskSummaryCard task={detail} api={api} tableTitles={tableTitles} fieldTitles={fieldTitles} />
-          {detail.taskType === 'export' && <ExportFilterCard task={detail} fieldTitles={fieldTitles} />}
           {detail.taskType === 'export' && (
             <ExportFieldsCard
               task={detail}

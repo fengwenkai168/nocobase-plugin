@@ -1,5 +1,87 @@
 # CHANGELOG
 
+## 1.0.139 (2026-07-06) — 修复权限开关保存失效
+- **修复**：权限管理编辑弹窗中「允许导入」「允许导出」开关未注册为 Form 字段，导致保存时 `canImport`/`canExport` 丢失，数据库默认 `false`，权限显示「不允许」
+- **重构**：`canImport`/`canExport`/`importMode` 统一由 Ant Design Form 管理，使用 `Form.useWatch` 监听并驱动条件渲染
+- **影响文件**：`src/client-v2/panels/PermissionPanel.tsx`
+- **版本**：1.0.138 → 1.0.139
+
+## 1.0.138 (2026-07-06) — 移除导出数据范围功能
+- **移除**：`sjgl02_table_permissions` 与 `sjgl02_tasks` 表的 `exportFilter` 字段及对应 migration
+- **移除**：服务端 `PermissionService.getExportScopes()`、`getExportScopes` action、`sjgl02Permissions:scopes` 接口与 ACL 配置
+- **移除**：导出时应用权限 `exportFilter` 与用户自定义 `filter` 的逻辑，`previewCount` 与 `executeExport` 不再接受 `filter` 参数
+- **移除**：导出面板第二步「数据范围」卡片、`SimpleFilterBuilder` 组件、权限编辑弹窗「数据范围」表单项、任务详情「数据范围」卡片
+- **移除**：`useV2Collection` hook 及对应单元测试（仅用于数据范围集合加载）
+- **移除**：数据范围相关 locale 键（Data range / Custom filter / Export filter / Scope readonly tip 等）
+- **调整**：E2E 测试中普通用户导出用例不再验证数据范围，改为验证完整导出
+- **影响文件**：`src/server/collections/*.ts`、`src/server/services/permission-service.ts`、`src/server/actions/permissions.ts`、`src/server/actions/export.ts`、`src/server/plugin.ts`、`src/server/migrations/20260706160000-remove-export-filter.ts`、`src/client-v2/panels/export-*/*`、`src/client-v2/panels/PermissionPanel.tsx`、`src/client-v2/panels/task/TaskCards.tsx`、`src/client-v2/panels/task/TaskDetail.tsx`、`src/client-v2/components/SimpleFilterBuilder.tsx`、`src/client-v2/hooks/useV2Collection.ts`、`src/client-v2/types/permission.ts`、`src/client-v2/hooks/usePermissions.ts`、`src/locale/*.json`、`src/client/__e2e__/*`
+- **版本**：1.0.137 → 1.0.138
+
+## 1.0.137 (2026-07-06) — 修复模块引用与空表导出边界
+- **修复**：`useImportPanel.ts` / `useExportPanel.ts` 正确引用 `../shared.ts` 与 `../../utils/api`，解决 v1 `SjglBlock` 懒加载面板时「Cannot find module './shared'」渲染失败
+- **修复**：`ExportStepConfig.tsx` 正确引用 `../../components/SimpleFilterBuilder`，解决导出第二步组件加载失败
+- **修复**：`admin-import.test.ts` / `admin-export.test.ts` 改为断言 `data-testid`，适配重构后的分步面板 UI
+- **修复**：服务端导出移除「无数据则跳过」逻辑，空表也生成仅含表头的 Excel 文件，满足边界测试
+- **重构**：`export.ts` 中 `while (true)` 改为布尔标志循环，消除 `no-constant-condition` lint 警告；补充空 `catch` 注释
+- **测试**：服务端 27/27、客户端 30/30、E2E 21/21 全部通过；单元测试使用独立数据库 `nocobase_test_unit`
+- **影响文件**：`src/client-v2/panels/import-hooks/useImportPanel.ts`、`src/client-v2/panels/export-hooks/useExportPanel.ts`、`src/client-v2/panels/export-steps/ExportStepConfig.tsx`、`src/server/actions/export.ts`、`src/client/__e2e__/admin-import.test.ts`、`src/client/__e2e__/admin-export.test.ts`
+- **版本**：1.0.136 → 1.0.137
+
+## 1.0.136 (2026-07-06) — E2E member 测试 UI 驱动化与权限修复
+- **重构**：普通用户 E2E 测试由 API 驱动改为 UI 驱动，覆盖导入模式/字段限制、导出字段/数据范围、任务隔离与取消
+- **修复**：`data.setup.ts` 使用正确的 Page/Grid/Row/Col 嵌套 schema，并显式授权给 member 角色，解决页面空白问题
+- **修复**：服务端 ACL 允许 loggedIn 角色访问 `sjgl02Permissions:tables/get/scopes`，保证普通用户面板能加载表列表
+- **新增**：为 `ImportPanel`、`ExportPanel`、`TaskList`、`SjglBlock` 添加 `data-testid`，提升 E2E 稳定性
+- **新增**：空表导出边界场景测试
+- **影响文件**：`src/server/plugin.ts`、`src/client/__e2e__/data.setup.ts`、`src/client/__e2e__/helpers/sjgl02-helpers.ts`、`src/client/__e2e__/member-*.test.ts`、`src/client/components/SjglBlock.tsx`、`src/client-v2/panels/ImportPanel.tsx`、`src/client-v2/panels/ExportPanel.tsx`、`src/client-v2/panels/task/TaskList.tsx`
+- **版本**：1.0.135 → 1.0.136
+
+## 1.0.135 (2026-07-05) — E2E 测试体系 API 驱动化
+- **重构**：E2E 测试改为 API 驱动，绕过 Alpine 下 Chromium/UI 选择器不稳定问题
+- **新增**：管理员 E2E 覆盖导入三种模式（insert/update/upsert）、导出及文件内容验证、任务列表/详情/取消、权限新增/修改/审计日志
+- **新增**：普通用户 E2E 覆盖导入模式/字段权限限制、导出字段/数据范围限制、任务隔离与取消
+- **修复**：`test.ts` 自定义 API fixture 移除全局 `Content-Type`，避免 multipart 上传被误判为 JSON
+- **修复**：`data.setup.ts` 同步 E2E 环境本地存储配置到 `storage/uploads-e2e`
+- **修复**：`clearTasks` 与 `clearPermissions` 使用正确的下划线资源名（`sjgl02_tasks`、`sjgl02_table_permissions`）
+- **影响文件**：`src/client/__e2e__/*`、`src/client/__e2e__/helpers/sjgl02-helpers.ts`、`src/client/__e2e__/test.ts`、`src/client/__e2e__/data.setup.ts`、`src/client/__e2e__/playwright.config.ts`
+- **版本**：1.0.134 → 1.0.135
+- **修复**：E2E 冒烟测试访问路径由 `/v2/admin/settings/sjgl02` 改为 `/admin/settings/sjgl02`，匹配 v1 设置页注册
+- **修复**：E2E 设置页标题断言改为英文 `Data Management`，避免菜单项与页面标题同名导致严格模式冲突
+- **修复**：E2E 权限管理测试改用 `div[style*="cursor: pointer"]` 选择用户列表项，并断言英文 `Add Permission` 按钮
+- **影响文件**：`src/client/__e2e__/smoke.test.ts`
+- **版本**：1.0.133 → 1.0.134
+
+## 1.0.133 (2026-07-05) — 建立完整测试体系并修复导入解析稳定性
+- **新增**：服务端测试集 27 个用例，覆盖权限服务、导入解析/执行/回滚、导出、任务管理、集成流程
+- **新增**：客户端（v2）测试集 30 个用例，覆盖全部 hooks（权限、表/目标列表、字段、视图范围、集合）与 `useAPI` 工具
+- **新增**：E2E 冒烟测试 `src/client/__e2e__/smoke.test.ts`，验证 v2 设置页加载与权限管理标签交互
+- **修复**：`streamProcessExcel` 由 ExcelJS 流式 `WorkbookReader` 改为非流式 `Workbook`，解决全量测试时偶发 `Cannot read properties of undefined (reading 'sheets')` 错误
+- **修复**：`PermissionService.mergePermissions([])` 现在正确返回无权限，避免空权限列表被误判为全权限
+- **修复**：`savePermissions` 同时支持 `permissions[0].targetType/targetId` 与顶层 `params.targetType/targetId`，并更新已存在记录避免唯一索引冲突
+- **修复**：`executeImport` 在未传 `importMode` 时先设置默认 `'insert'` 再做权限校验
+- **修复**：导入附件路径解析统一使用 `resolveAttachmentFilePath()`，优先 `LOCAL_STORAGE_DEST`，兼容测试环境
+- **修复**：影子表写入排除未映射系统字段，并为影子表系统字段 `DROP NOT NULL`，避免 NOT NULL 约束导致 INSERT 失败
+- **影响文件**：`src/server/actions/import.ts`、`src/server/actions/permissions.ts`、`src/server/services/permission-service.ts`、`src/server/plugin.ts`、`src/client-v2/__tests__/**/*`、`src/client/__e2e__/smoke.test.ts`
+- **版本**：1.0.132 → 1.0.133
+
+## 1.0.132 (2026-07-04) — 修复导出数据范围与权限方案切换
+- **修复**：导出面板请求 `sjgl02Permissions:scopes` 时由 POST `data` 改为 GET `params`，解决未传 `tableName` 导致 400/tableName is required 的问题
+- **修复**：切换已配置权限方案时回显 `exportFilter`，空范围时不再误报「当前方案已限定导出范围」
+- **优化**：管理员完整权限等未配置固定范围时，数据范围区域统一使用简化版 `SimpleFilterBuilder`，移除只读 JSON 展示
+- **优化**：`SimpleFilterBuilder` 未填写值或切换「为空/不为空」操作符时不再生成 `$eq: null`，空条件不输出
+- **修复**：切换方案下拉过滤后若当前选项不可用自动回退到管理员完整权限，避免方案与表不匹配
+- **影响文件**：`src/client-v2/panels/ExportPanel.tsx`、`src/client-v2/components/SimpleFilterBuilder.tsx`、`src/client-v2/panels/shared.ts`
+- **版本**：1.0.131 → 1.0.132
+
+## 1.0.131 (2026-07-04) — 修复集合加载监听、用户添加权限按钮与数据范围自定义筛选
+- **修复**：v2 导出页/权限管理页/任务详情页新增 `useV2Collection` hook，通过监听 `dataSource:loaded` 事件并主动触发 `ensureLoaded`，解决 `CollectionFilterPanel` 一直显示「加载数据表集合...」的问题
+- **修复**：权限管理页用户区块「添加权限」按钮因 `isSystemManaged` 判断被隐藏，恢复为对所有非管理员/超级管理员目标均显示
+- **新增**：`SimpleFilterBuilder` 简化筛选组件，在系统 `CollectionFilterPanel` 因 v1 runtime 无法加载业务集合时提供字段-操作符-值自定义筛选能力，确保导出数据范围和权限导出范围可配置
+- **修复**：v1 页面「添加区块 → 其他 → 数据管理」区块空白，新增 `SjglBlock` 组件并注册到 v1 组件表
+- **修复**：权限管理编辑弹窗中「允许导入」「允许导出」开关文字不显示的问题
+- **影响文件**：`src/client-v2/hooks/useV2Collection.ts`、`src/client-v2/hooks/index.ts`、`src/client-v2/components/SimpleFilterBuilder.tsx`、`src/client-v2/panels/ExportPanel.tsx`、`src/client-v2/panels/PermissionPanel.tsx`、`src/client-v2/panels/task/TaskCards.tsx`、`src/client/components/SjglBlock.tsx`、`src/client/plugin.tsx`
+- **版本**：1.0.130 → 1.0.131
+
 ## 1.0.130 (2026-07-04) — 修复 CollectionFilterPanel 集合加载与 v1 区块空白
 - **修复**：v2 导出页/权限管理页/任务详情页使用 `observer` 监听集合加载，解决 `CollectionFilterPanel` 因集合未就绪而显示 JSON 或「请先选择数据表」的问题
 - **修复**：v1 页面「添加区块 → 其他 → 数据管理」区块空白，新增 `SjglBlock` 组件并注册到 v1 组件表

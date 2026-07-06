@@ -3,6 +3,6 @@ export declare function useViewScope(api: any, target?: {
     id?: string | number;
 } | null): {
     viewScope: string;
-    setViewScope: (val: string) => void;
+    setViewScope: (val: string) => any;
     loading: boolean;
 };

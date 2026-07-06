@@ -5,10 +5,7 @@ export default defineCollection({
   title: '任务执行日志',
   timestamps: true,
   autoGenId: true,
-  indexes: [
-    { fields: ['taskId'] },
-    { fields: ['timestamp'] },
-  ],
+  indexes: [{ fields: ['taskId'] }, { fields: ['timestamp'] }],
   fields: [
     { type: 'integer', name: 'taskId' },
     {

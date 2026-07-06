@@ -10,15 +10,20 @@ import {
   savePermissions,
   getSettings,
   saveSettings,
-  getExportScopes,
 } from './actions/permissions';
 import { listTaskLogs } from './actions/taskLogs';
+import { PermissionService } from './services/permission-service';
 
 export class PluginSjgl02Server extends Plugin {
+  permissionService: PermissionService;
+
   async load() {
+    this.permissionService = new PermissionService(this.db);
     this.defineCustomResources();
     this.setupACL();
-    setImmediate(() => this.startupCleanup());
+    setImmediate(() => {
+      this.startupCleanup().catch(() => {});
+    });
   }
 
   /** 启动清理：残留任务、影子表、导出文件 */
@@ -26,18 +31,38 @@ export class PluginSjgl02Server extends Plugin {
     try {
       const sequelize = this.db.sequelize;
 
-      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-      await this.db.getRepository('sjgl02_tasks').update({
-        filter: {
-          status: { $in: ['processing', 'pending'] },
-          createdAt: { $lt: fiveMinAgo },
-        },
-        values: {
-          status: 'failed',
-          errorMessage: '服务器重启，任务中断',
-          completedAt: new Date(),
-        },
-      });
+      // 测试环境可能在 install 前调用，先确认表已存在
+      const tableExists = await (async () => {
+        try {
+          const [rows] = await sequelize.query(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = 'sjgl02_tasks' AND table_schema = current_schema()",
+            { raw: true },
+          );
+          return (rows as any[]).length > 0;
+        } catch {
+          return false;
+        }
+      })();
+
+      if (tableExists) {
+        const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+        try {
+          await this.db.getRepository('sjgl02_tasks').update({
+            filter: {
+              status: { $in: ['processing', 'pending'] },
+              createdAt: { $lt: fiveMinAgo },
+            },
+            values: {
+              status: 'failed',
+              errorMessage: '服务器重启，任务中断',
+              completedAt: new Date(),
+            },
+          });
+        } catch (err: any) {
+          // eslint-disable-next-line no-console
+          console.warn('startupCleanup sjgl02_tasks update failed:', err.message);
+        }
+      }
 
       const [shadowTables] = await sequelize.query(
         "SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02\\_import\\_%' ESCAPE '\\' AND schemaname = current_schema()",
@@ -47,7 +72,9 @@ export class PluginSjgl02Server extends Plugin {
         try {
           const quoted = '"' + String(row.tablename).replace(/"/g, '""') + '"';
           await sequelize.query('DROP TABLE IF EXISTS ' + quoted);
-        } catch {}
+        } catch {
+          // 忽略单张影子表删除失败
+        }
       }
 
       const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
@@ -58,11 +85,15 @@ export class PluginSjgl02Server extends Plugin {
           if (file.startsWith('sjgl02_export_')) {
             try {
               fs.unlinkSync(exportDir + '/' + file);
-            } catch {}
+            } catch {
+              // 忽略单个导出文件删除失败
+            }
           }
         }
       }
-    } catch {}
+    } catch {
+      // 忽略清理过程中的整体异常
+    }
   }
 
   private defineCustomResources() {
@@ -106,7 +137,6 @@ export class PluginSjgl02Server extends Plugin {
         save: savePermissions,
         settings: getSettings,
         saveSettings,
-        scopes: getExportScopes,
       },
     });
 
@@ -123,7 +153,9 @@ export class PluginSjgl02Server extends Plugin {
     acl.allow('sjgl02Import', '*', 'loggedIn');
     acl.allow('sjgl02Export', '*', 'loggedIn');
     acl.allow('sjgl02Tasks', '*', 'loggedIn');
-    acl.allow('sjgl02Permissions', '*', 'loggedIn');
+    acl.allow('sjgl02Permissions', 'tables', 'loggedIn');
+    acl.allow('sjgl02Permissions', 'get', 'loggedIn');
+    acl.allow('sjgl02Permissions', ['save', 'saveSettings', 'settings', 'userRoleList'], 'admin');
     acl.allow('sjgl02TaskLogs', '*', 'loggedIn');
 
     // 业务数据集合仅允许通过自定义 action 间接操作；直接 REST 仅管理员
@@ -149,7 +181,7 @@ export class PluginSjgl02Server extends Plugin {
 
     const permRepo = this.db.getRepository('sjgl02_table_permissions');
     const permCount = await permRepo.count();
-    if (permCount === 0) {
+    if (permCount === 0 && this.db.hasCollection('roles')) {
       const roleRepo = this.db.getRepository('roles');
       const adminRole = await roleRepo.findOne({ filter: { name: 'admin' } });
       const rootRole = await roleRepo.findOne({ filter: { name: 'root' } });

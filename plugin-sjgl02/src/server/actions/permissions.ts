@@ -1,38 +1,6 @@
 import { Context, Next } from '@nocobase/actions';
 import { PermissionService } from '../services/permission-service';
 
-function isAdminOrRoot(ctx: Context): boolean {
-  try {
-    const roleNames = (ctx.state.currentUser?.roles || []).map((r: any) => r.name);
-    return roleNames.some((n: string) => n === 'admin' || n === 'root');
-  } catch {
-    return false;
-  }
-}
-
-export async function getExportScopes(ctx: Context, next: Next) {
-  const params = ctx.action.params.values || ctx.action.params;
-  const { tableName } = params;
-  const currentUserId = ctx.state.currentUser?.id;
-  if (!currentUserId) {
-    ctx.throw(401, 'Unauthorized');
-  }
-  if (!tableName) {
-    ctx.throw(400, 'tableName is required');
-  }
-  const service = new PermissionService(ctx.db);
-  let permSource = null;
-  if (isAdminOrRoot(ctx)) {
-    const { permSourceType, permSourceId } = params;
-    if (permSourceType && permSourceId) {
-      permSource = { type: permSourceType, id: String(permSourceId) };
-    }
-  }
-  const scopes = await service.getExportScopes(Number(currentUserId), tableName, permSource);
-  ctx.body = { options: scopes };
-  await next();
-}
-
 export async function getUserRoleList(ctx: Context, next: Next) {
   const userRepo = ctx.db.getRepository('users');
   const roleRepo = ctx.db.getRepository('roles');
@@ -80,7 +48,9 @@ export async function getTables(ctx: Context, next: Next) {
         }
       }
     }
-  } catch {}
+  } catch {
+    /* 忽略 */
+  }
   ctx.body = collections;
   await next();
 }
@@ -122,11 +92,11 @@ export async function savePermissions(ctx: Context, next: Next) {
   let targetType = '';
   let targetId = '';
   if (permissions && permissions.length > 0) {
-    targetType = permissions[0].targetType || '';
-    targetId = String(permissions[0].targetId || '');
+    targetType = permissions[0].targetType || params.targetType || '';
+    targetId = String(permissions[0].targetId || params.targetId || '');
   } else {
-    targetType = ctx.action.params.values?.targetType || ctx.request.query?.targetType || '';
-    targetId = ctx.action.params.values?.targetId || ctx.request.query?.targetId || '';
+    targetType = params.targetType || ctx.request.query?.targetType || '';
+    targetId = params.targetId || ctx.request.query?.targetId || '';
   }
 
   if (targetType === 'role' && (targetId === 'admin' || targetId === 'root')) {
@@ -165,7 +135,9 @@ export async function savePermissions(ctx: Context, next: Next) {
             },
             transaction,
           });
-        } catch {}
+        } catch {
+          /* 忽略 */
+        }
       }
     }
     for (const perm of permissions) {
@@ -173,15 +145,19 @@ export async function savePermissions(ctx: Context, next: Next) {
         perm.importMode = ['insert', 'update', 'upsert'];
       }
       const existing = existingPerms.find((e: any) => e.tableName === perm.tableName);
-      if (perm.id && existing) {
-        await repo.update({ filterByTk: perm.id, values: perm, transaction });
+      if (existing) {
+        await repo.update({
+          filterByTk: existing.id,
+          values: { ...perm, targetType, targetId: String(targetId) },
+          transaction,
+        });
         try {
           await logRepo.create({
             values: {
               action: 'update',
-              targetType: perm.targetType,
-              targetId: perm.targetId,
-              targetName: perm.targetName,
+              targetType,
+              targetId: String(targetId),
+              targetName: perm.targetName || existing.targetName,
               tableName: perm.tableName,
               changes: { before: existing.toJSON?.() || existing, after: perm },
               operatorId,
@@ -189,8 +165,10 @@ export async function savePermissions(ctx: Context, next: Next) {
             },
             transaction,
           });
-        } catch {}
-      } else if (!perm.id) {
+        } catch {
+          /* 忽略 */
+        }
+      } else {
         await repo.create({ values: { ...perm, targetType, targetId: String(targetId), operatorId }, transaction });
         try {
           await logRepo.create({
@@ -198,6 +176,7 @@ export async function savePermissions(ctx: Context, next: Next) {
               action: 'create',
               targetType,
               targetId: String(targetId),
+              targetName: perm.targetName,
               tableName: perm.tableName,
               changes: { after: perm },
               operatorId,
@@ -205,14 +184,18 @@ export async function savePermissions(ctx: Context, next: Next) {
             },
             transaction,
           });
-        } catch {}
+        } catch {
+          /* 忽略 */
+        }
       }
     }
     await transaction.commit();
   } catch (err) {
     try {
       await transaction.rollback();
-    } catch {}
+    } catch {
+      /* 忽略 */
+    }
     throw err;
   }
   ctx.body = { success: true };

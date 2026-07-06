@@ -6,7 +6,6 @@ export interface TablePermission {
   importMode: string[];
   importFields: string[];
   exportFields: string[];
-  exportFilter: Record<string, unknown> | null;
   uniqueFields: string[];
   requiredFields: string[];
 }
@@ -76,7 +75,6 @@ export class PermissionService {
       importMode: ['insert', 'update', 'upsert'],
       importFields: [],
       exportFields: [],
-      exportFilter: null,
       uniqueFields: [],
       requiredFields: [],
     };
@@ -89,7 +87,6 @@ export class PermissionService {
       importMode: Array.isArray(record?.importMode) ? record.importMode : [record?.importMode || 'insert'],
       importFields: record?.importFields || [],
       exportFields: record?.exportFields || [],
-      exportFilter: record?.exportFilter || null,
       uniqueFields: record?.uniqueFields || [],
       requiredFields: record?.requiredFields || [],
     };
@@ -97,7 +94,15 @@ export class PermissionService {
 
   private mergePermissions(perms: any[]): TablePermission {
     if (perms.length === 0) {
-      return this.fullPermission();
+      return {
+        canImport: false,
+        canExport: false,
+        importMode: [],
+        importFields: [],
+        exportFields: [],
+        uniqueFields: [],
+        requiredFields: [],
+      };
     }
     const allowed = perms.filter((p) => p.canImport === true || p.canExport === true);
     if (allowed.length === 0) {
@@ -107,7 +112,6 @@ export class PermissionService {
         importMode: [],
         importFields: [],
         exportFields: [],
-        exportFilter: null,
         uniqueFields: [],
         requiredFields: [],
       };
@@ -125,15 +129,12 @@ export class PermissionService {
     const exportFields = hasFullExport ? [] : [...new Set<string>(allowed.flatMap((p: any) => p.exportFields || []))];
     const uniqueFields = [...new Set<string>(allowed.flatMap((p: any) => p.uniqueFields || []))];
     const requiredFields = [...new Set<string>(allowed.flatMap((p: any) => p.requiredFields || []))];
-    const hasNoFilter = allowed.some((p) => !p.exportFilter || Object.keys(p.exportFilter).length === 0);
-    const exportFilter = hasNoFilter ? null : allowed[0].exportFilter || null;
     return {
       canImport,
       canExport,
       importMode,
       importFields,
       exportFields,
-      exportFilter,
       uniqueFields,
       requiredFields,
     };
@@ -298,7 +299,6 @@ export class PermissionService {
         requiredFields: [],
         importFields: [],
         exportFields: [],
-        exportFilter: null,
         _inherited: true,
         _systemManaged: true,
       }));
@@ -313,66 +313,6 @@ export class PermissionService {
     }
     const custom = await this.findPermissionsByTarget('user', uid);
     return { custom, inherited };
-  }
-
-  async getExportScopes(
-    currentUserId: number,
-    tableName: string,
-    permSource?: PermSource | null,
-  ): Promise<
-    { type: string; id: string; label: string; canExport: boolean; exportFilter: Record<string, unknown> | null }[]
-  > {
-    const effectiveUserId = permSource?.type === 'user' && permSource.id ? Number(permSource.id) : currentUserId;
-    const roleNames = await this.getUserRoleNames(effectiveUserId);
-    const isAdmin = roleNames.includes('admin') || roleNames.includes('root');
-    const result: {
-      type: string;
-      id: string;
-      label: string;
-      canExport: boolean;
-      exportFilter: Record<string, unknown> | null;
-    }[] = [];
-
-    const userPerm = await this.findPermission('user', String(effectiveUserId), tableName);
-    if (userPerm || isAdmin) {
-      result.push({
-        type: 'user',
-        id: String(effectiveUserId),
-        label: '当前用户',
-        canExport: userPerm ? userPerm.canExport === true : true,
-        exportFilter: userPerm ? userPerm.exportFilter || null : null,
-      });
-    }
-
-    if (roleNames.length > 0) {
-      const rolePerms = await this.findPermissionsByRoles(roleNames);
-      const roleRecords = rolePerms.filter((p: any) => p.tableName === tableName);
-      const roleNameSet = new Set(roleNames);
-      for (const rName of roleNameSet) {
-        const perm = roleRecords.find((p: any) => p.targetId === rName);
-        if (perm || isAdmin) {
-          result.push({
-            type: 'role',
-            id: rName,
-            label: rName,
-            canExport: perm ? perm.canExport === true : true,
-            exportFilter: perm ? perm.exportFilter || null : null,
-          });
-        }
-      }
-    }
-
-    if (isAdmin) {
-      result.unshift({
-        type: 'admin',
-        id: 'admin',
-        label: '管理员完整权限',
-        canExport: true,
-        exportFilter: null,
-      });
-    }
-
-    return result.filter((item) => item.canExport);
   }
 
   private getAllTableNames(): string[] {

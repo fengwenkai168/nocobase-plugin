@@ -54,7 +54,7 @@ var import_taskLogs = require("./taskLogs");
 var import_cancel_state = require("./cancel-state");
 const exportMutex = new import_async_mutex.Mutex();
 function sanitizeSheetName(name) {
-  return name.replace(/[\\\/\*\?\[\]:!@#\$%\^&\(\)]/g, "_").substring(0, 31);
+  return name.replace(/[\\/:*?[\]:!@#$%^&()]/g, "_").substring(0, 31);
 }
 function formatFileName(template, tableName) {
   const d = /* @__PURE__ */ new Date();
@@ -209,14 +209,14 @@ async function getExportTableFields(ctx, next) {
 }
 async function previewCount(ctx, next) {
   const params = ctx.action.params.values || ctx.action.params;
-  const { tableName, filter, permSource } = params;
+  const { tableName } = params;
   if (!tableName || tableName === "__all__") {
     let total = 0;
     const collections = ctx.db.collections;
     for (const [name, coll] of collections) {
       try {
         const repo2 = ctx.db.getRepository(name);
-        if (repo2) total += await repo2.count({ filter: filter || {} });
+        if (repo2) total += await repo2.count({ filter: {} });
       } catch {
       }
     }
@@ -224,16 +224,8 @@ async function previewCount(ctx, next) {
     await next();
     return;
   }
-  let effectiveFilter = filter || {};
-  try {
-    const exportPerm = await (0, import_permission_check.checkExportPermission)(ctx, tableName, permSource);
-    if (exportPerm.exportFilter && Object.keys(exportPerm.exportFilter).length > 0) {
-      effectiveFilter = exportPerm.exportFilter;
-    }
-  } catch {
-  }
   const repo = ctx.db.getRepository(tableName);
-  const count = repo ? await repo.count({ filter: effectiveFilter }) : 0;
+  const count = repo ? await repo.count({ filter: {} }) : 0;
   ctx.body = { estimatedRows: count };
   await next();
 }
@@ -246,33 +238,16 @@ async function executeExport(ctx, next) {
     associationDisplayMode,
     includeAssociationSheet,
     associationSheetTables,
-    filter,
     fileNameTemplate,
     includeAttachments,
     headerStyle,
     permSource
   } = params;
-  const userFilter = (() => {
-    if (!filter) return {};
-    if (Array.isArray(filter)) {
-      const obj = {};
-      for (const cond of filter) {
-        if (cond.field && cond.op && cond.value !== void 0) {
-          const opMap = { eq: "$eq", contains: "$includes", gt: "$gt", lt: "$lt" };
-          obj[cond.field] = { [opMap[cond.op] || "$eq"]: cond.value };
-        }
-      }
-      return obj;
-    }
-    return filter;
-  })();
   if (!tableName) {
     ctx.throw(400, "tableName is required");
   }
-  let permissionExportFilter = null;
   if (tableName !== "__all__") {
     const exportPerm = await (0, import_permission_check.checkExportPermission)(ctx, tableName, permSource);
-    permissionExportFilter = exportPerm.exportFilter;
     if (exportPerm.exportFields && exportPerm.exportFields.length > 0 && selectedFields && selectedFields.length > 0) {
       const invalidFields = selectedFields.filter((f) => !exportPerm.exportFields.includes(f));
       if (invalidFields.length > 0) {
@@ -280,7 +255,7 @@ async function executeExport(ctx, next) {
       }
     }
   }
-  const exportFilter = tableName === "__all__" ? {} : permissionExportFilter && Object.keys(permissionExportFilter).length > 0 ? permissionExportFilter : userFilter;
+  const filter = {};
   let allowedTableList = null;
   if (tableName === "__all__") {
     const names = [];
@@ -300,13 +275,13 @@ async function executeExport(ctx, next) {
       for (const t of allowedTableList) {
         try {
           const repo2 = ctx.db.getRepository(t);
-          if (repo2) estimatedTotal += await repo2.count({ filter: exportFilter || {} });
+          if (repo2) estimatedTotal += await repo2.count({ filter: {} });
         } catch {
         }
       }
     } else {
       const tRepo = ctx.db.getRepository(tableName);
-      if (tRepo) estimatedTotal = await tRepo.count({ filter: exportFilter || {} });
+      if (tRepo) estimatedTotal = await tRepo.count({ filter: {} });
     }
   } catch {
   }
@@ -317,7 +292,6 @@ async function executeExport(ctx, next) {
       tableName,
       status: "pending",
       selectedFields: selectedFields || [],
-      exportFilter: exportFilter || {},
       permSource: permSource || null,
       associationDisplayMode: associationDisplayMode || {},
       includeAssociationSheet: includeAssociationSheet || false,
@@ -341,7 +315,7 @@ async function executeExport(ctx, next) {
       associationDisplayMode,
       includeAssociationSheet,
       associationSheetTables,
-      exportFilter,
+      filter,
       fileNameTemplate,
       includeAttachments,
       headerStyle,
@@ -357,7 +331,7 @@ async function processExportAsync(db, taskId, params) {
     associationDisplayMode,
     includeAssociationSheet,
     associationSheetTables,
-    exportFilter,
+    filter,
     fileNameTemplate,
     includeAttachments,
     headerStyle,
@@ -440,11 +414,10 @@ async function processExportAsync(db, taskId, params) {
       } catch {
       }
       try {
-        const [, c] = await targetRepo.findAndCount({ filter: exportFilter || {}, limit: 1 });
+        const [, c] = await targetRepo.findAndCount({ filter: filter || {}, limit: 1 });
         collectionTotal = c;
       } catch {
       }
-      if (collectionTotal === 0) continue;
       const fieldNames = selectedFields && selectedFields.length > 0 ? selectedFields : getScalarFields(coll);
       if (!fieldNames || fieldNames.length === 0) continue;
       const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, "_");
@@ -472,18 +445,23 @@ async function processExportAsync(db, taskId, params) {
       const pkType = detectPkType(coll);
       if (pkType === "int_auto") {
         let lastId = 0;
-        while (true) {
+        let hasMore = true;
+        while (hasMore) {
           if (import_cancel_state.cancelFlags.has(taskId)) {
             cancelled = true;
-            break;
+            hasMore = false;
+            continue;
           }
           const pageRecords = await targetRepo.find({
-            filter: { ...exportFilter || {}, id: { $gt: lastId } },
+            filter: { ...filter || {}, id: { $gt: lastId } },
             sort: ["id"],
             limit: PAGE_SIZE,
             ...appendFields.length > 0 ? { appends: appendFields } : {}
           });
-          if (pageRecords.length === 0) break;
+          if (pageRecords.length === 0) {
+            hasMore = false;
+            continue;
+          }
           for (const record of pageRecords) {
             const row = {};
             for (const f of fieldNames) {
@@ -531,16 +509,20 @@ async function processExportAsync(db, taskId, params) {
         }
         const allIds = [];
         let uuidOffset = 0;
-        while (true) {
+        let uuidHasMore = true;
+        while (uuidHasMore) {
           const idPage = await targetRepo.find({
-            filter: exportFilter || {},
+            filter: filter || {},
             fields: ["id"],
             offset: uuidOffset,
             limit: PAGE_SIZE
           });
-          if (idPage.length === 0) break;
-          allIds.push(...idPage.map((r) => r.id));
-          uuidOffset += PAGE_SIZE;
+          if (idPage.length === 0) {
+            uuidHasMore = false;
+          } else {
+            allIds.push(...idPage.map((r) => r.id));
+            uuidOffset += PAGE_SIZE;
+          }
         }
         for (let bi = 0; bi < allIds.length; bi += PAGE_SIZE) {
           if (import_cancel_state.cancelFlags.has(taskId)) {
@@ -549,7 +531,7 @@ async function processExportAsync(db, taskId, params) {
           }
           const batch = allIds.slice(bi, bi + PAGE_SIZE);
           const pageRecords = await targetRepo.find({
-            filter: { ...exportFilter || {}, id: { $in: batch } },
+            filter: { ...filter || {}, id: { $in: batch } },
             limit: PAGE_SIZE,
             ...appendFields.length > 0 ? { appends: appendFields } : {}
           });
@@ -600,7 +582,7 @@ async function processExportAsync(db, taskId, params) {
             break;
           }
           const pageRecords = await targetRepo.find({
-            filter: exportFilter || {},
+            filter: filter || {},
             offset,
             limit: PAGE_SIZE,
             ...appendFields.length > 0 ? { appends: appendFields } : {}

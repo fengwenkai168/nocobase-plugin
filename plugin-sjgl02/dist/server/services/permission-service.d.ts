@@ -5,7 +5,6 @@ export interface TablePermission {
     importMode: string[];
     importFields: string[];
     exportFields: string[];
-    exportFilter: Record<string, unknown> | null;
     uniqueFields: string[];
     requiredFields: string[];
 }
@@ -33,12 +32,5 @@ export declare class PermissionService {
         custom: any[];
         inherited: any[];
     }>;
-    getExportScopes(currentUserId: number, tableName: string, permSource?: PermSource | null): Promise<{
-        type: string;
-        id: string;
-        label: string;
-        canExport: boolean;
-        exportFilter: Record<string, unknown> | null;
-    }[]>;
     private getAllTableNames;
 }

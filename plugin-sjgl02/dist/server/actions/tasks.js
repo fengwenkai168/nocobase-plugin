@@ -58,10 +58,9 @@ async function listTasks(ctx, next) {
   if (search && String(search).trim()) {
     const kw = String(search).trim();
     const isNum = /^\d+$/.test(kw);
-    const orConditions = [
-      isNum ? { id: parseInt(kw, 10) } : null,
-      { tableName: { $iLike: `%${kw}%` } }
-    ].filter(Boolean);
+    const orConditions = [isNum ? { id: parseInt(kw, 10) } : null, { tableName: { $iLike: `%${kw}%` } }].filter(
+      Boolean
+    );
     try {
       const userRepo = ctx.db.getRepository("users");
       const matchedUsers = await userRepo.find({

@@ -47,28 +47,51 @@ var import_export = require("./actions/export");
 var import_tasks = require("./actions/tasks");
 var import_permissions = require("./actions/permissions");
 var import_taskLogs = require("./actions/taskLogs");
+var import_permission_service = require("./services/permission-service");
 class PluginSjgl02Server extends import_server.Plugin {
+  permissionService;
   async load() {
+    this.permissionService = new import_permission_service.PermissionService(this.db);
     this.defineCustomResources();
     this.setupACL();
-    setImmediate(() => this.startupCleanup());
+    setImmediate(() => {
+      this.startupCleanup().catch(() => {
+      });
+    });
   }
   /** 启动清理：残留任务、影子表、导出文件 */
   async startupCleanup() {
     try {
       const sequelize = this.db.sequelize;
-      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1e3);
-      await this.db.getRepository("sjgl02_tasks").update({
-        filter: {
-          status: { $in: ["processing", "pending"] },
-          createdAt: { $lt: fiveMinAgo }
-        },
-        values: {
-          status: "failed",
-          errorMessage: "\u670D\u52A1\u5668\u91CD\u542F\uFF0C\u4EFB\u52A1\u4E2D\u65AD",
-          completedAt: /* @__PURE__ */ new Date()
+      const tableExists = await (async () => {
+        try {
+          const [rows] = await sequelize.query(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = 'sjgl02_tasks' AND table_schema = current_schema()",
+            { raw: true }
+          );
+          return rows.length > 0;
+        } catch {
+          return false;
         }
-      });
+      })();
+      if (tableExists) {
+        const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1e3);
+        try {
+          await this.db.getRepository("sjgl02_tasks").update({
+            filter: {
+              status: { $in: ["processing", "pending"] },
+              createdAt: { $lt: fiveMinAgo }
+            },
+            values: {
+              status: "failed",
+              errorMessage: "\u670D\u52A1\u5668\u91CD\u542F\uFF0C\u4EFB\u52A1\u4E2D\u65AD",
+              completedAt: /* @__PURE__ */ new Date()
+            }
+          });
+        } catch (err) {
+          console.warn("startupCleanup sjgl02_tasks update failed:", err.message);
+        }
+      }
       const [shadowTables] = await sequelize.query(
         "SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02\\_import\\_%' ESCAPE '\\' AND schemaname = current_schema()",
         { raw: true }
@@ -133,8 +156,7 @@ class PluginSjgl02Server extends import_server.Plugin {
         get: import_permissions.getPermissions,
         save: import_permissions.savePermissions,
         settings: import_permissions.getSettings,
-        saveSettings: import_permissions.saveSettings,
-        scopes: import_permissions.getExportScopes
+        saveSettings: import_permissions.saveSettings
       }
     });
     this.app.resourceManager.define({
@@ -149,7 +171,9 @@ class PluginSjgl02Server extends import_server.Plugin {
     acl.allow("sjgl02Import", "*", "loggedIn");
     acl.allow("sjgl02Export", "*", "loggedIn");
     acl.allow("sjgl02Tasks", "*", "loggedIn");
-    acl.allow("sjgl02Permissions", "*", "loggedIn");
+    acl.allow("sjgl02Permissions", "tables", "loggedIn");
+    acl.allow("sjgl02Permissions", "get", "loggedIn");
+    acl.allow("sjgl02Permissions", ["save", "saveSettings", "settings", "userRoleList"], "admin");
     acl.allow("sjgl02TaskLogs", "*", "loggedIn");
     acl.allow("sjgl02_tasks", "*", "admin");
     acl.allow("sjgl02_table_permissions", "*", "admin");
@@ -171,7 +195,7 @@ class PluginSjgl02Server extends import_server.Plugin {
     }
     const permRepo = this.db.getRepository("sjgl02_table_permissions");
     const permCount = await permRepo.count();
-    if (permCount === 0) {
+    if (permCount === 0 && this.db.hasCollection("roles")) {
       const roleRepo = this.db.getRepository("roles");
       const adminRole = await roleRepo.findOne({ filter: { name: "admin" } });
       const rootRole = await roleRepo.findOne({ filter: { name: "root" } });

@@ -11,14 +11,19 @@ export default function TaskPanel() {
   const [tableTitles, setTableTitles] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    api.request({ url: 'sjgl02Permissions:tables', method: 'get' }).then((res: any) => {
-      const data = res?.data?.data || [];
-      if (Array.isArray(data)) {
-        const map: Record<string, string> = {};
-        data.forEach((t: any) => { map[t.name] = t.title || t.name; });
-        setTableTitles(map);
-      }
-    }).catch(() => {});
+    api
+      .request({ url: 'sjgl02Permissions:tables', method: 'get' })
+      .then((res: any) => {
+        const data = res?.data?.data || [];
+        if (Array.isArray(data)) {
+          const map: Record<string, string> = {};
+          data.forEach((t: any) => {
+            map[t.name] = t.title || t.name;
+          });
+          setTableTitles(map);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleView = (task: any) => {

@@ -1,5 +1,7 @@
 import { Plugin } from '@nocobase/server';
+import { PermissionService } from './services/permission-service';
 export declare class PluginSjgl02Server extends Plugin {
+    permissionService: PermissionService;
     load(): Promise<void>;
     /** 启动清理：残留任务、影子表、导出文件 */
     private startupCleanup;

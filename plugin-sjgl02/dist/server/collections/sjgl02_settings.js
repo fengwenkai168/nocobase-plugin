@@ -55,7 +55,5 @@ var sjgl02_settings_default = (0, import_database.defineCollection)({
       description: "\u7528\u6237ID\uFF08null=\u5168\u5C40\u9ED8\u8BA4\uFF09"
     }
   ],
-  indexes: [
-    { fields: ["userId"] }
-  ]
+  indexes: [{ fields: ["userId"] }]
 });

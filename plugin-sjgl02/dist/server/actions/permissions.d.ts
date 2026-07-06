@@ -1,5 +1,4 @@
 import { Context, Next } from '@nocobase/actions';
-export declare function getExportScopes(ctx: Context, next: Next): Promise<void>;
 export declare function getUserRoleList(ctx: Context, next: Next): Promise<void>;
 export declare function getTables(ctx: Context, next: Next): Promise<void>;
 export declare function getPermissions(ctx: Context, next: Next): Promise<void>;

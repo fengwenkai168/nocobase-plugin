@@ -11,7 +11,6 @@ export interface Permission {
     requiredFields: string[];
     importFields: string[];
     exportFields: string[];
-    exportFilter: Record<string, unknown> | null;
     _inherited?: boolean;
     _systemManaged?: boolean;
 }
@@ -33,6 +32,13 @@ export interface TableInfo {
 export interface FieldInfo {
     name: string;
     label: string;
+    type?: string;
+    interface?: string;
+    uiSchema?: {
+        title?: string;
+        enum?: any[];
+    };
+    isAssociation?: boolean;
 }
 export interface PermissionFormValues {
     tableName: string;
@@ -43,5 +49,4 @@ export interface PermissionFormValues {
     requiredFields: string[];
     importFields: string[];
     exportFields: string[];
-    exportFilter: Record<string, unknown> | null;
 }

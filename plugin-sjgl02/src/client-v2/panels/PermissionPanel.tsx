@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   Row,
@@ -34,13 +34,8 @@ import {
   usePermissionFilter,
   useTableFields,
 } from '../hooks';
-import { useApp, CollectionFilterPanel } from '@nocobase/client-v2';
+import { useApp } from '@nocobase/client-v2';
 import { observer } from '@nocobase/flow-engine';
-
-function useCollectionForTable(tableName: string) {
-  const app = useApp<any>();
-  return tableName ? app?.dataSourceManager?.getCollection?.('main', tableName) : undefined;
-}
 
 export default observer(function PermissionTab() {
   const api = useAPI();
@@ -52,10 +47,9 @@ export default observer(function PermissionTab() {
   const [editModal, setEditModal] = useState<{ open: boolean; perm?: any }>({ open: false });
   const [detailModal, setDetailModal] = useState<{ open: boolean; perm?: any }>({ open: false });
   const [form] = Form.useForm();
-  const [formCanImport, setFormCanImport] = useState(true);
-  const [formCanExport, setFormCanExport] = useState(true);
-  const [formMode, setFormMode] = useState<string[]>(['insert']);
-  const [exportFilterTable, setExportFilterTable] = useState<string>('');
+  const formCanImport = Form.useWatch('canImport', form) ?? false;
+  const formCanExport = Form.useWatch('canExport', form) ?? false;
+  const formMode = Form.useWatch('importMode', form) || [];
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [subTab, setSubTab] = useState('perm');
   const [inheritedOpen, setInheritedOpen] = useState(true);
@@ -79,15 +73,6 @@ export default observer(function PermissionTab() {
     save,
   } = usePermissions(api, selectedTarget);
   const filter = usePermissionFilter(perms, tables, permSearch, 10);
-
-  const editCollection = useCollectionForTable(
-    exportFilterTable || editModal.perm?.tableName || form.getFieldValue('tableName'),
-  );
-
-  useEffect(() => {
-    const tableName = editModal.perm?.tableName || form.getFieldValue('tableName');
-    setExportFilterTable(tableName || '');
-  }, [editModal.open, editModal.perm?.tableName]);
 
   const loadAuditLogs = async () => {
     setLogLoading(true);
@@ -213,12 +198,13 @@ export default observer(function PermissionTab() {
                 size="small"
                 type="link"
                 onClick={() => {
-                  form.setFieldsValue(perm);
+                  form.setFieldsValue({
+                    ...perm,
+                    canImport: perm.canImport !== false,
+                    canExport: perm.canExport !== false,
+                    importMode: Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode || 'insert'],
+                  });
                   loadFields(perm.tableName);
-                  setFormCanImport(perm.canImport !== false);
-                  setFormCanExport(perm.canExport !== false);
-                  setFormMode(Array.isArray(perm.importMode) ? perm.importMode : [perm.importMode || 'insert']);
-                  setExportFilterTable(perm.tableName);
                   setEditModal({ open: true, perm });
                 }}
               >
@@ -257,9 +243,6 @@ export default observer(function PermissionTab() {
           <Tag color="purple">
             可导出: {perm.exportFields?.length > 0 ? perm.exportFields.length + '个字段' : '全部'}
           </Tag>
-        )}
-        {perm.canExport && perm.exportFilter && Object.keys(perm.exportFilter).length > 0 && (
-          <Tag color="geekblue">数据范围: 已配置</Tag>
         )}
       </Space>
     </Card>
@@ -407,21 +390,21 @@ export default observer(function PermissionTab() {
                         </Radio.Group>
                       </>
                     )}
-                    {!isSystemManaged && (
-                      <Button
-                        type="primary"
-                        size="small"
-                        onClick={() => {
-                          form.resetFields();
-                          setEditModal({ open: true });
-                          setFormCanImport(false);
-                          setFormCanExport(false);
-                          setFormMode(['insert']);
-                        }}
-                      >
-                        + {t('Add permission')}
-                      </Button>
-                    )}
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={() => {
+                        form.resetFields();
+                        form.setFieldsValue({
+                          canImport: false,
+                          canExport: false,
+                          importMode: ['insert'],
+                        });
+                        setEditModal({ open: true });
+                      }}
+                    >
+                      + {t('Add permission')}
+                    </Button>
                   </Space>
                 </Space>
               </Card>
@@ -662,17 +645,23 @@ export default observer(function PermissionTab() {
           <Form.Item label="权限开关" style={{ marginBottom: 12 }}>
             <Space size="large" align="center">
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <Switch
-                  checked={formCanImport}
-                  onChange={(v) => {
-                    setFormCanImport(v);
-                    if (!v) setFormMode([]);
-                  }}
-                />
+                <Form.Item name="canImport" valuePropName="checked" noStyle>
+                  <Switch
+                    onChange={(v) => {
+                      if (!v) {
+                        form.setFieldsValue({ importMode: [] });
+                      } else if (!form.getFieldValue('importMode')?.length) {
+                        form.setFieldsValue({ importMode: ['insert'] });
+                      }
+                    }}
+                  />
+                </Form.Item>
                 <span style={{ color: '#333' }}>{t('Allow import')}</span>
               </span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <Switch checked={formCanExport} onChange={(v) => setFormCanExport(v)} />
+                <Form.Item name="canExport" valuePropName="checked" noStyle>
+                  <Switch />
+                </Form.Item>
                 <span style={{ color: '#333' }}>{t('Allow export')}</span>
               </span>
             </Space>
@@ -689,7 +678,6 @@ export default observer(function PermissionTab() {
               >
                 <Select
                   mode="multiple"
-                  onChange={(v) => setFormMode(v || [])}
                   options={[
                     { value: 'insert', label: '新增(insert)' },
                     { value: 'update', label: '更新(update)' },
@@ -758,21 +746,6 @@ export default observer(function PermissionTab() {
                   options={fields.map((v) => ({ value: v.name, label: v.label }))}
                 />
               </Form.Item>
-              <Form.Item label="数据范围" name="exportFilter">
-                {!editCollection ? (
-                  <div style={{ textAlign: 'center', padding: 24, background: '#fafafa', borderRadius: 4 }}>
-                    <Spin size="small" />
-                    <div style={{ marginTop: 8, color: '#999', fontSize: 12 }}>正在加载数据表集合...</div>
-                  </div>
-                ) : (
-                  <CollectionFilterPanel
-                    collection={editCollection}
-                    initialValue={form.getFieldValue('exportFilter') || null}
-                    onChange={(filter) => form.setFieldValue('exportFilter', filter)}
-                    t={t as any}
-                  />
-                )}
-              </Form.Item>
             </>
           )}
         </Form>
@@ -817,15 +790,6 @@ export default observer(function PermissionTab() {
               </Descriptions.Item>
               <Descriptions.Item label="可导入字段">
                 {detailModal.perm.importFields?.length > 0 ? detailModal.perm.importFields.join(', ') : '全部字段允许'}
-              </Descriptions.Item>
-              <Descriptions.Item label="数据范围">
-                {detailModal.perm.exportFilter && Object.keys(detailModal.perm.exportFilter).length > 0 ? (
-                  <pre style={{ background: '#f5f5f5', padding: 8, borderRadius: 4, margin: 0 }}>
-                    {JSON.stringify(detailModal.perm.exportFilter, null, 2)}
-                  </pre>
-                ) : (
-                  '—'
-                )}
               </Descriptions.Item>
             </Descriptions>
           </div>

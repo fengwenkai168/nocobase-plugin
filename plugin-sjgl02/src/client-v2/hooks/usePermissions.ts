@@ -126,7 +126,6 @@ export function usePermissions(api: any, target: Target | null) {
             requiredFields: values.requiredFields || [],
             importFields: values.importFields || [],
             exportFields: values.exportFields || [],
-            exportFilter: values.exportFilter || null,
           },
         ];
       }

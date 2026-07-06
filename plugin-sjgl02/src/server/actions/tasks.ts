@@ -27,10 +27,9 @@ export async function listTasks(ctx: Context, next: Next) {
   if (search && String(search).trim()) {
     const kw = String(search).trim();
     const isNum = /^\d+$/.test(kw);
-    const orConditions: any[] = [
-      isNum ? { id: parseInt(kw, 10) } : null,
-      { tableName: { $iLike: `%${kw}%` } },
-    ].filter(Boolean);
+    const orConditions: any[] = [isNum ? { id: parseInt(kw, 10) } : null, { tableName: { $iLike: `%${kw}%` } }].filter(
+      Boolean,
+    );
 
     try {
       const userRepo = ctx.db.getRepository('users');
@@ -42,7 +41,9 @@ export async function listTasks(ctx: Context, next: Next) {
           createdById: { $in: matchedUsers.map((u: any) => u.id) },
         });
       }
-    } catch {}
+    } catch {
+      /* 忽略 */
+    }
 
     filter.$or = orConditions;
   }
@@ -108,7 +109,9 @@ export async function cancelTask(ctx: Context, next: Next) {
   try {
     const quotedShadow = quoteIdentifier('_sjgl02_import_' + taskId);
     await ctx.db.sequelize.query('DROP TABLE IF EXISTS ' + quotedShadow);
-  } catch {}
+  } catch {
+    /* 忽略 */
+  }
   await repo.update({
     filterByTk: task.id,
     values: { status: 'cancelled', progress: task.progress },

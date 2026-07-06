@@ -34,12 +34,19 @@ var sjgl02_permission_logs_default = (0, import_database.defineCollection)({
   name: "sjgl02_permission_logs",
   title: "\u6743\u9650\u64CD\u4F5C\u65E5\u5FD7",
   fields: [
-    { type: "string", name: "action", interface: "select", uiSchema: { enum: [
-      { value: "create", label: "\u521B\u5EFA" },
-      { value: "update", label: "\u4FEE\u6539" },
-      { value: "delete", label: "\u5220\u9664" },
-      { value: "toggle", label: "\u5207\u6362" }
-    ] } },
+    {
+      type: "string",
+      name: "action",
+      interface: "select",
+      uiSchema: {
+        enum: [
+          { value: "create", label: "\u521B\u5EFA" },
+          { value: "update", label: "\u4FEE\u6539" },
+          { value: "delete", label: "\u5220\u9664" },
+          { value: "toggle", label: "\u5207\u6362" }
+        ]
+      }
+    },
     { type: "string", name: "targetType" },
     { type: "string", name: "targetId" },
     { type: "string", name: "targetName" },
@@ -55,8 +62,5 @@ var sjgl02_permission_logs_default = (0, import_database.defineCollection)({
   ],
   timestamps: false,
   autoGenId: true,
-  indexes: [
-    { fields: ["targetType", "targetId"] },
-    { fields: ["createdAt"] }
-  ]
+  indexes: [{ fields: ["targetType", "targetId"] }, { fields: ["createdAt"] }]
 });

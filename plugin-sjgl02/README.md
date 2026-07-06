@@ -4,7 +4,7 @@ NocoBase 全栈插件，提供 **Excel 导入、导出、任务管理、表级�
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | 1.0.130 |
+| 版本 | 1.0.139 |
 | 兼容 | NocoBase 2.x |
 | 核心入口 | 设置 → 数据管理（v1: `/admin/settings/sjgl02` / v2: `/v2/admin/settings/sjgl02`） |
 | 区块入口 | v2 页面 → 添加区块 → 其他 → 数据管理 |
@@ -185,7 +185,6 @@ plugin-sjgl02/
 | 字段选择 | 复选框分组：常规 / 关联（紫色） / 附件（青色），全选 + 已选计数 |
 | 关联字段显示 | 每个关联字段可选「显示值(Display)」/「仅ID(ID only)」 |
 | 关联数据 Sheet | Switch 开关，开启后关联表数据单独建 Sheet |
-| 数据范围 | 「全部数据」/「自定义条件筛选」 |
 | 高级选项 | 文件名模板（`{表名}_{日期}.xlsx`，支持 `{表名}` `{日期}` 占位符）、包含附件文件、表头格式（字段名(字段标识) / 字段名 / 字段标识） |
 
 全表模式：
@@ -312,7 +311,6 @@ plugin-sjgl02/
 | `importMode` | json(数组) | 允许的导入模式（insert/update/upsert 自由组合） |
 | `importFields` | json(数组) | 可导入字段白名单（空=全部） |
 | `exportFields` | json(数组) | 可导出字段白名单（空=全部） |
-| `exportFilter` | json | 导出条件筛选 |
 | `uniqueFields` | json(数组) | 唯一值字段列表 |
 | `requiredFields` | json(数组) | 必填字段列表 |
 
@@ -341,7 +339,6 @@ plugin-sjgl02/
 | 必填字段 | 多选 | — |
 | 可导入字段 | 多选 | 空=全部允许 |
 | 可导出字段 | 多选 | 空=全部允许 |
-| 导出筛选 | 条件构建器 | — |
 
 ### 6.5 审计日志
 
@@ -356,7 +353,7 @@ plugin-sjgl02/
 | `operatorId` | 操作人 |
 | `createdAt` | 操作时间 |
 
-### 6.6 权限管理端点（6 个）
+### 6.6 权限管理端点（5 个）
 
 | 端点 | 方法 | 参数 | 返回 | 说明 |
 |------|------|------|------|------|
@@ -383,7 +380,6 @@ plugin-sjgl02/
 | fieldMapping | json | — | — | 导入字段映射配置 |
 | customValues | json | — | — | 导入固定值配置 |
 | selectedFields | json | — | — | 导出选中字段列表 |
-| exportFilter | json | — | — | 导出筛选条件 |
 | errorLogs | json | — | — | 失败行错误日志数组 |
 | progress | integer | 0 | — | 进度百分比（0-100） |
 | totalRows | integer | 0 | — | 总行数 |
@@ -420,7 +416,6 @@ plugin-sjgl02/
 | requiredFields | json | — | — | 必填字段列表 |
 | importFields | json | — | — | 可导入字段白名单（空=全部） |
 | exportFields | json | — | — | 可导出字段白名单（空=全部） |
-| exportFilter | json | — | — | 导出筛选条件 |
 | permissions | json | — | — | 扩展权限 JSON |
 | priority | integer | 0 | — | 优先级 |
 | createdById | integer | — | FK→users | 创建人 |
@@ -496,7 +491,6 @@ checkTablePermission(tableName, actionType, permSource?)
   importMode: string[];        // 允许的导入模式
   importFields: string[];      // 可导入字段白名单（空=全部）
   exportFields: string[];      // 可导出字段白名单（空=全部）
-  exportFilter: object | null; // 导出筛选条件
   uniqueFields: string[];      // 唯一值字段
   requiredFields: string[];    // 必填字段
 }
@@ -581,7 +575,11 @@ http://localhost:13000 → 登录（nocobase / admin123）→ 设置 → 数据�
 
 | 版本 | 日期 | 主要变更 |
 |------|------|----------|
-| 1.0.130 | 2026-07-04 | 导出数据范围（exportFilter）：权限管理配置数据范围、导出面板按方案只读/自定义筛选、任务详情展示权限方案与范围 |
+| 1.0.138 | 2026-07-06 | 修复重构后 v1 区块与 v2 面板的模块引用路径；服务端导出支持空表生成仅含表头的文件；E2E 全部 21 条用例通过 |
+| 1.0.136 | 2026-07-06 | E2E member 测试改为 UI 驱动；修复 Page schema 与 ACL，普通用户页面正常渲染；为面板增加 data-testid；新增空表导出边界测试 |
+| 1.0.135 | 2026-07-05 | E2E 测试体系改用 API 驱动：管理员导入/导出/任务/权限/审计日志、普通用户权限隔离全部通过 |
+| 1.0.133 | 2026-07-05 | 建立完整测试体系：服务端 27 个用例、客户端 30 个用例、E2E 冒烟测试；修复导入流式解析偶发 `.sheets` 错误；修复权限保存 targetType/targetId 读取与空权限合并逻辑 |
+| 1.0.131 | 2026-07-04 | 导出数据范围（exportFilter）：权限管理配置数据范围、导出面板按方案只读/自定义筛选、任务详情展示权限方案与范围 |
 | 1.0.128 | 2026-07-04 | 修复 insert/upsert-insert 创建人/更新人被 NocoBase context 钩子覆盖的问题；修复 v1 页面「添加区块 → 其他」中「数据管理」入口消失的问题 |
 | 1.0.127 | 2026-07-04 | 导入自动填充创建人/更新人/创建时间/更新时间 |
 | 1.0.126 | 2026-07-04 | 导入主键全面适配 Snowflake/UUID/Nano ID，阶段三改为 5000 行/批 ORM 创建 |

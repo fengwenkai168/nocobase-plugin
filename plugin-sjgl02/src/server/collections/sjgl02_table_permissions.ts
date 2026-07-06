@@ -8,7 +8,12 @@ export default defineCollection({
       interface: 'select',
       type: 'string',
       name: 'targetType',
-      uiSchema: { enum: [{ value: 'user', label: '用户' }, { value: 'role', label: '角色' }] },
+      uiSchema: {
+        enum: [
+          { value: 'user', label: '用户' },
+          { value: 'role', label: '角色' },
+        ],
+      },
     },
     { type: 'string', name: 'targetId' },
     { type: 'string', name: 'targetName' },
@@ -20,7 +25,6 @@ export default defineCollection({
     { type: 'json', name: 'requiredFields' },
     { type: 'json', name: 'importFields' },
     { type: 'json', name: 'exportFields' },
-    { type: 'json', name: 'exportFilter' },
     {
       type: 'json',
       name: 'permissions',

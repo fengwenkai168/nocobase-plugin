@@ -5,7 +5,7 @@ export function usePermissionFilter(
   perms: Permission[],
   tables: Array<{ name: string; title: string }>,
   searchText: string,
-  pageSize: number = 10,
+  pageSize = 10,
 ) {
   const [page, setPage] = useState(1);
 
@@ -16,8 +16,10 @@ export function usePermissionFilter(
   const filterFn = (p: Permission) => {
     if (!searchText) return true;
     const t = tables.find((x) => x.name === p.tableName);
-    return p.tableName.toLowerCase().includes(searchText.toLowerCase()) ||
-      (t?.title || '').toLowerCase().includes(searchText.toLowerCase());
+    return (
+      p.tableName.toLowerCase().includes(searchText.toLowerCase()) ||
+      (t?.title || '').toLowerCase().includes(searchText.toLowerCase())
+    );
   };
 
   const inheritedPerms = perms.filter((p) => p._inherited && filterFn(p));

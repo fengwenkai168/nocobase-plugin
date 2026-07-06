@@ -3,7 +3,11 @@ import { PermissionService, type TablePermission, type PermSource } from '../ser
 
 export type { TablePermission, PermSource };
 
-export async function checkImportPermission(ctx: Context, tableName: string, permSource?: PermSource | null): Promise<TablePermission> {
+export async function checkImportPermission(
+  ctx: Context,
+  tableName: string,
+  permSource?: PermSource | null,
+): Promise<TablePermission> {
   const currentUser = ctx.state.currentUser;
   if (!currentUser) {
     ctx.throw(401, '请先登录');
@@ -16,7 +20,11 @@ export async function checkImportPermission(ctx: Context, tableName: string, per
   }
 }
 
-export async function checkExportPermission(ctx: Context, tableName: string, permSource?: PermSource | null): Promise<TablePermission> {
+export async function checkExportPermission(
+  ctx: Context,
+  tableName: string,
+  permSource?: PermSource | null,
+): Promise<TablePermission> {
   const currentUser = ctx.state.currentUser;
   if (!currentUser) {
     ctx.throw(401, '请先登录');

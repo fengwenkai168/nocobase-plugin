@@ -18,7 +18,9 @@ export default class extends Migration {
         )
         WHERE file_name IS NULL AND "importFileId" IS NOT NULL
       `);
-    } catch {}
+    } catch {
+      /* 忽略 */
+    }
 
     try {
       await qi.sequelize.query(`
@@ -32,6 +34,8 @@ export default class extends Migration {
         WHERE (file_name IS NULL OR file_name = '')
         AND "exportFileId" IS NOT NULL
       `);
-    } catch {}
+    } catch {
+      /* 忽略 */
+    }
   }
 }

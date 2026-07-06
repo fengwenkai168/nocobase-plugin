@@ -1,8 +1,8 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Card, Descriptions, Tag, Table, Button, Space, Tabs, Modal, Spin, App, Alert } from 'antd';
+import { Card, Descriptions, Tag, Table, Button, Space, Tabs, Modal, Spin, App } from 'antd';
 import { CaretRightOutlined, CaretDownOutlined } from '@ant-design/icons';
-import { useApp, CollectionFilterPanel } from '@nocobase/client-v2';
+import { useApp } from '@nocobase/client-v2';
 import { observer } from '@nocobase/flow-engine';
 import { StatusBadge, TableTag, FieldTag, DataDot, formatTime, formatFileSize, formatDuration } from './shared';
 import { ExecutionLogViewer } from './ExecutionLogViewer';
@@ -812,67 +812,6 @@ function ExportPreviewCard({ task, api, fieldTitles }: any) {
     </CollapseCard>
   );
 }
-
-export const ExportFilterCard = observer(function ExportFilterCard({ task, fieldTitles }: any) {
-  const app = useApp<any>();
-  const { t } = App.useApp();
-  if (!task || task.taskType !== 'export' || task.tableName === '__all__') return null;
-  const collection = app?.dataSourceManager?.getCollection?.('main', task.tableName);
-  const permSource = task.permSource || {};
-  const sourceLabel =
-    permSource.label ||
-    (permSource.type === 'admin'
-      ? '管理员完整权限'
-      : permSource.type === 'user'
-        ? '当前用户'
-        : permSource.id || '默认');
-  const exportFilter = task.exportFilter || {};
-  const hasFilter = exportFilter && Object.keys(exportFilter).length > 0;
-  const isCustom = permSource.type !== 'admin' && !task._fixedScope;
-
-  return (
-    <CardWrap title="📊 数据范围">
-      <Descriptions column={1} size="small" bordered>
-        <Descriptions.Item label="权限方案">{sourceLabel}</Descriptions.Item>
-      </Descriptions>
-      {hasFilter ? (
-        <>
-          <Alert
-            type="info"
-            showIcon
-            message={isCustom ? '用户自定义筛选条件' : '管理员配置的固定范围'}
-            style={{ margin: '10px 0' }}
-          />
-          {collection ? (
-            <div
-              style={{
-                pointerEvents: 'none',
-                opacity: 0.85,
-                background: '#f8fafc',
-                padding: 8,
-                borderRadius: 4,
-              }}
-            >
-              <CollectionFilterPanel
-                collection={collection}
-                initialValue={exportFilter}
-                onChange={() => {}}
-                t={t as any}
-              />
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: 20 }}>
-              <Spin size="small" />
-              <span style={{ marginLeft: 8, color: '#999' }}>加载数据表集合...</span>
-            </div>
-          )}
-        </>
-      ) : (
-        <Alert type="info" showIcon message="未设置数据范围，导出全部数据" style={{ marginTop: 10 }} />
-      )}
-    </CardWrap>
-  );
-});
 
 export function ExecutionLogCard({ task, api }: any) {
   if (!task || !task.id) return null;

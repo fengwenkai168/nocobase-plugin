@@ -14,6 +14,7 @@ module.exports = {
   "@nocobase/flow-engine": "2.1.9",
   "@nocobase/client-v2": "2.1.9",
   "@nocobase/server": "2.1.9",
+  "@nocobase/test": "2.1.9",
   "antd": "5.24.2",
   "@ant-design/icons": "5.6.1",
   "@nocobase/actions": "2.1.9",

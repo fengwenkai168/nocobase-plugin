@@ -17,13 +17,36 @@ interface ImportAsyncParams {
   importMode?: string;
   uniqueFields?: string[];
   blankCellMode?: string;
-  attachmentPath: string;
 }
 
 function quoteIdentifier(name: string): string {
   const DQ = String.fromCharCode(34);
   const DDQ = DQ + DQ;
   return DQ + name.replace(new RegExp(DQ, 'g'), DDQ) + DQ;
+}
+
+/**
+ * 解析附件在服务器本地文件系统中的真实路径。
+ * 优先使用环境变量 LOCAL_STORAGE_DEST，其次使用 storage 记录中配置的 documentRoot，最后使用默认路径。
+ */
+async function resolveAttachmentFilePath(db: Database, attachment: any): Promise<string> {
+  let documentRoot = process.env.LOCAL_STORAGE_DEST || '';
+  if (!documentRoot) {
+    try {
+      const storageRepo = db.getRepository('storages');
+      const storage = await storageRepo.findOne({ filter: { id: attachment.storageId } });
+      if (storage) {
+        const options = storage.get('options') || {};
+        documentRoot = options.documentRoot || '';
+      }
+    } catch {
+      // 忽略存储查询失败
+    }
+  }
+  if (!documentRoot) {
+    documentRoot = process.env.STORAGE_DIR || 'storage/uploads';
+  }
+  return path.join(documentRoot, attachment.path || attachment.filename);
 }
 
 async function getPrimaryKeyColumns(sequelize: any, tableName: string): Promise<string[]> {
@@ -60,12 +83,27 @@ async function prepareShadowPrimaryKey(
   }
 }
 
+async function dropShadowNotNull(
+  sequelize: any,
+  shadowTableName: string,
+  columns: string[],
+  transaction: any,
+): Promise<void> {
+  for (const col of columns) {
+    await sequelize.query(
+      'ALTER TABLE ' + quoteIdentifier(shadowTableName) + ' ALTER COLUMN ' + quoteIdentifier(col) + ' DROP NOT NULL',
+      { transaction },
+    );
+  }
+}
+
 function resolveMappedDataColumns(
   allColumns: string[],
   mapping: Record<string, string>,
   coll: any,
   pkColumns: string[],
 ): string[] {
+  const autoSystemFields = new Set(['createdAt', 'updatedAt', 'createdById', 'updatedById']);
   const mappedFieldSet = new Set<string>();
   for (const [fieldName, excelCol] of Object.entries(mapping)) {
     if (!excelCol || excelCol === '__ignore__') continue;
@@ -83,7 +121,13 @@ function resolveMappedDataColumns(
     mappedFieldSet.add(resolved);
   }
   const autoPkSet = new Set(pkColumns);
-  const result = allColumns.filter((c) => mappedFieldSet.has(c) || autoPkSet.has(c));
+  const result = allColumns.filter((c) => {
+    if (mappedFieldSet.has(c)) return true;
+    // 未映射的系统字段和主键字段不写入影子表，由数据库默认值或阶段三逻辑填充
+    if (autoSystemFields.has(c)) return false;
+    if (autoPkSet.has(c)) return false;
+    return false;
+  });
   return result;
 }
 
@@ -338,79 +382,47 @@ export async function getTableFields(ctx: Context, next: Next) {
   await next();
 }
 
-function streamProcessExcel(
+async function streamProcessExcel(
   filePath: string,
   targetSheet: string | undefined,
   headerRow: number,
   onRow: (excelRowNum: number, dataIndex: number, rowValues: any[]) => boolean | void | Promise<boolean | void>,
   onHeader?: (headers: string[]) => void,
 ): Promise<{ headers: string[]; totalRows: number }> {
-  return new Promise((resolve, reject) => {
-    const WorkbookReaderCtor = (ExcelJS.stream.xlsx as any).WorkbookReader;
-    const workbookReader: any = new WorkbookReaderCtor(filePath, {});
-    let sheetFound = false;
-    let ready = false;
-    let headers: string[] = [];
-    const hRowNum = headerRow || 1;
-    let dataIndex = 0;
-    let totalRows = 0;
-    let destroyed = false;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(filePath);
 
-    const destroy = () => {
-      if (destroyed) return;
-      destroyed = true;
-      try {
-        workbookReader.destroy();
-      } catch {
-        /* 忽略 */
-      }
-    };
+  const ws = targetSheet ? wb.getWorksheet(targetSheet) : wb.worksheets[0];
+  if (!ws) {
+    throw new Error('工作表未找到: ' + (targetSheet || '默认工作表'));
+  }
 
-    workbookReader.on('worksheet', (worksheet: any) => {
-      if (destroyed || sheetFound) return;
-      if (targetSheet && worksheet.name !== targetSheet) return;
-      sheetFound = true;
+  const hRowNum = headerRow || 1;
+  let headers: string[] = [];
+  let dataIndex = 0;
+  let totalRows = 0;
 
-      worksheet.on('row', async (row: any) => {
-        if (destroyed) return;
-        const rowNum = row.number;
-        if (rowNum < hRowNum) return;
-        if (rowNum === hRowNum) {
-          headers = (row.values || []).slice(1).map((h: any) => String(h ?? ''));
-          ready = true;
-          if (onHeader) onHeader(headers);
-          return;
-        }
-        if (!ready) return;
-        const vals = (row.values || []).slice(1);
-        const empty = !vals.some((v: any) => v !== undefined && v !== null && v !== '');
-        if (empty) {
-          dataIndex++;
-          return;
-        }
-        totalRows++;
-        try {
-          const shouldContinue = await onRow(rowNum, dataIndex, vals);
-          if (shouldContinue === false) destroy();
-        } catch (err) {
-          destroy();
-          reject(err);
-        }
-        dataIndex++;
-      });
-
-      worksheet.on('end', () => {
-        ready = true;
-      });
-    });
-
-    workbookReader.on('end', () => resolve({ headers, totalRows }));
-    workbookReader.on('error', (err: any) => {
-      if (destroyed) resolve({ headers, totalRows });
-      else reject(err);
-    });
-    workbookReader.read();
+  ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+    const rowValues = (row.values as any[]) || [];
+    if (rowNum < hRowNum) return;
+    if (rowNum === hRowNum) {
+      headers = rowValues.slice(1).map((h: any) => String(h ?? ''));
+      if (onHeader) onHeader(headers);
+      return;
+    }
+    const vals = rowValues.slice(1);
+    const empty = !vals.some((v: any) => v !== undefined && v !== null && v !== '');
+    if (empty) {
+      dataIndex++;
+      return;
+    }
+    totalRows++;
+    const shouldContinue = onRow(rowNum, dataIndex, vals);
+    if (shouldContinue === false) return false;
+    dataIndex++;
   });
+
+  return { headers, totalRows };
 }
 
 export async function uploadParse(ctx: Context, next: Next) {
@@ -429,8 +441,7 @@ export async function uploadParse(ctx: Context, next: Next) {
     if (!['xlsx', 'xls', 'csv'].includes(ext)) {
       ctx.throw(400, 'Unsupported format: ' + ext + '. Only .xlsx, .xls, .csv allowed');
     }
-    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
-    const filePath = path.join(storageDir, attachment.path || attachment.filename);
+    const filePath = await resolveAttachmentFilePath(ctx.db, attachment);
     if (!fs.existsSync(filePath)) {
       ctx.throw(404, 'File not found on disk');
     }
@@ -482,6 +493,7 @@ export async function uploadParse(ctx: Context, next: Next) {
       totalRows,
     };
   } catch (err: any) {
+    console.error('uploadParse 异常:', err.stack || err.message || String(err));
     if (err.status) throw err;
     ctx.throw(500, 'Failed to parse file: ' + err.message);
   }
@@ -503,8 +515,11 @@ export async function preview(ctx: Context, next: Next) {
     if (!attachment) {
       ctx.throw(404, 'Uploaded file not found in storage');
     }
-    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
-    const filePath = path.join(storageDir, attachment.path || attachment.filename);
+    const ext = (attachment.extname || '').toLowerCase().replace('.', '');
+    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+      ctx.throw(400, 'Unsupported format: ' + ext + '. Only .xlsx, .xls, .csv allowed');
+    }
+    const filePath = await resolveAttachmentFilePath(ctx.db, attachment);
     if (!fs.existsSync(filePath)) {
       ctx.throw(404, 'File not found on disk: ' + filePath);
     }
@@ -574,12 +589,13 @@ export async function executeImport(ctx: Context, next: Next) {
   }
 
   const perm = await checkImportPermission(ctx, tableName, permSource);
+  const effectiveImportMode = importMode || 'insert';
 
-  if (perm.importMode.length > 0 && !perm.importMode.includes(importMode)) {
+  if (perm.importMode.length > 0 && !perm.importMode.includes(effectiveImportMode)) {
     ctx.throw(
       403,
       '您的权限不允许使用「' +
-        importMode +
+        effectiveImportMode +
         '」模式导入数据表「' +
         tableName +
         '」，允许的模式：' +
@@ -624,7 +640,7 @@ export async function executeImport(ctx: Context, next: Next) {
       status: 'pending',
       fieldMapping: fieldMapping || {},
       customValues: customValues || {},
-      importMode: importMode || 'insert',
+      importMode: effectiveImportMode,
       sheetName: sheetName || 'Sheet1',
       headerRow: headerRow || 1,
       importFileId: fileId,
@@ -654,7 +670,6 @@ export async function executeImport(ctx: Context, next: Next) {
       importMode,
       uniqueFields,
       blankCellMode,
-      attachmentPath: attachment.path || attachment.filename,
     });
   });
 }
@@ -669,7 +684,7 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
     importMode,
     uniqueFields,
     blankCellMode,
-    attachmentPath,
+    fileId,
   } = params;
   const repo = db.getRepository('sjgl02_tasks');
   const sequelize = db.sequelize;
@@ -711,8 +726,19 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
     }
   }
 
-  const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
-  const filePath = path.join(storageDir, attachmentPath);
+  let filePath = '';
+  try {
+    const attachRepo = db.getRepository('attachments');
+    const attachment = await attachRepo.findOne({ filter: { id: fileId } });
+    if (!attachment) {
+      await fail(taskId, db, '附件记录未找到: ' + fileId);
+      return;
+    }
+    filePath = await resolveAttachmentFilePath(db, attachment);
+  } catch (err: any) {
+    await fail(taskId, db, '解析文件路径失败: ' + (err.message || String(err)));
+    return;
+  }
   if (!fs.existsSync(filePath)) {
     await fail(taskId, db, '文件未找到: ' + filePath);
     return;
@@ -874,10 +900,16 @@ async function processImportAsync(db: Database, taskId: number, params: ImportAs
         { replacements: { shadowTable: shadowTableName }, raw: true, transaction },
       );
       const allColumns = (colRows as any[]).map((r: any) => r.column_name);
-      await prepareShadowPrimaryKey(sequelize, shadowTableName, pkColumns, transaction);
       await sequelize.query('ALTER TABLE ' + quotedShadow + ' ADD COLUMN __import_row_id__ BIGSERIAL PRIMARY KEY', {
         transaction,
       });
+      // 影子表通过 CREATE TABLE ... LIKE 复制原表结构，但 createdAt/updatedAt 等字段在 NocoBase 中
+      // 通常由 Sequelize 钩子维护，没有数据库默认值。未映射的这些字段若仍保留 NOT NULL，
+      // 会导致 INSERT 时因显式 omitted 而报错，因此需要 DROP NOT NULL。
+      const autoSystemFields = allColumns.filter((c) =>
+        ['id', 'createdAt', 'updatedAt', 'createdById', 'updatedById'].includes(c),
+      );
+      await dropShadowNotNull(sequelize, shadowTableName, autoSystemFields, transaction);
       const dataColumns = resolveMappedDataColumns(allColumns, mapping, coll, pkColumns);
       if (dataColumns.length === 0) {
         throw new Error('没有可导入的字段');

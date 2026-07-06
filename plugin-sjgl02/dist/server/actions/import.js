@@ -53,6 +53,24 @@ function quoteIdentifier(name) {
   const DDQ = DQ + DQ;
   return DQ + name.replace(new RegExp(DQ, "g"), DDQ) + DQ;
 }
+async function resolveAttachmentFilePath(db, attachment) {
+  let documentRoot = process.env.LOCAL_STORAGE_DEST || "";
+  if (!documentRoot) {
+    try {
+      const storageRepo = db.getRepository("storages");
+      const storage = await storageRepo.findOne({ filter: { id: attachment.storageId } });
+      if (storage) {
+        const options = storage.get("options") || {};
+        documentRoot = options.documentRoot || "";
+      }
+    } catch {
+    }
+  }
+  if (!documentRoot) {
+    documentRoot = process.env.STORAGE_DIR || "storage/uploads";
+  }
+  return import_path.default.join(documentRoot, attachment.path || attachment.filename);
+}
 async function getPrimaryKeyColumns(sequelize, tableName) {
   try {
     const [rows] = await sequelize.query(
@@ -80,8 +98,17 @@ async function prepareShadowPrimaryKey(sequelize, shadowTableName, pkColumns, tr
     );
   }
 }
+async function dropShadowNotNull(sequelize, shadowTableName, columns, transaction) {
+  for (const col of columns) {
+    await sequelize.query(
+      "ALTER TABLE " + quoteIdentifier(shadowTableName) + " ALTER COLUMN " + quoteIdentifier(col) + " DROP NOT NULL",
+      { transaction }
+    );
+  }
+}
 function resolveMappedDataColumns(allColumns, mapping, coll, pkColumns) {
   var _a, _b;
+  const autoSystemFields = /* @__PURE__ */ new Set(["createdAt", "updatedAt", "createdById", "updatedById"]);
   const mappedFieldSet = /* @__PURE__ */ new Set();
   for (const [fieldName, excelCol] of Object.entries(mapping)) {
     if (!excelCol || excelCol === "__ignore__") continue;
@@ -98,7 +125,12 @@ function resolveMappedDataColumns(allColumns, mapping, coll, pkColumns) {
     mappedFieldSet.add(resolved);
   }
   const autoPkSet = new Set(pkColumns);
-  const result = allColumns.filter((c) => mappedFieldSet.has(c) || autoPkSet.has(c));
+  const result = allColumns.filter((c) => {
+    if (mappedFieldSet.has(c)) return true;
+    if (autoSystemFields.has(c)) return false;
+    if (autoPkSet.has(c)) return false;
+    return false;
+  });
   return result;
 }
 function validateCollectionName(db, name) {
@@ -305,67 +337,37 @@ async function getTableFields(ctx, next) {
   ctx.body = fields;
   await next();
 }
-function streamProcessExcel(filePath, targetSheet, headerRow, onRow, onHeader) {
-  return new Promise((resolve, reject) => {
-    const WorkbookReaderCtor = import_exceljs.default.stream.xlsx.WorkbookReader;
-    const workbookReader = new WorkbookReaderCtor(filePath, {});
-    let sheetFound = false;
-    let ready = false;
-    let headers = [];
-    const hRowNum = headerRow || 1;
-    let dataIndex = 0;
-    let totalRows = 0;
-    let destroyed = false;
-    const destroy = () => {
-      if (destroyed) return;
-      destroyed = true;
-      try {
-        workbookReader.destroy();
-      } catch {
-      }
-    };
-    workbookReader.on("worksheet", (worksheet) => {
-      if (destroyed || sheetFound) return;
-      if (targetSheet && worksheet.name !== targetSheet) return;
-      sheetFound = true;
-      worksheet.on("row", async (row) => {
-        if (destroyed) return;
-        const rowNum = row.number;
-        if (rowNum < hRowNum) return;
-        if (rowNum === hRowNum) {
-          headers = (row.values || []).slice(1).map((h) => String(h ?? ""));
-          ready = true;
-          if (onHeader) onHeader(headers);
-          return;
-        }
-        if (!ready) return;
-        const vals = (row.values || []).slice(1);
-        const empty = !vals.some((v) => v !== void 0 && v !== null && v !== "");
-        if (empty) {
-          dataIndex++;
-          return;
-        }
-        totalRows++;
-        try {
-          const shouldContinue = await onRow(rowNum, dataIndex, vals);
-          if (shouldContinue === false) destroy();
-        } catch (err) {
-          destroy();
-          reject(err);
-        }
-        dataIndex++;
-      });
-      worksheet.on("end", () => {
-        ready = true;
-      });
-    });
-    workbookReader.on("end", () => resolve({ headers, totalRows }));
-    workbookReader.on("error", (err) => {
-      if (destroyed) resolve({ headers, totalRows });
-      else reject(err);
-    });
-    workbookReader.read();
+async function streamProcessExcel(filePath, targetSheet, headerRow, onRow, onHeader) {
+  const wb = new import_exceljs.default.Workbook();
+  await wb.xlsx.readFile(filePath);
+  const ws = targetSheet ? wb.getWorksheet(targetSheet) : wb.worksheets[0];
+  if (!ws) {
+    throw new Error("\u5DE5\u4F5C\u8868\u672A\u627E\u5230: " + (targetSheet || "\u9ED8\u8BA4\u5DE5\u4F5C\u8868"));
+  }
+  const hRowNum = headerRow || 1;
+  let headers = [];
+  let dataIndex = 0;
+  let totalRows = 0;
+  ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+    const rowValues = row.values || [];
+    if (rowNum < hRowNum) return;
+    if (rowNum === hRowNum) {
+      headers = rowValues.slice(1).map((h) => String(h ?? ""));
+      if (onHeader) onHeader(headers);
+      return;
+    }
+    const vals = rowValues.slice(1);
+    const empty = !vals.some((v) => v !== void 0 && v !== null && v !== "");
+    if (empty) {
+      dataIndex++;
+      return;
+    }
+    totalRows++;
+    const shouldContinue = onRow(rowNum, dataIndex, vals);
+    if (shouldContinue === false) return false;
+    dataIndex++;
   });
+  return { headers, totalRows };
 }
 async function uploadParse(ctx, next) {
   const params = ctx.action.params.values || ctx.action.params;
@@ -383,8 +385,7 @@ async function uploadParse(ctx, next) {
     if (!["xlsx", "xls", "csv"].includes(ext)) {
       ctx.throw(400, "Unsupported format: " + ext + ". Only .xlsx, .xls, .csv allowed");
     }
-    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
-    const filePath = import_path.default.join(storageDir, attachment.path || attachment.filename);
+    const filePath = await resolveAttachmentFilePath(ctx.db, attachment);
     if (!import_fs.default.existsSync(filePath)) {
       ctx.throw(404, "File not found on disk");
     }
@@ -430,6 +431,7 @@ async function uploadParse(ctx, next) {
       totalRows
     };
   } catch (err) {
+    console.error("uploadParse \u5F02\u5E38:", err.stack || err.message || String(err));
     if (err.status) throw err;
     ctx.throw(500, "Failed to parse file: " + err.message);
   }
@@ -451,8 +453,11 @@ async function preview(ctx, next) {
     if (!attachment) {
       ctx.throw(404, "Uploaded file not found in storage");
     }
-    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
-    const filePath = import_path.default.join(storageDir, attachment.path || attachment.filename);
+    const ext = (attachment.extname || "").toLowerCase().replace(".", "");
+    if (!["xlsx", "xls", "csv"].includes(ext)) {
+      ctx.throw(400, "Unsupported format: " + ext + ". Only .xlsx, .xls, .csv allowed");
+    }
+    const filePath = await resolveAttachmentFilePath(ctx.db, attachment);
     if (!import_fs.default.existsSync(filePath)) {
       ctx.throw(404, "File not found on disk: " + filePath);
     }
@@ -517,10 +522,11 @@ async function executeImport(ctx, next) {
     ctx.throw(404, "Table " + tableName + " not found");
   }
   const perm = await (0, import_permission_check.checkImportPermission)(ctx, tableName, permSource);
-  if (perm.importMode.length > 0 && !perm.importMode.includes(importMode)) {
+  const effectiveImportMode = importMode || "insert";
+  if (perm.importMode.length > 0 && !perm.importMode.includes(effectiveImportMode)) {
     ctx.throw(
       403,
-      "\u60A8\u7684\u6743\u9650\u4E0D\u5141\u8BB8\u4F7F\u7528\u300C" + importMode + "\u300D\u6A21\u5F0F\u5BFC\u5165\u6570\u636E\u8868\u300C" + tableName + "\u300D\uFF0C\u5141\u8BB8\u7684\u6A21\u5F0F\uFF1A" + perm.importMode.join("\u3001")
+      "\u60A8\u7684\u6743\u9650\u4E0D\u5141\u8BB8\u4F7F\u7528\u300C" + effectiveImportMode + "\u300D\u6A21\u5F0F\u5BFC\u5165\u6570\u636E\u8868\u300C" + tableName + "\u300D\uFF0C\u5141\u8BB8\u7684\u6A21\u5F0F\uFF1A" + perm.importMode.join("\u3001")
     );
   }
   const allowedImportFields = perm.importFields || [];
@@ -557,7 +563,7 @@ async function executeImport(ctx, next) {
       status: "pending",
       fieldMapping: fieldMapping || {},
       customValues: customValues || {},
-      importMode: importMode || "insert",
+      importMode: effectiveImportMode,
       sheetName: sheetName || "Sheet1",
       headerRow: headerRow || 1,
       importFileId: fileId,
@@ -583,8 +589,7 @@ async function executeImport(ctx, next) {
       customValues,
       importMode,
       uniqueFields,
-      blankCellMode,
-      attachmentPath: attachment.path || attachment.filename
+      blankCellMode
     });
   });
 }
@@ -598,7 +603,7 @@ async function processImportAsync(db, taskId, params) {
     importMode,
     uniqueFields,
     blankCellMode,
-    attachmentPath
+    fileId
   } = params;
   const repo = db.getRepository("sjgl02_tasks");
   const sequelize = db.sequelize;
@@ -634,8 +639,19 @@ async function processImportAsync(db, taskId, params) {
       return;
     }
   }
-  const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
-  const filePath = import_path.default.join(storageDir, attachmentPath);
+  let filePath = "";
+  try {
+    const attachRepo = db.getRepository("attachments");
+    const attachment = await attachRepo.findOne({ filter: { id: fileId } });
+    if (!attachment) {
+      await fail(taskId, db, "\u9644\u4EF6\u8BB0\u5F55\u672A\u627E\u5230: " + fileId);
+      return;
+    }
+    filePath = await resolveAttachmentFilePath(db, attachment);
+  } catch (err) {
+    await fail(taskId, db, "\u89E3\u6790\u6587\u4EF6\u8DEF\u5F84\u5931\u8D25: " + (err.message || String(err)));
+    return;
+  }
   if (!import_fs.default.existsSync(filePath)) {
     await fail(taskId, db, "\u6587\u4EF6\u672A\u627E\u5230: " + filePath);
     return;
@@ -774,10 +790,13 @@ async function processImportAsync(db, taskId, params) {
         { replacements: { shadowTable: shadowTableName }, raw: true, transaction }
       );
       const allColumns = colRows.map((r) => r.column_name);
-      await prepareShadowPrimaryKey(sequelize, shadowTableName, pkColumns, transaction);
       await sequelize.query("ALTER TABLE " + quotedShadow + " ADD COLUMN __import_row_id__ BIGSERIAL PRIMARY KEY", {
         transaction
       });
+      const autoSystemFields = allColumns.filter(
+        (c) => ["id", "createdAt", "updatedAt", "createdById", "updatedById"].includes(c)
+      );
+      await dropShadowNotNull(sequelize, shadowTableName, autoSystemFields, transaction);
       const dataColumns = resolveMappedDataColumns(allColumns, mapping, coll, pkColumns);
       if (dataColumns.length === 0) {
         throw new Error("\u6CA1\u6709\u53EF\u5BFC\u5165\u7684\u5B57\u6BB5");

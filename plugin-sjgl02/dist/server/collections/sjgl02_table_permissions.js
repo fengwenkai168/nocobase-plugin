@@ -38,7 +38,12 @@ var sjgl02_table_permissions_default = (0, import_database.defineCollection)({
       interface: "select",
       type: "string",
       name: "targetType",
-      uiSchema: { enum: [{ value: "user", label: "\u7528\u6237" }, { value: "role", label: "\u89D2\u8272" }] }
+      uiSchema: {
+        enum: [
+          { value: "user", label: "\u7528\u6237" },
+          { value: "role", label: "\u89D2\u8272" }
+        ]
+      }
     },
     { type: "string", name: "targetId" },
     { type: "string", name: "targetName" },
@@ -50,7 +55,6 @@ var sjgl02_table_permissions_default = (0, import_database.defineCollection)({
     { type: "json", name: "requiredFields" },
     { type: "json", name: "importFields" },
     { type: "json", name: "exportFields" },
-    { type: "json", name: "exportFilter" },
     {
       type: "json",
       name: "permissions",

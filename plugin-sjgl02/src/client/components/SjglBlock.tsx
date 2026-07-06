@@ -26,6 +26,7 @@ export const SjglBlock = () => (
     <Card style={{ borderRadius: 10, minHeight: 400 }}>
       <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: '#999' }}>加载中...</div>}>
         <Tabs
+          data-testid="sjgl-block-tabs"
           destroyInactiveTabPane
           items={[
             { key: 'import', label: '⬇ 导入', children: <ImportPanel /> },

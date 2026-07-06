@@ -39,7 +39,12 @@ var sjgl02_tasks_default = (0, import_database.defineCollection)({
       type: "string",
       name: "taskType",
       defaultValue: "import",
-      uiSchema: { enum: [{ value: "import", label: "\u5BFC\u5165" }, { value: "export", label: "\u5BFC\u51FA" }] }
+      uiSchema: {
+        enum: [
+          { value: "import", label: "\u5BFC\u5165" },
+          { value: "export", label: "\u5BFC\u51FA" }
+        ]
+      }
     },
     { type: "string", name: "tableName" },
     { type: "string", name: "fileName" },
@@ -48,18 +53,19 @@ var sjgl02_tasks_default = (0, import_database.defineCollection)({
       type: "string",
       name: "status",
       defaultValue: "pending",
-      uiSchema: { enum: [
-        { value: "pending", label: "\u6392\u961F\u4E2D" },
-        { value: "processing", label: "\u8FDB\u884C\u4E2D" },
-        { value: "completed", label: "\u5DF2\u5B8C\u6210" },
-        { value: "failed", label: "\u5931\u8D25" },
-        { value: "cancelled", label: "\u5DF2\u53D6\u6D88" }
-      ] }
+      uiSchema: {
+        enum: [
+          { value: "pending", label: "\u6392\u961F\u4E2D" },
+          { value: "processing", label: "\u8FDB\u884C\u4E2D" },
+          { value: "completed", label: "\u5DF2\u5B8C\u6210" },
+          { value: "failed", label: "\u5931\u8D25" },
+          { value: "cancelled", label: "\u5DF2\u53D6\u6D88" }
+        ]
+      }
     },
     { type: "json", name: "fieldMapping" },
     { type: "json", name: "customValues" },
     { type: "json", name: "selectedFields" },
-    { type: "json", name: "exportFilter" },
     { type: "json", name: "permSource" },
     { type: "json", name: "errorLogs" },
     { type: "integer", name: "progress", defaultValue: 0 },
@@ -70,11 +76,13 @@ var sjgl02_tasks_default = (0, import_database.defineCollection)({
       type: "string",
       name: "importMode",
       defaultValue: "insert",
-      uiSchema: { enum: [
-        { value: "insert", label: "\u65B0\u589E" },
-        { value: "update", label: "\u66F4\u65B0" },
-        { value: "upsert", label: "\u65B0\u589E+\u66F4\u65B0" }
-      ] }
+      uiSchema: {
+        enum: [
+          { value: "insert", label: "\u65B0\u589E" },
+          { value: "update", label: "\u66F4\u65B0" },
+          { value: "upsert", label: "\u65B0\u589E+\u66F4\u65B0" }
+        ]
+      }
     },
     { type: "string", name: "sheetName" },
     { type: "integer", name: "headerRow", defaultValue: 1 },

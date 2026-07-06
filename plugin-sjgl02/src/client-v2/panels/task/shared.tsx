@@ -27,12 +27,20 @@ export function TableTag({ name, title }: { name: string; title?: string }) {
     return <Tag color="#7c3aed">📦 全部数据表</Tag>;
   }
   const label = title || name;
-  return <Tag color="#3b82f6">📁 {label}({name})</Tag>;
+  return (
+    <Tag color="#3b82f6">
+      📁 {label}({name})
+    </Tag>
+  );
 }
 
 export function FieldTag({ name, title }: { name: string; title?: string }) {
   const label = title || name;
-  return <Tag color="#f3f4f6" style={{ color: '#374151', border: '1px solid #d1d5db' }}>{label}({name})</Tag>;
+  return (
+    <Tag color="#f3f4f6" style={{ color: '#374151', border: '1px solid #d1d5db' }}>
+      {label}({name})
+    </Tag>
+  );
 }
 
 export function DataDot({ type, count }: { type: 'success' | 'failed' | 'total'; count: number }) {
@@ -40,7 +48,16 @@ export function DataDot({ type, count }: { type: 'success' | 'failed' | 'total';
   const labels = { success: '成功', failed: '失败', total: '总计' };
   return (
     <span style={{ color: colors[type], marginRight: 12, fontSize: 13 }}>
-      <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: colors[type], marginRight: 4 }} />
+      <span
+        style={{
+          display: 'inline-block',
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          background: colors[type],
+          marginRight: 4,
+        }}
+      />
       {labels[type]}：{count}
     </span>
   );

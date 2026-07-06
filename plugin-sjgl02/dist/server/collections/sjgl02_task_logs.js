@@ -35,10 +35,7 @@ var sjgl02_task_logs_default = (0, import_database.defineCollection)({
   title: "\u4EFB\u52A1\u6267\u884C\u65E5\u5FD7",
   timestamps: true,
   autoGenId: true,
-  indexes: [
-    { fields: ["taskId"] },
-    { fields: ["timestamp"] }
-  ],
+  indexes: [{ fields: ["taskId"] }, { fields: ["timestamp"] }],
   fields: [
     { type: "integer", name: "taskId" },
     {

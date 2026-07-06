@@ -6,15 +6,25 @@ export function useTableList(api: any) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    api.request({ url: 'sjgl02Permissions:tables', method: 'get' })
-      .then((res: any) => {
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      try {
+        const res = await api.request({ url: 'sjgl02Permissions:tables', method: 'get' });
         const data = res?.data?.data;
-        if (Array.isArray(data)) {
+        if (!cancelled && Array.isArray(data)) {
           setTables(data.map((t: any) => ({ name: t.name, title: t.title || t.name })));
         }
-      }).catch(() => {})
-      .finally(() => setLoading(false));
+      } catch {
+        /* 忽略 */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
   }, [api]);
 
   return { tables, loading };
