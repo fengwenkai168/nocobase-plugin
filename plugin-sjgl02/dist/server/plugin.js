@@ -58,6 +58,13 @@ class PluginSjgl02Server extends import_server.Plugin {
       this.startupCleanup().catch(() => {
       });
     });
+    try {
+      const zGuard = await import("./workers/zombie-guard");
+      zGuard.startSerialScheduler(this.db);
+      this.app.on("beforeStop", () => zGuard.stopSerialScheduler());
+    } catch (e) {
+      console.error("[sjgl02] \u8C03\u5EA6\u5668\u52A0\u8F7D\u5931\u8D25:", (e == null ? void 0 : e.message) || e);
+    }
   }
   /** 启动清理：残留任务、影子表、导出文件 */
   async startupCleanup() {
@@ -91,6 +98,21 @@ class PluginSjgl02Server extends import_server.Plugin {
         } catch (err) {
           console.warn("startupCleanup sjgl02_tasks update failed:", err.message);
         }
+        try {
+          await this.db.getRepository("sjgl02_tasks").update({
+            filter: {
+              status: { $in: ["pending", "processing"] },
+              tableName: { $is: null }
+            },
+            values: {
+              status: "failed",
+              errorMessage: "\u4EFB\u52A1\u6570\u636E\u5F02\u5E38\uFF1AtableName \u4E3A\u7A7A",
+              completedAt: /* @__PURE__ */ new Date()
+            }
+          });
+        } catch (err) {
+          console.warn("startupCleanup invalid tasks cleanup failed:", err.message);
+        }
       }
       const [shadowTables] = await sequelize.query(
         "SELECT tablename FROM pg_tables WHERE tablename LIKE '_sjgl02\\_import\\_%' ESCAPE '\\' AND schemaname = current_schema()",
@@ -103,7 +125,7 @@ class PluginSjgl02Server extends import_server.Plugin {
         } catch {
         }
       }
-      const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || "storage/uploads";
+      const storageDir = process.env.STORAGE_DIR || "storage/uploads";
       const exportDir = storageDir + "/exports";
       if (import_fs.default.existsSync(exportDir)) {
         const files = import_fs.default.readdirSync(exportDir);
@@ -126,7 +148,8 @@ class PluginSjgl02Server extends import_server.Plugin {
         tableFields: import_import.getTableFields,
         uploadParse: import_import.uploadParse,
         preview: import_import.preview,
-        execute: import_import.executeImport
+        execute: import_import.executeImport,
+        autoMatch: import_import.autoMatch
       }
     });
     this.app.resourceManager.define({
@@ -175,7 +198,6 @@ class PluginSjgl02Server extends import_server.Plugin {
     acl.allow("sjgl02Permissions", "get", "loggedIn");
     acl.allow("sjgl02Permissions", ["save", "saveSettings", "settings", "userRoleList"], "admin");
     acl.allow("sjgl02TaskLogs", "*", "loggedIn");
-    acl.allow("sjgl02_tasks", "*", "admin");
     acl.allow("sjgl02_table_permissions", "*", "admin");
     acl.allow("sjgl02_settings", "*", "admin");
     acl.allow("sjgl02_permission_logs", "*", "admin");

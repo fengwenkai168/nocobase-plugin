@@ -30,11 +30,12 @@ export class PermissionService {
 
   async findPermission(targetType: string, targetId: string, tableName: string): Promise<any | null> {
     try {
-      const [rows] = await this.db.sequelize.query(
-        'SELECT * FROM "sjgl02_table_permissions" WHERE "targetType" = $1 AND "targetId" = $2 AND "tableName" = $3',
-        { bind: [targetType, targetId, tableName], raw: true },
-      );
-      return (rows as any[])[0] || null;
+      const repo = this.db.getRepository('sjgl02_table_permissions');
+      const rows = await repo.find({
+        filter: { targetType, targetId, tableName },
+        limit: 1,
+      });
+      return rows[0] || null;
     } catch {
       return null;
     }
@@ -42,11 +43,11 @@ export class PermissionService {
 
   async findPermissionsByTarget(targetType: string, targetId: string): Promise<any[]> {
     try {
-      const [rows] = await this.db.sequelize.query(
-        'SELECT * FROM "sjgl02_table_permissions" WHERE "targetType" = $1 AND "targetId" = $2 ORDER BY "id"',
-        { bind: [targetType, targetId], raw: true },
-      );
-      return (rows as any[]) || [];
+      const repo = this.db.getRepository('sjgl02_table_permissions');
+      return await repo.find({
+        filter: { targetType, targetId },
+        sort: ['id'],
+      });
     } catch {
       return [];
     }
@@ -55,14 +56,14 @@ export class PermissionService {
   async findPermissionsByRoles(roleNames: string[]): Promise<any[]> {
     if (roleNames.length === 0) return [];
     try {
-      const placeholders = roleNames.map((_, i) => '$' + (i + 1)).join(', ');
-      const [rows] = await this.db.sequelize.query(
-        'SELECT * FROM "sjgl02_table_permissions" WHERE "targetType" = \'role\' AND "targetId" IN (' +
-          placeholders +
-          ') ORDER BY "id"',
-        { bind: roleNames, raw: true },
-      );
-      return (rows as any[]) || [];
+      const repo = this.db.getRepository('sjgl02_table_permissions');
+      return await repo.find({
+        filter: {
+          targetType: 'role',
+          targetId: { $in: roleNames },
+        },
+        sort: ['id'],
+      });
     } catch {
       return [];
     }

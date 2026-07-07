@@ -1,6 +1,8 @@
 import React from 'react';
 import { Steps, App } from 'antd';
 import { observer } from '@nocobase/flow-engine';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../locale';
 import { useExportPanel } from './export-hooks/useExportPanel';
 import ExportStepSelectTable from './export-steps/ExportStepSelectTable';
 import ExportStepConfig from './export-steps/ExportStepConfig';
@@ -8,13 +10,18 @@ import ExportStepExecute from './export-steps/ExportStepExecute';
 
 export default observer(function ExportPanel() {
   const { message, modal } = App.useApp();
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const state = useExportPanel(message);
 
   return (
     <div>
       <Steps
         current={state.step}
-        items={[{ title: '选择数据表' }, { title: '选择字段 & 配置' }, { title: '执行导出' }]}
+        items={[
+          { title: t('Select target table') },
+          { title: t('Select fields & config') },
+          { title: t('Execute export') },
+        ]}
         style={{ marginBottom: 24 }}
       />
       {state.step === 0 && (

@@ -7,7 +7,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { SjglBlockModel } from '../client-v2/models/SjglBlockModel';
 import { SjglBlock } from './components/SjglBlock';
-import { Sjgl02BlockInitializer } from '../client-v2/panels/Sjgl02BlockInitializer';
+import { Sjgl02BlockInitializer } from './Sjgl02BlockInitializer';
 import Sjgl02SettingsPageV1 from '../client-v2/pages/Sjgl02SettingsPage';
 
 const sjgl02BlockSettings = new SchemaSettings({

@@ -1,12 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Permission, Target, PermissionFormValues } from '../types/permission';
 
 export function usePermissions(api: any, target: Target | null) {
   const [perms, setPerms] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSystemManaged, setIsSystemManaged] = useState(false);
-  const savingRef = useRef(false);
-  const savePermsRef = useRef(false);
 
   useEffect(() => {
     const load = async () => {
@@ -42,7 +40,7 @@ export function usePermissions(api: any, target: Target | null) {
       }
     };
     load();
-  }, [api, target?.id, target?.type]);
+  }, [api, target]);
 
   const autoSave = useCallback(
     async (updatedPerms: Permission[]) => {
@@ -61,7 +59,7 @@ export function usePermissions(api: any, target: Target | null) {
         // ignore
       }
     },
-    [api, target?.type, target?.id],
+    [api, target],
   );
 
   const refresh = useCallback(async () => {
@@ -88,7 +86,7 @@ export function usePermissions(api: any, target: Target | null) {
     } finally {
       setLoading(false);
     }
-  }, [api, target?.type, target?.id]);
+  }, [api, target]);
 
   const toggle = useCallback(
     (tableName: string, field: 'canImport' | 'canExport') => {
@@ -110,6 +108,7 @@ export function usePermissions(api: any, target: Target | null) {
 
   const save = useCallback(
     async (values: PermissionFormValues, editPerm?: Permission) => {
+      if (!target) return false;
       const customPerms = perms.filter((p) => !p._inherited);
       let updated: Permission[];
       if (editPerm) {
@@ -118,9 +117,9 @@ export function usePermissions(api: any, target: Target | null) {
         updated = [
           ...customPerms,
           {
-            targetType: target!.type,
-            targetId: target!.id,
-            targetName: target!.nickname || target!.name || '',
+            targetType: target.type,
+            targetId: target.id,
+            targetName: target.nickname || target.name || '',
             ...values,
             uniqueFields: values.uniqueFields || [],
             requiredFields: values.requiredFields || [],

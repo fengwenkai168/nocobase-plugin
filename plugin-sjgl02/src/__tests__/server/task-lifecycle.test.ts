@@ -1,19 +1,14 @@
-import { setupTestApp, teardownTestApp, createTestCollections, loginAs, saveTablePermission } from './helpers/setup';
+import {
+  setupTestApp,
+  teardownTestApp,
+  createTestCollections,
+  loginAs,
+  saveTablePermission,
+  waitForTask,
+} from './helpers/setup';
 import { cleanupBusinessData, cleanupTargetTable, cleanupShadowTables } from './helpers/cleanup';
 import { createExcelFile, getFixturePath, cleanupFixture, createAttachment } from './helpers/fixtures';
 import { MockServer } from '@nocobase/test';
-
-async function waitForTask(app: MockServer, taskId: number, timeout = 30000): Promise<any> {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    const task = await app.db.getRepository('sjgl02_tasks').findOne({ filter: { id: taskId } });
-    if (['completed', 'failed', 'cancelled'].includes(task.get('status'))) {
-      return task;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error('等待任务完成超时');
-}
 
 describe('Task Lifecycle', () => {
   let ctx: { app: MockServer; adminAgent: any; normalUser: any; normalRole: any };
@@ -114,5 +109,152 @@ describe('Task Lifecycle', () => {
     });
 
     expect(deleteRes.status).toBe(403);
+  });
+
+  it('getTaskDetail 返回任务详情', async () => {
+    const fileId = await createAttachment(ctx.app, fixturePath, 'task-import.xlsx');
+    const res = await ctx.adminAgent.resource('sjgl02Import').execute({
+      values: {
+        tableName: 'posts',
+        fileId,
+        sheetName: 'Sheet1',
+        headerRow: 1,
+        fieldMapping: { title: '标题', content: '内容' },
+        importMode: 'insert',
+      },
+    });
+
+    const taskId = res.body.data.taskId;
+    await waitForTask(ctx.app, taskId);
+
+    const detailRes = await ctx.adminAgent.resource('sjgl02Tasks').getTaskDetail({
+      values: { taskId },
+    });
+
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.data.id).toBe(taskId);
+    expect(detailRes.body.data.tableName).toBe('posts');
+    expect(detailRes.body.data.taskType).toBe('import');
+  });
+
+  it('getTaskDetail 返回 404 当任务不存在', async () => {
+    const res = await ctx.adminAgent.resource('sjgl02Tasks').getTaskDetail({
+      values: { taskId: 999999 },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('cancelTask 取消进行中的任务', async () => {
+    const fileId = await createAttachment(ctx.app, fixturePath, 'task-import.xlsx');
+    const res = await ctx.adminAgent.resource('sjgl02Import').execute({
+      values: {
+        tableName: 'posts',
+        fileId,
+        sheetName: 'Sheet1',
+        headerRow: 1,
+        fieldMapping: { title: '标题', content: '内容' },
+        importMode: 'insert',
+      },
+    });
+
+    const taskId = res.body.data.taskId;
+    // 不等待完成，直接取消
+    const cancelRes = await ctx.adminAgent.resource('sjgl02Tasks').cancelTask({
+      values: { taskId },
+    });
+
+    expect(cancelRes.status).toBe(200);
+    expect(cancelRes.body.data.success).toBe(true);
+
+    // 验证任务状态已变为 cancelled
+    const task = await ctx.app.db.getRepository('sjgl02_tasks').findOne({ filter: { id: taskId } });
+    expect(task.get('status')).toBe('cancelled');
+  });
+
+  it('cancelTask 不能取消已完成的任务', async () => {
+    const fileId = await createAttachment(ctx.app, fixturePath, 'task-import.xlsx');
+    const res = await ctx.adminAgent.resource('sjgl02Import').execute({
+      values: {
+        tableName: 'posts',
+        fileId,
+        sheetName: 'Sheet1',
+        headerRow: 1,
+        fieldMapping: { title: '标题', content: '内容' },
+        importMode: 'insert',
+      },
+    });
+
+    const taskId = res.body.data.taskId;
+    await waitForTask(ctx.app, taskId);
+
+    const cancelRes = await ctx.adminAgent.resource('sjgl02Tasks').cancelTask({
+      values: { taskId },
+    });
+
+    expect(cancelRes.status).toBe(400);
+  });
+
+  it('cancelTask 非所有者不能取消他人任务', async () => {
+    const fileId = await createAttachment(ctx.app, fixturePath, 'task-import.xlsx');
+    const adminRes = await ctx.adminAgent.resource('sjgl02Import').execute({
+      values: {
+        tableName: 'posts',
+        fileId,
+        sheetName: 'Sheet1',
+        headerRow: 1,
+        fieldMapping: { title: '标题', content: '内容' },
+        importMode: 'insert',
+      },
+    });
+
+    const taskId = adminRes.body.data.taskId;
+    const normalAgent = await loginAs(ctx.app, ctx.normalUser);
+    const cancelRes = await normalAgent.resource('sjgl02Tasks').cancelTask({
+      values: { taskId },
+    });
+
+    expect(cancelRes.status).toBe(403);
+  });
+
+  it('deleteTask 删除已完成的任务', async () => {
+    const fileId = await createAttachment(ctx.app, fixturePath, 'task-import.xlsx');
+    const res = await ctx.adminAgent.resource('sjgl02Import').execute({
+      values: {
+        tableName: 'posts',
+        fileId,
+        sheetName: 'Sheet1',
+        headerRow: 1,
+        fieldMapping: { title: '标题', content: '内容' },
+        importMode: 'insert',
+      },
+    });
+
+    const taskId = res.body.data.taskId;
+    await waitForTask(ctx.app, taskId);
+
+    const deleteRes = await ctx.adminAgent.resource('sjgl02Tasks').delete({
+      values: { taskId },
+    });
+
+    expect(deleteRes.status).toBe(200);
+    expect(deleteRes.body.data.success).toBe(true);
+
+    // 验证任务已删除
+    const task = await ctx.app.db.getRepository('sjgl02_tasks').findOne({ filter: { id: taskId } });
+    expect(task).toBeNull();
+  });
+
+  it('deleteTask 返回 404 当任务不存在', async () => {
+    const res = await ctx.adminAgent.resource('sjgl02Tasks').delete({
+      values: { taskId: 999999 },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('cancelTask 返回 404 当任务不存在', async () => {
+    const res = await ctx.adminAgent.resource('sjgl02Tasks').cancelTask({
+      values: { taskId: 999999 },
+    });
+    expect(res.status).toBe(404);
   });
 });

@@ -1,6 +1,7 @@
 import { Plugin } from '@nocobase/server';
 import fs from 'fs';
-import { getTableFields, uploadParse, preview, executeImport } from './actions/import';
+import path from 'path';
+import { getTableFields, uploadParse, preview, executeImport, autoMatch } from './actions/import';
 import { getExportTableFields, previewCount, executeExport, getProgress, downloadExport } from './actions/export';
 import { listTasks, getTaskDetail, cancelTask, deleteTask } from './actions/tasks';
 import {
@@ -24,6 +25,15 @@ export class PluginSjgl02Server extends Plugin {
     setImmediate(() => {
       this.startupCleanup().catch(() => {});
     });
+
+    // 启动串行调度器
+    try {
+      const zGuard = await import('./workers/zombie-guard');
+      zGuard.startSerialScheduler(this.db);
+      this.app.on('beforeStop', () => zGuard.stopSerialScheduler());
+    } catch (e: any) {
+      console.error('[sjgl02] 调度器加载失败:', e?.message || e);
+    }
   }
 
   /** 启动清理：残留任务、影子表、导出文件 */
@@ -62,6 +72,23 @@ export class PluginSjgl02Server extends Plugin {
           // eslint-disable-next-line no-console
           console.warn('startupCleanup sjgl02_tasks update failed:', err.message);
         }
+
+        // 清理无效任务：tableName 为空的 pending/processing 任务（防御性清理）
+        try {
+          await this.db.getRepository('sjgl02_tasks').update({
+            filter: {
+              status: { $in: ['pending', 'processing'] },
+              tableName: { $is: null },
+            },
+            values: {
+              status: 'failed',
+              errorMessage: '任务数据异常：tableName 为空',
+              completedAt: new Date(),
+            },
+          });
+        } catch (err: any) {
+          console.warn('startupCleanup invalid tasks cleanup failed:', err.message);
+        }
       }
 
       const [shadowTables] = await sequelize.query(
@@ -77,7 +104,7 @@ export class PluginSjgl02Server extends Plugin {
         }
       }
 
-      const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
+      const storageDir = process.env.STORAGE_DIR || 'storage/uploads';
       const exportDir = storageDir + '/exports';
       if (fs.existsSync(exportDir)) {
         const files = fs.readdirSync(exportDir);
@@ -104,6 +131,7 @@ export class PluginSjgl02Server extends Plugin {
         uploadParse,
         preview,
         execute: executeImport,
+        autoMatch,
       },
     });
 
@@ -158,8 +186,8 @@ export class PluginSjgl02Server extends Plugin {
     acl.allow('sjgl02Permissions', ['save', 'saveSettings', 'settings', 'userRoleList'], 'admin');
     acl.allow('sjgl02TaskLogs', '*', 'loggedIn');
 
-    // 业务数据集合仅允许通过自定义 action 间接操作；直接 REST 仅管理员
-    acl.allow('sjgl02_tasks', '*', 'admin');
+    // 业务数据集合仅允许通过自定义 action 间接操作；禁止直接 REST
+    // sjgl02_tasks 不开放直接 CRUD，所有任务创建/查询通过 sjgl02Tasks/sjgl02Import/sjgl02Export 自定义 action
     acl.allow('sjgl02_table_permissions', '*', 'admin');
     acl.allow('sjgl02_settings', '*', 'admin');
     acl.allow('sjgl02_permission_logs', '*', 'admin');

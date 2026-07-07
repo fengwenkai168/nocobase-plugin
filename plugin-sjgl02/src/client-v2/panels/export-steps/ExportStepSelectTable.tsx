@@ -1,5 +1,7 @@
 import React from 'react';
 import { Card, Row, Col, Select, Button } from 'antd';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../../locale';
 import { ExportTableItem } from '../export-hooks/exportTypes';
 
 interface ExportStepSelectTableProps {
@@ -19,15 +21,16 @@ export default function ExportStepSelectTable({
   onSelect,
   onNext,
 }: ExportStepSelectTableProps) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   return (
     <div>
       <Row gutter={16}>
         <Col span={12}>
-          <Card title="📋 选择数据表" size="small">
+          <Card title={`📋 ${t('Select target table')}`} size="small">
             <Select
               data-testid="export-table-select"
               style={{ width: '100%' }}
-              placeholder="— 请选择数据表 —"
+              placeholder={t('Please select a table')}
               loading={loading}
               showSearch
               value={selTable || undefined}
@@ -38,28 +41,30 @@ export default function ExportStepSelectTable({
                   .includes(input.toLowerCase())
               }
               options={[
-                ...(isAdminOrRoot ? [{ value: '__all__', label: '📦 全部数据表（含系统表）' }] : []),
+                ...(isAdminOrRoot
+                  ? [{ value: '__all__', label: `📦 ${t('All tables including system tables')}` }]
+                  : []),
                 ...tables.map((t) => ({ value: t.name, label: `📁 ${t.title} (${t.name})` })),
               ]}
             />
             <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
-              {isAdminOrRoot ? `共 ${tables.length + 1} 个选项` : `共 ${tables.length} 个选项`}
+              {t('{{count}} options', { count: isAdminOrRoot ? tables.length + 1 : tables.length })}
             </div>
           </Card>
         </Col>
         <Col span={12}>
-          <Card title="⚙️ 简要配置" size="small">
+          <Card title={`⚙️ ${t('Brief configuration')}`} size="small">
             <ul style={{ color: '#666', paddingLeft: 16, fontSize: 13, lineHeight: 1.9 }}>
-              <li>支持全字段选择和自定义筛选</li>
-              <li>关联字段可选「显示值」或「仅ID」</li>
-              <li>自定义文件名模板</li>
+              <li>{t('Supports full field selection and custom filtering')}</li>
+              <li>{t('Association fields can choose display value or ID only')}</li>
+              <li>{t('Custom file name template')}</li>
             </ul>
           </Card>
         </Col>
       </Row>
       <div style={{ textAlign: 'right', marginTop: 12 }}>
         <Button type="primary" disabled={!selTable} onClick={onNext}>
-          下一步 →
+          {t('Next step')} →
         </Button>
       </div>
     </div>

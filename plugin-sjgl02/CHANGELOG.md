@@ -1,5 +1,89 @@
 # CHANGELOG
 
+## 1.0.155 (2026-07-07) — 导出卡死 + 导入 Sheet 识别修复
+
+### Bug 1（P0 导出任务卡死）
+- **修复**：`resolveAttachmentFromFile` 路径拼接 bug，Worker 发出的完整相对路径被二次拼接 `exports/` 前缀，导致 `fs.existsSync()` 返回 false，任务永久卡在「进行中」
+- **修复**：`resolveAttachmentFromFile` 改为智能路径解析：绝对路径直接用、含 `/` 路径用相对路径、裸文件名拼接 `exports/`
+
+### Bug 2（P0 导入无法识别 Sheet）
+- **修复**：`streamProcessExcel` 增加 sheet 回退逻辑：指定 sheet 找不到时自动回退至首个 sheet
+- **修复**：后端 `uploadParse` / `executeImport` 去掉硬编码 `'Sheet1'` 默认值
+- **修复**：前端 `importReducer` 默认 `sheetName` 从 `'Sheet1'` 改为空字符串
+
+### P2 防御措施
+- **ACL 收紧**：移除 `sjgl02_tasks` 直接 CRUD 权限，杜绝通过 REST API 创建无效任务
+- **启动清理**：新增 `tableName` 为空的 pending/processing 任务清理
+- **调度器**：已有空 `tableName` 校验（调度时自动标记为 failed）
+
+- **版本**：1.0.154 → 1.0.155
+
+## 1.0.154 (2026-07-07) — ESLint 警告清零 + 代码质量收尾
+- **质量**：`yarn eslint packages/plugins/@my-project/plugin-sjgl02/src` 达到 **0 errors, 0 warnings**
+- **修复**：移除 `member-role-switch.test.ts` 与 `usePermissions.ts` 中的非空断言
+- **重构**：`importActions.ts` 的 `loadPermissions` 改为 async/await，消除 promise 嵌套警告
+- **重构**：`useImportPanel.ts` / `DataPreviewCard.tsx` 的 useEffect 依赖精确化，避免依赖整个 `state` / `task`
+- **重构**：`RelationTablesCard.tsx` 的 `tables` 改用 `useMemo`
+- **重构**：`worker-manager.ts` 的 error 回调改为 async/await，消除 callback 内 promise 警告
+- **版本**：1.0.153 → 1.0.154
+
+## 1.0.153 (2026-07-07) — client-v2 国际化全面补全
+- **国际化**：将 client-v2 目录下所有面向用户的中文硬编码字符串迁移到 i18n `t()` 调用
+- **新增**：中英文 locale 文件新增 179 个翻译键，当前共 303 个键
+- **修复**：补充 `useTranslation` 缺失的组件（`TabRenderer`、`ImportPreviewCard`、`ExportPreviewCard`）
+- **修复**：修正 Ant Design Table 列类型推断导致的 TypeScript 声明构建错误
+- **修复**：`TaskList` 分页 `showTotal` 参数名遮蔽 `t` 翻译函数
+- **版本**：1.0.152 → 1.0.153
+
+## 1.0.146 (2026-07-07) — zombie-guard.ts 文件拆分重构
+- **重构**：将 `zombie-guard.ts`（605行）拆分为 3 个文件，提升代码可维护性
+- **新增**：`worker-utils.ts`（123行）— 工具函数（resolveTempDir、sanitizeSheetName、getScalarFieldNames、getRelationFieldNames、getFieldDisplayName、getCollDisplayName、detectPkStrategy、getAttachFieldNames、getFileIdFieldNames）
+- **新增**：`worker-manager.ts`（278行）— 子进程管理（activeWorkers、getWorkerPath、killWorker、runExportInline、forkExportWorker）
+- **修改**：`zombie-guard.ts`（221行）— 聚合导出 + 调度器（importTimers、schedulerInterval、runSchedule、startSerialScheduler、triggerScheduler、stopSerialScheduler）
+- **影响文件**：`src/server/workers/zombie-guard.ts`、`src/server/workers/worker-utils.ts`、`src/server/workers/worker-manager.ts`
+- **版本**：1.0.144 → 1.0.146
+
+## 1.0.144 (2026-07-06) — 修复 __all__ 导出拆分 + Worker crash + 导入防御
+- **修复**：全部数据表（`__all__`）导出改为拆成 N 个独立任务，每个任务对应一张真实表，绕过调度器找不到 collection 的问题
+- **修复**：导出 Worker 改为直接使用 `sequelize` 连接 PG，避免 `Database` 基类在独立子进程环境初始化失败导致 `exit code 1`
+- **增强**：Worker exit 时捕获 `stderr` 追加到 errorMessage
+- **防御**：调度器处理导入任务时校验 `tableName` 和 `importFileId` 为空则标记失败
+- **影响文件**：`src/server/actions/export.ts`、`src/server/workers/export-worker.ts`、`src/server/workers/zombie-guard.ts`
+- **版本**：1.0.143 → 1.0.144
+
+## 1.0.143 (2026-07-06) — 修复导入任务详情必填字段显示错误
+- **修复**：`ImportConfigCard`（任务详情）的「必填字段」错误地从 `fieldMapping` 推导，改为读取任务记录中存储的真实 `requiredFields`（来自权限配置）
+- **新增**：`sjgl02_tasks` 表新增 `requiredFields` JSON 列，导入创建任务时存储权限配置的必填字段
+- **新增**：`FieldMappingCard` 字段映射标签列增加「⚠必填」标签（与「⭐唯一值」并列显示）
+- **影响文件**：`src/server/collections/sjgl02_tasks.ts`、`src/server/actions/import.ts`、`src/client-v2/panels/task/TaskCards.tsx`
+- **版本**：1.0.142 → 1.0.143
+
+## 1.0.142 (2026-07-06) — 导出导入架构重构：进程隔离 + 串行队列 + 僵尸防御
+- **重构**：导出改为 `child_process.fork` 子进程执行，OOM 只杀子进程不影响主系统
+- **重构**：导入导出均改为串行队列模式（pending → processing 状态驱动），用户可随时提交任务自动排队
+- **新增**：`src/server/workers/export-worker.ts` 子进程入口，使用 raw SQL 查询 + `useSharedStrings:false` 流式写 Excel，内存峰值 ~80MB
+- **新增**：`src/server/workers/zombie-guard.ts` 通用僵尸监控 + 串行调度器
+- **新增**：子进程 2 分钟心跳超时 + 30 分钟总超时自动 kill；导入 PG `statement_timeout` 5 分钟 + 30 分钟总超时
+- **重构**：取消机制从内存 Map 改为 DB state 字段驱动，子进程每页检查
+- **移除**：`exportMutex`、`cancelFlags`、`processExportAsync`（迁移到 worker）
+- **影响文件**：`src/server/workers/*`、`src/server/actions/export.ts`、`src/server/actions/import.ts`、`src/server/actions/cancel-state.ts`、`src/server/actions/tasks.ts`、`src/server/plugin.ts`、`package.json`
+- **版本**：1.0.141 → 1.0.142
+
+## 1.0.141 (2026-07-06) — 修复全部数据表导出跳过中间表问题
+- **修复**：`src/server/actions/export.ts` 中无标量字段的纯关联中间表（如 `rolesUsers`、`customRequestsRoles`、`workflowCategoryRelations`）被跳过，导致“全部数据表”导出数据不完整
+- **新增**：`getRelationFields` 辅助函数，按优先级 `belongsTo` → `hasOne/hasMany/belongsToMany` 兜底导出关系字段
+- **修复**：`package.json` 测试脚本改为 `APP_ENV_PATH=../../.env.test.local yarn --cwd ../.. test ...`，避免递归调用并正确加载 PostgreSQL 测试配置
+- **影响文件**：`src/server/actions/export.ts`、`package.json`
+- **版本**：1.0.140 → 1.0.141
+
+## 1.0.140 (2026-07-06) — 修复全部数据表导出时 column "id" does not exist 错误
+- **修复**：`src/server/actions/export.ts` 中导出分页逻辑硬编码 `id` 字段，导致无主键 `id` 或自定义主键表（如 `collections`、`fields`、`roles`、`aiConversations` 等）导出时报错
+- **重构**：新增 `getSinglePrimaryKey` 与 `detectPkStrategy`，通过 Sequelize 模型的 `primaryKeyAttributes` 动态获取单字段主键名及类型
+- **重构**：`int_auto` 游标分页、`uuid` IN 分批均改为使用实际主键字段名；复合主键/无约束主键表强制回退 `offset/limit` 分页
+- **增强日志**：每张表导出前记录表名、主键字段、分页策略；失败时记录完整错误堆栈到 `errorMessage` 与任务日志
+- **影响文件**：`src/server/actions/export.ts`
+- **版本**：1.0.139 → 1.0.140
+
 ## 1.0.139 (2026-07-06) — 修复权限开关保存失效
 - **修复**：权限管理编辑弹窗中「允许导入」「允许导出」开关未注册为 Form 字段，导致保存时 `canImport`/`canExport` 丢失，数据库默认 `false`，权限显示「不允许」
 - **重构**：`canImport`/`canExport`/`importMode` 统一由 Ant Design Form 管理，使用 `Form.useWatch` 监听并驱动条件渲染

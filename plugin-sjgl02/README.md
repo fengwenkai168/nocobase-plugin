@@ -4,12 +4,12 @@ NocoBase 全栈插件，提供 **Excel 导入、导出、任务管理、表级�
 
 | 属性 | 值 |
 |------|-----|
-| 版本 | 1.0.139 |
+| 版本 | 1.0.155 |
 | 兼容 | NocoBase 2.x |
 | 核心入口 | 设置 → 数据管理（v1: `/admin/settings/sjgl02` / v2: `/v2/admin/settings/sjgl02`） |
 | 区块入口 | v2 页面 → 添加区块 → 其他 → 数据管理 |
 | 运行时依赖 | exceljs ^4.4.0（流式解析+写入）、async-mutex ^0.4.0（防重入）、archiver ^6.0.0（ZIP打包） |
-| 国际化 | zh-CN / en-US，共 115 个翻译键 |
+| 国际化 | zh-CN / en-US，共 303 个翻译键 |
 | 默认状态 | 默认关闭，需手动启用 |
 
 ---
@@ -39,9 +39,15 @@ plugin-sjgl02/
 │   │   │   ├── permission-check.ts               # 权限强制校验工具（~153 行）
 │   │   │   ├── taskLogs.ts                       # 任务日志读写（~25 行）
 │   │   │   └── cancel-state.ts                   # 内存级取消标志（Set<number>）
-│   │   └── migrations/
-│   │       ├── 20260702160000-add-task-file-name.ts   # file_name 列添加
-│   │       └── 20260702170000-backfill-file-name.ts   # 旧数据 fileName 回填
+│   │   ├── migrations/
+│   │   │   ├── 20260702160000-add-task-file-name.ts   # file_name 列添加
+│   │   │   └── 20260702170000-backfill-file-name.ts   # 旧数据 fileName 回填
+│   │   └── workers/
+│   │       ├── export-worker.ts                       # 导出子进程入口
+│   │       ├── zombie-guard.ts                        # 僵尸监控 + 串行调度器
+│   │       ├── worker-manager.ts                      # 子进程管理（fork/kill/heartbeat）
+│   │       ├── worker-utils.ts                        # 工具函数（字段名/主键策略/临时目录）
+│   │       └── types.ts                               # IPC 消息类型定义
 │   ├── client/
 │   │   ├── index.ts                              # v1 客户端入口
 │   │   ├── plugin.tsx                            # v1 客户端注册（设置页+区块+SchemaSettings）

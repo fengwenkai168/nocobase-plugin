@@ -3,16 +3,20 @@ import { Card, Tabs } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { NAMESPACE } from '../locale';
 
-const TABS = {
-  import: { key: 'import', label: '⬇ 导入', loader: () => import('../panels/ImportPanel') },
-  export: { key: 'export', label: '⬆ 导出', loader: () => import('../panels/ExportPanel') },
-  tasks: { key: 'tasks', label: '☰ 任务管理', loader: () => import('../panels/TaskPanel') },
-  permissions: { key: 'permissions', label: '✓ 权限管理', loader: () => import('../panels/PermissionPanel') },
-};
-
 export default function Sjgl02SettingsPage() {
   const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const [activeKey, setActiveKey] = useState('import');
+
+  const TABS = {
+    import: { key: 'import', label: `⬇ ${t('Import')}`, loader: () => import('../panels/ImportPanel') },
+    export: { key: 'export', label: `⬆ ${t('Export')}`, loader: () => import('../panels/ExportPanel') },
+    tasks: { key: 'tasks', label: `☰ ${t('Task Management')}`, loader: () => import('../panels/TaskPanel') },
+    permissions: {
+      key: 'permissions',
+      label: `✓ ${t('Permission Management')}`,
+      loader: () => import('../panels/PermissionPanel'),
+    },
+  };
 
   const tabItems = Object.values(TABS).map((tab) => ({
     key: tab.key,
@@ -49,7 +53,7 @@ export default function Sjgl02SettingsPage() {
             fontSize: 11,
           }}
         >
-          @my-project/plugin-sjgl02 v1.0.139
+          @my-project/plugin-sjgl02 v1.0.155
         </div>
       </div>
       <Card style={{ borderRadius: 10, minHeight: 600 }}>
@@ -60,6 +64,7 @@ export default function Sjgl02SettingsPage() {
 }
 
 function TabRenderer({ loader }: { loader: () => Promise<{ default: React.ComponentType }> }) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const [Comp, setComp] = useState<React.ComponentType | null>(null);
 
   useEffect(() => {
@@ -74,6 +79,6 @@ function TabRenderer({ loader }: { loader: () => Promise<{ default: React.Compon
     };
   }, [loader]);
 
-  if (!Comp) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>加载中...</div>;
+  if (!Comp) return <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>{t('Loading')}...</div>;
   return <Comp />;
 }

@@ -1,6 +1,8 @@
 import React from 'react';
 import { Card, Button, Space, Select, InputNumber, Tag, Alert, Modal, Descriptions, Table, Upload } from 'antd';
 import { InboxOutlined, TableOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../../locale';
 import { ImportTableItem, PermSourceOption } from '../import-hooks/importTypes';
 import ImportMappingTable from './ImportMappingTable';
 
@@ -50,6 +52,7 @@ interface ImportStepUploadProps {
 }
 
 export default function ImportStepUpload(props: ImportStepUploadProps) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const {
     client,
     message,
@@ -123,11 +126,11 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
           beforeUpload={(file) => {
             const ext = file.name.split('.').pop()?.toLowerCase();
             if (!['xlsx', 'xls', 'csv'].includes(ext || '')) {
-              message.error('不支持的文件格式');
+              message.error(t('Unsupported file format'));
               return Upload.LIST_IGNORE;
             }
             if (file.size > 50 * 1024 * 1024) {
-              message.error('文件超过 50MB 限制');
+              message.error(t('File exceeds 50MB limit'));
               return Upload.LIST_IGNORE;
             }
             return true;
@@ -137,31 +140,34 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
           <p className="ant-upload-drag-icon">
             <InboxOutlined />
           </p>
-          <p className="ant-upload-text">点击或拖拽上传文件</p>
-          <p className="ant-upload-hint">支持 .xlsx / .xls / .csv，最大 50MB</p>
+          <p className="ant-upload-text">{t('Click or drag to upload')}</p>
+          <p className="ant-upload-hint">{t('Supported formats')}</p>
         </Dragger>
       ) : (
         <div>
           <Card size="small" style={{ marginBottom: 12 }}>
             <div style={{ marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: '#999' }}>📋 导入到的数据表：</span>
+              <span style={{ fontSize: 13, color: '#999' }}>📋 {t('Import target table')}：</span>
               <Tag color="blue">
                 {selectedTable?.title || selectedTable?.name}({selectedTable?.name})
               </Tag>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: '#666' }}>上传的文件：</span>
+              <span style={{ fontSize: 12, color: '#666' }}>{t('Uploaded file')}：</span>
               <Tag color="blue">{uploadedFileName}</Tag>
               <Button size="small" style={{ marginLeft: 4 }} onClick={onResetFile}>
-                重新上传
+                {t('Re-upload')}
               </Button>
               {previewMeta && (
                 <span style={{ color: '#999', fontSize: 12, marginLeft: 4 }}>
-                  共 {previewMeta.headerColumns?.length || 0} 列 / {previewMeta.totalRows || 0} 行数据
+                  {t('{{cols}} columns / {{rows}} rows of data', {
+                    cols: previewMeta.headerColumns?.length || 0,
+                    rows: previewMeta.totalRows || 0,
+                  })}
                 </span>
               )}
               <span style={{ color: '#bbb', fontSize: 12, marginLeft: 4 }}>|</span>
-              <span style={{ color: '#999', fontSize: 12 }}>Sheet：</span>
+              <span style={{ color: '#999', fontSize: 12 }}>{t('Sheet')}：</span>
               <Select
                 value={sheetName}
                 onChange={onSheetNameChange}
@@ -169,7 +175,7 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
                 size="small"
                 options={availSheets.map((s) => ({ value: s, label: s }))}
               />
-              <span style={{ color: '#999', fontSize: 12 }}>表头行：</span>
+              <span style={{ color: '#999', fontSize: 12 }}>{t('Header row')}：</span>
               <InputNumber
                 min={1}
                 max={100}
@@ -184,15 +190,19 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
                 disabled={!previewMeta?.previewRows?.length}
                 onClick={() => onPreviewModalChange(true)}
               >
-                预览表头
+                {t('Preview headers')}
               </Button>
             </div>
             <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 8, marginTop: 4 }}>
               <Space data-testid="import-mode-control">
-                <span style={{ color: '#999', fontSize: 12 }}>导入模式：</span>
+                <span style={{ color: '#999', fontSize: 12 }}>{t('Import mode')}：</span>
                 {allowedModes.length === 1 ? (
                   <Tag color="orange">
-                    {allowedModes[0] === 'insert' ? '新增' : allowedModes[0] === 'update' ? '更新' : '新增+更新'}
+                    {allowedModes[0] === 'insert'
+                      ? t('Insert only')
+                      : allowedModes[0] === 'update'
+                        ? t('Update only')
+                        : t('Upsert')}
                   </Tag>
                 ) : allowedModes.length > 1 ? (
                   <Select
@@ -201,20 +211,20 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
                     style={{ width: 220 }}
                     size="small"
                     options={[
-                      { value: 'insert', label: '新增 (insert)' },
-                      { value: 'update', label: '更新 (update)' },
-                      { value: 'upsert', label: '新增+更新 (upsert)' },
+                      { value: 'insert', label: t('Insert only') },
+                      { value: 'update', label: t('Update only') },
+                      { value: 'upsert', label: t('Upsert') },
                     ].filter((o) => allowedModes.includes(o.value))}
                   />
                 ) : (
-                  <Tag color="red">无权限</Tag>
+                  <Tag color="red">{t('No permission')}</Tag>
                 )}
               </Space>
             </div>
             {isAdminOrRoot && (
               <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 8, marginTop: 4 }}>
                 <Space>
-                  <span style={{ color: '#999', fontSize: 12 }}>切换已配置的方案：</span>
+                  <span style={{ color: '#999', fontSize: 12 }}>{t('Scheme switch')}：</span>
                   <Select
                     value={
                       permSource?.type === 'admin'
@@ -234,7 +244,7 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
           </Card>
           {(importMode === 'update' || importMode === 'upsert') && (
             <Card size="small" style={{ marginBottom: 12 }}>
-              <div style={{ fontWeight: 600, color: '#fa8c16', marginBottom: 8 }}>🔑 唯一值字段</div>
+              <div style={{ fontWeight: 600, color: '#fa8c16', marginBottom: 8 }}>🔑 {t('Unique key fields')}</div>
               {permUniqueFields.length > 0 ? (
                 <div>
                   <Space wrap>
@@ -244,7 +254,9 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
                       </Tag>
                     ))}
                   </Space>
-                  <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>⚠️ 唯一值字段由管理员配置，不可修改</div>
+                  <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+                    ⚠️ {t('Unique key fields are configured by admin and cannot be modified')}
+                  </div>
                 </div>
               ) : (
                 <Select
@@ -252,7 +264,7 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
                   value={uniqueFields}
                   onChange={onUniqueFieldsChange}
                   style={{ width: '100%' }}
-                  placeholder="选择唯一值字段"
+                  placeholder={t('Please select unique key fields')}
                   options={tableFields.map((f: any) => ({
                     value: f.name,
                     label: (f.uiSchema?.title || f.name) + '(' + f.name + ')',
@@ -262,15 +274,15 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
             </Card>
           )}
           <Card size="small" style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>📝 空白单元格处理</div>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>📝 {t('Blank cell handling')}</div>
             <Select
               value={blankCellMode}
               onChange={onBlankCellModeChange}
               style={{ width: '100%' }}
               options={[
-                { value: 'update', label: '按Excel值更新（空单元格不处理，保持原Excel值）' },
-                { value: 'null', label: '按NULL更新（空单元格写入数据库 NULL）' },
-                { value: 'skip', label: '跳过（空单元格不动，保留数据库原有数据）' },
+                { value: 'update', label: t('Update by Excel value (empty cells keep Excel value)') },
+                { value: 'null', label: t('Update by NULL (empty cells write NULL)') },
+                { value: 'skip', label: t('Skip (empty cells keep existing data)') },
               ]}
             />
           </Card>
@@ -279,17 +291,17 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
               size="small"
               title={
                 <span>
-                  📊 字段映射 ·{' '}
+                  📊 {t('Field mapping')} ·{' '}
                   {matchInfo && (
-                    <Tag color={matchInfo.includes('0未匹配') ? 'green' : 'orange'} style={{ fontSize: 11 }}>
+                    <Tag color={matchInfo.includes('0 unmatched') ? 'green' : 'orange'} style={{ fontSize: 11 }}>
                       ⚡{matchInfo}
                     </Tag>
                   )}
                   <Button size="small" style={{ marginLeft: 12 }} onClick={onAutoMatch}>
-                    ⚡ 自动匹配
+                    ⚡ {t('Auto match')}
                   </Button>
                   <Button size="small" style={{ marginLeft: 6 }} onClick={onClearMapping}>
-                    🗑 清空
+                    🗑 {t('Clear')}
                   </Button>
                 </span>
               }
@@ -302,7 +314,7 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
                   style={{ marginBottom: 8, fontSize: 12 }}
                   message={
                     <span>
-                      必填字段：
+                      {t('Required fields')}：
                       <Space wrap>
                         {permRequiredFields.map((f) => {
                           const mapped = fieldMapping[f];
@@ -312,7 +324,7 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
                           return (
                             <Tag key={f} color={ok ? 'green' : 'red'}>
                               {label}
-                              {ok ? ' ✓已映射' : ' ✗未映射'}
+                              {ok ? ` ✓ ${t('Mapped')}` : ` ✗ ${t('Unmapped')}`}
                             </Tag>
                           );
                         })}
@@ -323,7 +335,7 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
               )}
               {permImportFields.length > 0 && (
                 <div style={{ fontSize: 11, color: '#1677ff', marginBottom: 8 }}>
-                  📋 管理员限制可导入字段：
+                  📋 {t('Admin restricted importable fields')}：
                   {permImportFields
                     .map((f) => {
                       const tf = tableFields.find((t: any) => t.name === f);
@@ -347,18 +359,18 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
             </Card>
           )}
           <Modal
-            title="📋 表头及预览数据"
+            title={`📋 ${t('Headers and preview data')}`}
             open={previewModal}
             onCancel={() => onPreviewModalChange(false)}
-            footer={<Button onClick={() => onPreviewModalChange(false)}>关闭</Button>}
+            footer={<Button onClick={() => onPreviewModalChange(false)}>{t('Close')}</Button>}
             width={800}
           >
             {previewMeta && (
               <div>
                 <Descriptions size="small" column={3} bordered style={{ marginBottom: 12 }}>
-                  <Descriptions.Item label="Sheet">{sheetName}</Descriptions.Item>
-                  <Descriptions.Item label="表头行">{headerRow}</Descriptions.Item>
-                  <Descriptions.Item label="数据行数">{previewMeta.totalRows || 0}</Descriptions.Item>
+                  <Descriptions.Item label={t('Sheet')}>{sheetName}</Descriptions.Item>
+                  <Descriptions.Item label={t('Header row')}>{headerRow}</Descriptions.Item>
+                  <Descriptions.Item label={t('Data rows')}>{previewMeta.totalRows || 0}</Descriptions.Item>
                 </Descriptions>
                 <Table
                   dataSource={
@@ -378,14 +390,14 @@ export default function ImportStepUpload(props: ImportStepUploadProps) {
                 />
               </div>
             )}
-            {!previewMeta && <span>请先上传并解析文件</span>}
+            {!previewMeta && <span>{t('Please upload and parse file first')}</span>}
           </Modal>
           <div style={{ textAlign: 'right', marginTop: 12 }}>
             <Button onClick={onPrev} style={{ marginRight: 8 }}>
-              ← 上一步
+              ← {t('Previous step')}
             </Button>
             <Button type="primary" disabled={nextDisabled} onClick={onNext}>
-              下一步 →
+              {t('Next step')} →
             </Button>
           </div>
         </div>

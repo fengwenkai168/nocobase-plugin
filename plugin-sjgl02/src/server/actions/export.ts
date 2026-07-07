@@ -1,133 +1,9 @@
 import { Context, Next } from '@nocobase/actions';
-import ExcelJS from 'exceljs';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
-import archiver from 'archiver';
-import { Mutex } from 'async-mutex';
 import { checkExportPermission } from './permission-check';
-import { writeTaskLog } from './taskLogs';
-import { cancelFlags } from './cancel-state';
-import { execSync } from 'child_process';
-import type { Database } from '@nocobase/database';
-
-const exportMutex = new Mutex();
-
-function sanitizeSheetName(name: string): string {
-  return name.replace(/[\\/:*?[\]:!@#$%^&()]/g, '_').substring(0, 31);
-}
-
-function formatFileName(template: string, tableName: string): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(
-    d.getMinutes(),
-  )}${pad(d.getSeconds())}`;
-  return template.replace(/\{表名\}/g, tableName).replace(/\{日期\}/g, date);
-}
-
-function getFieldDisplayName(coll: any, fieldName: string, style?: string): string {
-  try {
-    const f = coll.fields instanceof Map ? coll.fields.get(fieldName) : null;
-    const title = f?.options?.uiSchema?.title;
-    if (title && !/^\{\{/.test(title)) {
-      if (style === 'id') return fieldName;
-      if (style === 'title') return title;
-      return `${title}(${fieldName})`;
-    }
-  } catch {
-    /* 忽略 */
-  }
-  return fieldName;
-}
-
-function getCollDisplayName(coll: any, style?: string): string {
-  const rawName = coll?.name || '';
-  let title = coll?.options?.title || rawName;
-  if (/^\{\{/.test(title)) title = rawName;
-  if (style === 'id') return rawName;
-  if (style === 'title') return title;
-  return title !== rawName ? `${title}(${rawName})` : rawName;
-}
-
-function ensureUniqueSheetName(workbook: any, name: string): string {
-  const existing = new Set((workbook.worksheets || []).map((s: any) => s.name));
-  if (!existing.has(name)) return name;
-  let i = 1;
-  while (existing.has(`${name}_${i}`)) i++;
-  return `${name}_${i}`;
-}
-
-function formatValue(val: any): string {
-  if (val === null || val === undefined) return '';
-  if (val instanceof Date) {
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${val.getFullYear()}-${pad(val.getMonth() + 1)}-${pad(val.getDate())} ${pad(val.getHours())}:${pad(
-      val.getMinutes(),
-    )}:${pad(val.getSeconds())}`;
-  }
-  if (typeof val === 'object') return JSON.stringify(val);
-  return String(val);
-}
-
-function getScalarFields(coll: any): string[] {
-  if (!coll) return [];
-  const names: string[] = [];
-  try {
-    for (const f of Array.from(coll.fields?.values() || coll.fields || [])) {
-      const type = (f as any).type;
-      if (!['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(type)) {
-        names.push((f as any).name);
-      }
-    }
-  } catch {
-    /* 忽略 */
-  }
-  return names;
-}
-
-function getAssociationFields(coll: any): Array<{ name: string; type: string; target: string }> {
-  if (!coll) return [];
-  const fields: Array<{ name: string; type: string; target: string }> = [];
-  try {
-    for (const f of Array.from(coll.fields?.values() || coll.fields || [])) {
-      const type = (f as any).type;
-      if (['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(type)) {
-        fields.push({
-          name: (f as any).name,
-          type,
-          target: (f as any).options?.target || (f as any).target || '',
-        });
-      }
-    }
-  } catch {
-    /* 忽略 */
-  }
-  return fields;
-}
-
-/** 检测主键类型：返回 'int_auto' | 'uuid' | 'other' */
-function detectPkType(coll: any): 'int_auto' | 'uuid' | 'other' {
-  try {
-    const fields = Array.from(coll.fields?.values() || coll.fields || []);
-    const pk = fields.find((f: any) => (f as any).options?.primaryKey) as any;
-    if (!pk) return 'other';
-    const pkType = String(pk.type || '');
-    if (pkType.includes('UUID') || pkType.includes('uuid')) return 'uuid';
-    const autoIncr = pk.options?.autoIncrement;
-    if (
-      autoIncr !== false &&
-      (pkType.includes('INT') || pkType.includes('int') || pkType === 'bigInt' || pkType === 'BIGINT')
-    ) {
-      return 'int_auto';
-    }
-    if (pkType.includes('INT') || pkType.includes('int') || pkType === 'bigInt' || pkType === 'BIGINT')
-      return 'int_auto';
-    return 'other';
-  } catch {
-    return 'other';
-  }
-}
+import { getFieldDisplayName } from '../workers/worker-utils';
 
 export async function getExportTableFields(ctx: Context, next: Next) {
   const { tableName } = ctx.action.params;
@@ -177,21 +53,15 @@ export async function getExportTableFields(ctx: Context, next: Next) {
 
 export async function previewCount(ctx: Context, next: Next) {
   const params = ctx.action.params.values || ctx.action.params;
-  const { tableName } = params;
+  const { tableName, permSource } = params;
   if (!tableName || tableName === '__all__') {
-    let total = 0;
-    const collections = ctx.db.collections;
-    for (const [name, coll] of collections) {
-      try {
-        const repo = ctx.db.getRepository(name);
-        if (repo) total += await repo.count({ filter: {} });
-      } catch {
-        /* 忽略 */
-      }
-    }
-    ctx.body = { estimatedRows: total };
+    ctx.body = { estimatedRows: 0 };
     await next();
     return;
+  }
+  const exportPerm = await checkExportPermission(ctx, tableName, permSource);
+  if (!exportPerm.canExport) {
+    ctx.throw(403, 'Access denied');
   }
   const repo = ctx.db.getRepository(tableName);
   const count = repo ? await repo.count({ filter: {} }) : 0;
@@ -227,8 +97,6 @@ export async function executeExport(ctx: Context, next: Next) {
     }
   }
 
-  const filter = {};
-
   let allowedTableList: string[] | null = null;
   if (tableName === '__all__') {
     const names: string[] = [];
@@ -244,7 +112,6 @@ export async function executeExport(ctx: Context, next: Next) {
     allowedTableList = names;
   }
 
-  // 预计总行数（用于进度显示分母）
   let estimatedTotal = 0;
   try {
     if (tableName === '__all__' && allowedTableList) {
@@ -265,6 +132,37 @@ export async function executeExport(ctx: Context, next: Next) {
   }
 
   const repo = ctx.db.getRepository('sjgl02_tasks');
+
+  if (tableName === '__all__' && allowedTableList && allowedTableList.length > 0) {
+    // 全部数据表：创建 1 条任务，selectedFields 存储表列表配置
+    const tableListConfig = allowedTableList.map((t) => ({ tableName: t, fields: selectedFields || [] }));
+    const task = await repo.create({
+      values: {
+        taskType: 'export',
+        tableName: '__all__',
+        status: 'pending',
+        selectedFields: tableListConfig,
+        headerStyle: headerStyle || 'title_id',
+        permSource: permSource || null,
+        createdById: ctx.state.currentUser?.id,
+        totalRows: estimatedTotal,
+        progress: 0,
+        includeAttachments: includeAttachments || false,
+        fileNameTemplate: fileNameTemplate || '',
+      },
+    });
+    ctx.body = { taskId: task.id };
+    await next();
+    try {
+      const { triggerExportScheduler } = await import('../workers/zombie-guard');
+      triggerExportScheduler();
+    } catch {
+      /* 忽略 */
+    }
+    return;
+  }
+
+  // 单表导出
   const task = await repo.create({
     values: {
       taskType: 'export',
@@ -278,758 +176,67 @@ export async function executeExport(ctx: Context, next: Next) {
       includeAttachments: includeAttachments || false,
       totalRows: estimatedTotal,
       progress: 0,
-      fileName: tableName === '__all__' ? `全部数据表_${new Date().toISOString().slice(0, 10)}.tar.gz` : '',
+      fileName: '',
       createdById: ctx.state.currentUser?.id,
       headerStyle: headerStyle || 'title_id',
+      fileNameTemplate: fileNameTemplate || '',
     },
   });
 
-  const db = ctx.db;
-  const taskId = task.id;
-
-  ctx.body = { taskId };
+  ctx.body = { taskId: task.id };
   await next();
 
-  setImmediate(() => {
-    processExportAsync(db, taskId, {
-      tableName,
-      selectedFields,
-      associationDisplayMode,
-      includeAssociationSheet,
-      associationSheetTables,
-      filter,
-      fileNameTemplate,
-      includeAttachments,
-      headerStyle,
-      allowedTableList,
-    });
-  });
-}
-
-interface ExportAsyncParams {
-  tableName: string;
-  selectedFields?: string[];
-  associationDisplayMode?: Record<string, string>;
-  includeAssociationSheet?: boolean;
-  associationSheetTables?: string[];
-  filter?: Record<string, any>;
-  fileNameTemplate?: string;
-  includeAttachments?: boolean;
-  headerStyle?: string;
-  allowedTableList: string[] | null;
-}
-
-async function processExportAsync(db: Database, taskId: number, params: ExportAsyncParams) {
-  const {
-    tableName,
-    selectedFields,
-    associationDisplayMode,
-    includeAssociationSheet,
-    associationSheetTables,
-    filter,
-    fileNameTemplate,
-    includeAttachments,
-    headerStyle,
-    allowedTableList,
-  } = params;
-
-  const repo = db.getRepository('sjgl02_tasks');
-  const release = await exportMutex.acquire();
-
+  // 触发调度器检查，如果没有 processing 的任务则立即启动
   try {
-    await repo.update({ filterByTk: taskId, values: { status: 'processing' } });
-
-    await writeTaskLog(db, taskId, 'INFO', '开始执行导出任务');
-    await writeTaskLog(
-      db,
-      taskId,
-      'INFO',
-      `目标数据表: ${tableName}${tableName === '__all__' ? '（全部数据表）' : ''}`,
-    );
-
-    const isAllTables = tableName === '__all__';
-    const tableList: string[] = isAllTables ? allowedTableList || [] : [tableName];
-
-    const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
-    const tempDir = path.join(storageDir, 'exports');
-    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-
-    let totalRows = 0;
-    // 获取预估总行数（用于进度分母）
-    try {
-      const t = await repo.findOne({ filter: { id: taskId }, raw: true });
-      if ((t as any)?.totalRows > 0) totalRows = (t as any).totalRows;
-    } catch {
-      /* 忽略 */
-    }
-
-    let processedRows = 0;
-    const outputFiles: string[] = [];
-    let cancelled = false;
-    // 全部数据表模式：延迟附件打包到最终合并
-    const allAttachFileEntries: Array<{ entryName: string; diskPath: string }> = [];
-
-    // 全部数据表：提前创建流式 archiver（每表生成即追加，不积压文件）
-    let streamArchive: any = null;
-    let streamOutput: fs.WriteStream | null = null;
-    let streamZipPath = '';
-    if (isAllTables) {
-      streamZipPath = path.join(tempDir, `sjgl02_export_${taskId}_${Date.now()}.tar.gz`);
-      streamOutput = fs.createWriteStream(streamZipPath);
-      streamArchive = archiver('tar', { gzip: true, gzipOptions: { level: 1 } });
-      streamArchive.pipe(streamOutput);
-      streamArchive.on('error', (e: any) => {
-        throw e;
-      });
-    }
-
-    for (const tblName of tableList) {
-      if (cancelFlags.has(taskId)) {
-        cancelled = true;
-        break;
-      }
-
-      const coll: any = db.getCollection(tblName);
-      if (!coll) continue;
-      const targetRepo = db.getRepository(tblName);
-      if (!targetRepo) continue;
-
-      let collectionTotal = 0;
-      const appendFields: string[] = [];
-      const attachmentFieldNames: string[] = [];
-      const fileIdFieldNames: string[] = [];
-      try {
-        for (const f of Array.from(coll.fields?.values() || coll.fields || [])) {
-          if ((f as any).type === 'belongsTo') appendFields.push((f as any).name);
-          if ((f as any).type === 'belongsToMany') {
-            const interfaceName = (f as any).options?.interface;
-            if (includeAttachments && interfaceName === 'attachment' && !appendFields.includes((f as any).name)) {
-              appendFields.push((f as any).name);
-              attachmentFieldNames.push((f as any).name);
-            } else if (!includeAttachments || interfaceName !== 'attachment') {
-              if (!selectedFields?.length || selectedFields.includes((f as any).name)) {
-                if (!appendFields.includes((f as any).name)) appendFields.push((f as any).name);
-              }
-            }
-          }
-          if ((f as any).type === 'hasMany' || (f as any).type === 'hasOne') {
-            if (!selectedFields?.length || selectedFields.includes((f as any).name)) {
-              if (!appendFields.includes((f as any).name)) appendFields.push((f as any).name);
-            }
-          }
-          if (includeAttachments && (f as any).type === 'integer' && /FileId$/.test((f as any).name)) {
-            fileIdFieldNames.push((f as any).name);
-          }
-        }
-      } catch {
-        /* 忽略 */
-      }
-      try {
-        const [, c] = await targetRepo.findAndCount({ filter: filter || {}, limit: 1 });
-        collectionTotal = c;
-      } catch {
-        /* 忽略 */
-      }
-
-      const fieldNames: string[] = selectedFields && selectedFields.length > 0 ? selectedFields : getScalarFields(coll);
-      if (!fieldNames || fieldNames.length === 0) continue;
-
-      const collDisplay = sanitizeSheetName(getCollDisplayName(coll, headerStyle)).replace(/\s+/g, '_');
-      const xlsxName = `sjgl02_export_${taskId}_${Date.now()}.xlsx`;
-      const filePath = path.join(tempDir, xlsxName);
-
-      const streamWriter = new ExcelJS.stream.xlsx.WorkbookWriter({
-        filename: filePath,
-        useStyles: true,
-        useSharedStrings: true,
-      });
-      streamWriter.creator = 'NocoBase @my-project/plugin-sjgl02';
-      const mainSheet = streamWriter.addWorksheet(
-        ensureUniqueSheetName(streamWriter as any, sanitizeSheetName(getCollDisplayName(coll, headerStyle))),
-      );
-      mainSheet.columns = fieldNames.map((name: string) => ({
-        header: getFieldDisplayName(coll, name, headerStyle),
-        key: name,
-        width: Math.max(getFieldDisplayName(coll, name, headerStyle).length + 4, 20),
-      }));
-      (mainSheet.getRow(1) as any).font = { bold: true };
-      (mainSheet.getRow(1) as any).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
-
-      // 附件 ID 收集（主循环合并，一次扫描）
-      const attachIds = new Set<number>();
-      const attachFieldMap = new Map<number, string>();
-
-      const PAGE_SIZE = 5000;
-      const pkType = detectPkType(coll);
-
-      if (pkType === 'int_auto') {
-        // 游标分页：WHERE id > ? ORDER BY id LIMIT ?
-        let lastId = 0;
-        let hasMore = true;
-        while (hasMore) {
-          if (cancelFlags.has(taskId)) {
-            cancelled = true;
-            hasMore = false;
-            continue;
-          }
-          const pageRecords = await targetRepo.find({
-            filter: { ...(filter || {}), id: { $gt: lastId } },
-            sort: ['id'],
-            limit: PAGE_SIZE,
-            ...(appendFields.length > 0 ? { appends: appendFields } : {}),
-          });
-          if (pageRecords.length === 0) {
-            hasMore = false;
-            continue;
-          }
-          for (const record of pageRecords) {
-            const row: Record<string, any> = {};
-            for (const f of fieldNames) {
-              let val = record[f];
-              if (attachmentFieldNames.includes(f)) {
-                if (Array.isArray(val) && val.length > 0) {
-                  for (const a of val) {
-                    if (a?.id && !attachIds.has(a.id)) {
-                      attachIds.add(a.id);
-                      attachFieldMap.set(a.id, f);
-                    }
-                  }
-                  val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
-                } else val = '';
-              } else if (fileIdFieldNames.includes(f)) {
-                if (val !== null && val !== undefined && !attachIds.has(Number(val))) {
-                  attachIds.add(Number(val));
-                  attachFieldMap.set(Number(val), f);
-                }
-                val = val !== null && val !== undefined ? String(val) : '';
-              } else if (Array.isArray(val)) {
-                val = val
-                  .map((item: any) => {
-                    const name = item.nickname || item.name || item.title || item.id || '';
-                    return name ? `${name}(主键：${item.id})` : '';
-                  })
-                  .filter(Boolean)
-                  .join(', ');
-              } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
-                val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
-              }
-              row[f] = formatValue(val);
-            }
-            mainSheet.addRow(row).commit();
-            processedRows++;
-          }
-          lastId = Number((pageRecords[pageRecords.length - 1] as any).id);
-          const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
-          try {
-            await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
-          } catch {
-            /* 忽略 */
-          }
-        }
-      } else if (pkType === 'uuid') {
-        // UUID：预取 ID 数组 → IN 分批
-        try {
-          await db.sequelize.query("SET SESSION statement_timeout = '30min'");
-        } catch {
-          /* 忽略 */
-        }
-        const allIds: any[] = [];
-        let uuidOffset = 0;
-        let uuidHasMore = true;
-        while (uuidHasMore) {
-          const idPage = await targetRepo.find({
-            filter: filter || {},
-            fields: ['id'],
-            offset: uuidOffset,
-            limit: PAGE_SIZE,
-          });
-          if (idPage.length === 0) {
-            uuidHasMore = false;
-          } else {
-            allIds.push(...idPage.map((r: any) => r.id));
-            uuidOffset += PAGE_SIZE;
-          }
-        }
-        for (let bi = 0; bi < allIds.length; bi += PAGE_SIZE) {
-          if (cancelFlags.has(taskId)) {
-            cancelled = true;
-            break;
-          }
-          const batch = allIds.slice(bi, bi + PAGE_SIZE);
-          const pageRecords = await targetRepo.find({
-            filter: { ...(filter || {}), id: { $in: batch } },
-            limit: PAGE_SIZE,
-            ...(appendFields.length > 0 ? { appends: appendFields } : {}),
-          });
-          for (const record of pageRecords) {
-            const row: Record<string, any> = {};
-            for (const f of fieldNames) {
-              let val = record[f];
-              if (attachmentFieldNames.includes(f)) {
-                if (Array.isArray(val) && val.length > 0) {
-                  for (const a of val) {
-                    if (a?.id && !attachIds.has(a.id)) {
-                      attachIds.add(a.id);
-                      attachFieldMap.set(a.id, f);
-                    }
-                  }
-                  val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
-                } else val = '';
-              } else if (fileIdFieldNames.includes(f)) {
-                if (val !== null && val !== undefined && !attachIds.has(Number(val))) {
-                  attachIds.add(Number(val));
-                  attachFieldMap.set(Number(val), f);
-                }
-                val = val !== null && val !== undefined ? String(val) : '';
-              } else if (Array.isArray(val)) {
-                val = val
-                  .map((item: any) => {
-                    const name = item.nickname || item.name || item.title || item.id || '';
-                    return name ? `${name}(主键：${item.id})` : '';
-                  })
-                  .filter(Boolean)
-                  .join(', ');
-              } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
-                val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
-              }
-              row[f] = formatValue(val);
-            }
-            mainSheet.addRow(row).commit();
-            processedRows++;
-          }
-          const progress = Math.min(100, Math.floor((processedRows / Math.max(1, collectionTotal)) * 100));
-          try {
-            await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
-          } catch {
-            /* 忽略 */
-          }
-        }
-      } else {
-        // 其他主键类型：传统 offset/limit 分页
-        let offset = 0;
-        while (offset < collectionTotal) {
-          if (cancelFlags.has(taskId)) {
-            cancelled = true;
-            break;
-          }
-          const pageRecords = await targetRepo.find({
-            filter: filter || {},
-            offset,
-            limit: PAGE_SIZE,
-            ...(appendFields.length > 0 ? { appends: appendFields } : {}),
-          });
-          if (pageRecords.length === 0) break;
-          for (const record of pageRecords) {
-            const row: Record<string, any> = {};
-            for (const f of fieldNames) {
-              let val = record[f];
-              if (attachmentFieldNames.includes(f)) {
-                if (Array.isArray(val) && val.length > 0) {
-                  for (const a of val) {
-                    if (a?.id && !attachIds.has(a.id)) {
-                      attachIds.add(a.id);
-                      attachFieldMap.set(a.id, f);
-                    }
-                  }
-                  val = val.map((a: any) => a.filename || a.title || a.id || '').join(', ');
-                } else val = '';
-              } else if (fileIdFieldNames.includes(f)) {
-                if (val !== null && val !== undefined && !attachIds.has(Number(val))) {
-                  attachIds.add(Number(val));
-                  attachFieldMap.set(Number(val), f);
-                }
-                val = val !== null && val !== undefined ? String(val) : '';
-              } else if (Array.isArray(val)) {
-                val = val
-                  .map((item: any) => {
-                    const name = item.nickname || item.name || item.title || item.id || '';
-                    return name ? `${name}(主键：${item.id})` : '';
-                  })
-                  .filter(Boolean)
-                  .join(', ');
-              } else if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date)) {
-                val = val.nickname || val.username || val.name || val.email || val.id || JSON.stringify(val);
-              }
-              row[f] = formatValue(val);
-            }
-            mainSheet.addRow(row).commit();
-            processedRows++;
-          }
-          offset += PAGE_SIZE;
-          const progress = Math.min(100, Math.floor((offset * 100) / Math.max(1, collectionTotal)));
-          try {
-            await repo.update({ filterByTk: taskId, values: { processedRows, totalRows, progress } });
-          } catch {
-            /* 忽略 */
-          }
-        }
-      }
-
-      if (cancelled) break;
-
-      // 关联数据 Sheet（保留原有功能）
-      if (includeAssociationSheet) {
-        const assocFields = getAssociationFields(coll);
-        for (const af of assocFields.filter((af: any) => !fieldNames.length || fieldNames.includes(af.name))) {
-          const assocRepo = db.getRepository(af.target);
-          if (!assocRepo) continue;
-          let assocTotal = 0;
-          try {
-            const [, cnt] = await assocRepo.findAndCount({ limit: 1 });
-            assocTotal = cnt;
-          } catch {
-            /* 忽略 */
-          }
-          if (assocTotal === 0) continue;
-          const assocColl = db.getCollection(af.target);
-          const assocScalarFields = getScalarFields(assocColl);
-          if (!assocScalarFields || assocScalarFields.length === 0) continue;
-
-          const fieldDisplay = getFieldDisplayName(coll, af.name, headerStyle);
-          const sheetDisplay = getCollDisplayName(assocColl, headerStyle);
-          const sheetName = ensureUniqueSheetName(
-            streamWriter as any,
-            sanitizeSheetName(fieldDisplay + '-' + sheetDisplay).substring(0, 31),
-          );
-          const assocSheet = streamWriter.addWorksheet(sheetName);
-          assocSheet.columns = assocScalarFields.map((n: string) => ({
-            header: getFieldDisplayName(assocColl, n, headerStyle),
-            key: n,
-            width: Math.max(getFieldDisplayName(assocColl, n, headerStyle).length + 4, 20),
-          }));
-          (assocSheet.getRow(1) as any).font = { bold: true };
-          (assocSheet.getRow(1) as any).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
-
-          let aOff = 0;
-          while (aOff < assocTotal) {
-            if (cancelFlags.has(taskId)) {
-              cancelled = true;
-              break;
-            }
-            const aRecs = await assocRepo.find({ offset: aOff, limit: PAGE_SIZE });
-            for (const rec of aRecs) {
-              const row: Record<string, any> = {};
-              for (const f of assocScalarFields) {
-                let val = rec[f];
-                if (val !== null && val !== undefined && typeof val === 'object' && !(val instanceof Date))
-                  val = val.nickname || val.title || val.name || val.id || JSON.stringify(val);
-                row[f] = formatValue(val);
-              }
-              assocSheet.addRow(row).commit();
-              processedRows++;
-            }
-            aOff += PAGE_SIZE;
-            const ap = Math.min(100, Math.floor((aOff * 100) / Math.max(1, assocTotal)));
-            try {
-              await repo.update({
-                filterByTk: taskId,
-                values: { processedRows, totalRows, progress: Math.max(ap, 0) },
-              });
-            } catch {
-              /* 忽略 */
-            }
-          }
-          if (cancelled) break;
-          assocSheet.commit();
-        }
-      }
-
-      mainSheet.commit();
-      await streamWriter.commit();
-
-      if (cancelled) break;
-
-      // 附件打包：已收集的 attachIds
-      let finalFilePath = filePath;
-      if (includeAttachments && attachIds.size > 0) {
-        const fileIdFilenameMap = new Map<number, string>();
-        try {
-          const ar = await db.getRepository('attachments').find({ filter: { id: Array.from(attachIds) } });
-          ar.forEach((at: any) => {
-            if (at.filename) fileIdFilenameMap.set(at.id, at.filename);
-          });
-        } catch {
-          /* 忽略 */
-        }
-        if (fileIdFilenameMap.size > 0) {
-          try {
-            const attachmentFiles: Array<{ entryName: string; diskPath: string }> = [];
-            for (const [aid, fn] of fileIdFilenameMap) {
-              let realPath = path.join(storageDir, fn);
-              if (!fs.existsSync(realPath)) {
-                const atRecords = await db.getRepository('attachments').find({ filter: { id: [aid] } });
-                if (atRecords[0]?.path !== undefined) {
-                  realPath = path.join(storageDir, atRecords[0].path || '', fn);
-                }
-              }
-              if (!fs.existsSync(realPath)) continue;
-              const afName = attachFieldMap.get(aid) || '附件';
-              const folderName = sanitizeSheetName(getFieldDisplayName(coll, afName, headerStyle));
-              const attPrefix = isAllTables ? `${collDisplay}/` : '';
-              attachmentFiles.push({ entryName: `${attPrefix}${folderName}/${fn}`, diskPath: realPath });
-            }
-            if (attachmentFiles.length > 0) {
-              if (isAllTables) {
-                // 全部数据表：延迟打包，仅收集附件信息到全局列表
-                allAttachFileEntries.push(...attachmentFiles);
-              } else {
-                // 单表：直接创建 per-table ZIP
-                const zipName = `sjgl02_export_${taskId}_${Date.now()}.tar.gz`;
-                const zipPath = path.join(tempDir, zipName);
-                try {
-                  const zipOutput = fs.createWriteStream(zipPath);
-                  const zipArchive = archiver('tar', { gzip: true, gzipOptions: { level: 1 } });
-                  await new Promise<void>((resolve, reject) => {
-                    zipArchive.on('error', reject);
-                    zipOutput.on('close', resolve);
-                    zipOutput.on('error', reject);
-                    zipArchive.pipe(zipOutput);
-                    zipArchive.file(filePath, { name: path.basename(filePath) });
-                    for (const af of attachmentFiles) {
-                      zipArchive.file(af.diskPath, { name: af.entryName });
-                    }
-                    zipArchive.finalize();
-                  });
-                  try {
-                    fs.unlinkSync(filePath);
-                  } catch {
-                    /* 忽略 */
-                  }
-                  outputFiles.push(zipPath);
-                  finalFilePath = zipPath;
-                } catch (attErr: any) {
-                  await writeTaskLog(
-                    db,
-                    taskId,
-                    'WARN',
-                    `附件打包失败(${tblName}): ${attErr.message || String(attErr)}，跳过打包`,
-                  );
-                }
-              }
-            }
-          } catch {
-            /* 忽略 */
-          }
-        }
-      }
-
-      // 全部数据表模式：生成即追加到流式 archiver
-      if (isAllTables && !cancelled && streamArchive) {
-        try {
-          // 先改名为可读格式再追加到 tar.gz
-          const internalName = `${collDisplay}.xlsx`;
-          const readablePath = path.join(path.dirname(finalFilePath), internalName);
-          fs.renameSync(finalFilePath, readablePath);
-          finalFilePath = readablePath;
-          streamArchive.file(readablePath, { name: internalName });
-          outputFiles.push(finalFilePath); // 暂存，最后统一删
-        } catch (zipErr: any) {
-          await writeTaskLog(db, taskId, 'WARN', `追加到 ZIP 失败(${tblName}): ${zipErr.message || ''}`);
-        }
-      } else if (!isAllTables) {
-        if (!outputFiles.includes(finalFilePath)) {
-          outputFiles.push(finalFilePath);
-        }
-      }
-
-      await repo.update({
-        filterByTk: taskId,
-        values: {
-          progress: Math.min(100, Math.floor((processedRows / Math.max(totalRows, 1)) * 100)),
-          processedRows,
-          totalRows,
-        },
-      });
-    }
-
-    // 全部数据表：关闭流式 archiver，追加附件
-    if (isAllTables && streamArchive && !cancelled) {
-      try {
-        // 追加附件
-        for (const af of allAttachFileEntries) {
-          try {
-            streamArchive.file(af.diskPath, { name: af.entryName });
-          } catch {
-            /* 忽略 */
-          }
-        }
-        await new Promise<void>((resolve, reject) => {
-          if (streamOutput) streamOutput.on('close', resolve);
-          streamArchive.on('error', reject);
-          streamArchive.finalize();
-        });
-        if (streamOutput?.bytesWritten === 0) {
-          // ZIP 为空，回退
-          try {
-            fs.unlinkSync(streamZipPath);
-          } catch {
-            /* 忽略 */
-          }
-          streamZipPath = '';
-        }
-      } catch (archErr: any) {
-        await writeTaskLog(db, taskId, 'ERROR', `流式ZIP失败: ${archErr.message || ''}`);
-        try {
-          streamZipPath = '';
-        } catch {
-          /* 忽略 */
-        }
-      }
-    }
-
-    if (cancelled) {
-      // 取消：删除临时文件和流式 ZIP
-      if (streamZipPath) {
-        try {
-          fs.unlinkSync(streamZipPath);
-        } catch {
-          /* 忽略 */
-        }
-      }
-      for (const fp of outputFiles) {
-        try {
-          fs.unlinkSync(fp);
-        } catch {
-          /* 忽略 */
-        }
-      }
-      await writeTaskLog(db, taskId, 'WARN', '任务已取消');
-      await repo.update({ filterByTk: taskId, values: { status: 'cancelled', completedAt: new Date() } });
-      return;
-    }
-
-    let mergedFilePath: string;
-    if (isAllTables && streamZipPath && fs.existsSync(streamZipPath) && outputFiles.length === 0) {
-      // 全部数据表：流式 archiver 已构建完成
-      mergedFilePath = streamZipPath;
-    } else if (outputFiles.length === 0) {
-      throw new Error('没有数据可导出');
-    } else if (outputFiles.length === 1 && allAttachFileEntries.length === 0) {
-      mergedFilePath = outputFiles[0];
-    } else {
-      await writeTaskLog(
-        db,
-        taskId,
-        'INFO',
-        `最终合并 ${outputFiles.length} 个文件${
-          allAttachFileEntries.length > 0 ? ' + ' + allAttachFileEntries.length + ' 个附件' : ''
-        }...`,
-      );
-      try {
-        await db.sequelize.query('SET SESSION statement_timeout = 0');
-      } catch {
-        /* 忽略 */
-      }
-
-      const zipName = `sjgl02_export_${taskId}_${Date.now()}.tar.gz`;
-      mergedFilePath = path.join(tempDir, zipName);
-
-      const output = fs.createWriteStream(mergedFilePath);
-      const archive = archiver('tar', { gzip: true, gzipOptions: { level: 1 } });
-      await new Promise<void>((resolve, reject) => {
-        try {
-          output.on('close', resolve);
-          output.on('error', reject);
-          archive.on('error', reject);
-          archive.pipe(output);
-          for (const fp of outputFiles) {
-            archive.file(fp, { name: path.basename(fp) });
-          }
-          for (const af of allAttachFileEntries) {
-            archive.file(af.diskPath, { name: af.entryName });
-          }
-          archive.finalize();
-        } catch (err) {
-          reject(err);
-        }
-      });
-      await writeTaskLog(db, taskId, 'SUCC', '最终合并完成');
-      for (const fp of outputFiles) {
-        try {
-          fs.unlinkSync(fp);
-        } catch {
-          /* 忽略 */
-        }
-      }
-    }
-
-    // 将临时文件重命名为可读格式（表名称(表标识)_日期，无前缀）
-    const d = new Date();
-    const padDate = (n: number) => String(n).padStart(2, '0');
-    const dateStr = `${d.getFullYear()}${padDate(d.getMonth() + 1)}${padDate(d.getDate())}${padDate(
-      d.getHours(),
-    )}${padDate(d.getMinutes())}${padDate(d.getSeconds())}`;
-    const isPkg = mergedFilePath.endsWith('.tar.gz');
-    let finalDisplayName: string;
-    if (tableName === '__all__') {
-      finalDisplayName = isPkg ? `全部数据表_${dateStr}.tar.gz` : `全部数据表_${dateStr}.xlsx`;
-    } else {
-      const exportColl = db.getCollection(tableName);
-      const collDisplayName = exportColl
-        ? sanitizeSheetName(getCollDisplayName(exportColl, headerStyle)).replace(/\s+/g, '_')
-        : tableName;
-      finalDisplayName = `${collDisplayName}_${dateStr}${isPkg ? '.tar.gz' : '.xlsx'}`;
-    }
-    let finalFilePath = path.join(tempDir, finalDisplayName);
-    let suffix = 0;
-    while (fs.existsSync(finalFilePath)) {
-      suffix++;
-      finalFilePath = path.join(
-        tempDir,
-        finalDisplayName.replace(/\.(xlsx|tar\.gz)$/, `_${suffix}.${isPkg ? 'tar.gz' : 'xlsx'}`),
-      );
-    }
-    fs.renameSync(mergedFilePath, finalFilePath);
-    mergedFilePath = finalFilePath;
-
-    const stats = await fsp.stat(mergedFilePath);
-    const attachRepo = db.getRepository('attachments');
-    const exportAttachment = await attachRepo.create({
-      values: {
-        title: path.basename(mergedFilePath),
-        filename: path.basename(mergedFilePath),
-        extname: path.extname(mergedFilePath),
-        mimetype: mergedFilePath.endsWith('.tar.gz')
-          ? 'application/gzip'
-          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        size: stats.size,
-        path: path.relative(storageDir, mergedFilePath).replace(/\\/g, '/'),
-      },
-    });
-
-    await repo.update({
-      filterByTk: taskId,
-      values: {
-        status: 'completed',
-        progress: 100,
-        processedRows,
-        totalRows,
-        exportFileId: exportAttachment.id,
-        fileName: exportAttachment.filename || exportAttachment.title || '',
-        completedAt: new Date(),
-      },
-    });
-    await writeTaskLog(db, taskId, 'SUCC', `导出完成，共 ${processedRows} 行数据`);
-    // 注意：完成文件保留，不删除（用户可下载）
-  } catch (err: any) {
-    try {
-      await writeTaskLog(db, taskId, 'ERROR', `导出失败: ${err.message || String(err)}`);
-      await writeTaskLog(db, taskId, 'WARN', '文件未生成，数据未修改');
-      await repo.update({
-        filterByTk: taskId,
-        values: {
-          status: 'failed',
-          errorMessage: err.message || String(err),
-          completedAt: new Date(),
-        },
-      });
-    } catch {
-      /* 忽略 */
-    }
-  } finally {
-    cancelFlags.delete(taskId);
-    release();
+    const { triggerExportScheduler } = await import('../workers/zombie-guard');
+    triggerExportScheduler();
+  } catch {
+    /* 忽略 */
   }
+}
+
+/**
+ * 从 worker 生成的临时文件创建 attachment 记录，并重命名为可读文件名。
+ * 由 zombie-guard 的 onWorkerExit 调用。
+ */
+export async function resolveAttachmentFromFile(db: any, tempFilePath: string, taskId: number): Promise<number | null> {
+  try {
+    const storageDir = process.env.STORAGE_DIR || 'storage/uploads';
+    let absPath: string;
+    if (path.isAbsolute(tempFilePath)) {
+      absPath = tempFilePath;
+    } else if (tempFilePath.includes('/') || tempFilePath.includes('\\')) {
+      absPath = tempFilePath;
+    } else {
+      absPath = path.join(storageDir, 'exports', tempFilePath);
+    }
+    absPath = path.resolve(absPath);
+    if (!fs.existsSync(absPath)) return null;
+
+    const stats = await fsp.stat(absPath);
+    const attachRepo = db.getRepository('attachments');
+    const fileName = path.basename(absPath);
+    const attachment = await attachRepo.create({
+      values: {
+        title: fileName,
+        filename: fileName,
+        extname: path.extname(absPath),
+        mimetype: resolveMimeType(absPath),
+        size: stats.size,
+        path: path.relative(storageDir, absPath).replace(/\\/g, '/'),
+      },
+    });
+    return attachment.id;
+  } catch {
+    return null;
+  }
+}
+
+function resolveMimeType(absPath: string): string {
+  if (absPath.endsWith('.tar.gz')) return 'application/gzip';
+  if (absPath.endsWith('.zip')) return 'application/zip';
+  if (absPath.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  return 'application/octet-stream';
 }
 
 export async function getProgress(ctx: Context, next: Next) {
@@ -1054,6 +261,11 @@ export async function downloadExport(ctx: Context, next: Next) {
   if (!task) {
     ctx.throw(404, 'Task not found');
   }
+  const currentUserId = ctx.state.currentUser?.id;
+  const isAdmin = (ctx.state.currentUser?.roles || []).some((r: any) => r.name === 'admin' || r.name === 'root');
+  if (!isAdmin && task.createdById !== currentUserId) {
+    ctx.throw(403, 'Access denied');
+  }
   if (!task.exportFileId) {
     ctx.throw(404, 'Export file not found');
   }
@@ -1062,13 +274,13 @@ export async function downloadExport(ctx: Context, next: Next) {
   if (!attachment) {
     ctx.throw(404, 'Attachment record not found');
   }
-  const storageDir = process.env.LOCAL_STORAGE_BASE_URL || process.env.STORAGE_DIR || 'storage/uploads';
-  const filePath = path.join(storageDir, attachment.path || attachment.filename);
+  const storageDir = process.env.STORAGE_DIR || 'storage/uploads';
+  const filePath = path.join(storageDir, attachment.path ?? attachment.filename);
   if (!fs.existsSync(filePath)) {
     ctx.throw(404, 'File not found on disk');
   }
   const fileName = attachment.title || attachment.filename || 'export.xlsx';
-  ctx.attachment(encodeURIComponent(fileName));
+  ctx.attachment(fileName);
   ctx.set('Content-Type', attachment.mimetype || 'application/octet-stream');
   ctx.body = fs.createReadStream(filePath);
   await next();

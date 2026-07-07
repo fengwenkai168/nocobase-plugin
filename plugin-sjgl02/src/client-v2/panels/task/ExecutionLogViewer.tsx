@@ -1,43 +1,45 @@
-// @ts-nocheck
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button, Empty, Space } from 'antd';
 import { CaretDownOutlined, CaretRightOutlined, ReloadOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../../locale';
 import { LOG_LEVEL_COLORS, formatTime } from './shared';
 
 export function ExecutionLogViewer({ api, taskId, status }: { api: any; taskId: number; status: string }) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const [logs, setLogs] = useState<any[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<any>(null);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     try {
       const res = await api.request({ url: 'sjgl02TaskLogs:list', method: 'get', params: { taskId, pageSize: 200 } });
       const data = res?.data?.data || {};
       const items = Array.isArray(data.items) ? data.items : [];
       setLogs(items);
     } catch {
-      // 日志表可能尚未创建，静默处理
-      if (logs.length === 0) setLogs([]);
+      setLogs((prev) => (prev.length === 0 ? [] : prev));
     }
-  };
+  }, [api, taskId]);
 
   useEffect(() => {
-    const run = async () => {
-      setLoading(true);
-      await fetchLogs();
-      setLoading(false);
-    };
-    run();
+    setLoading(true);
+    fetchLogs()
+      .catch(() => {})
+      .finally(() => setLoading(false))
+      .catch(() => {});
 
     if (status === 'processing' || status === 'pending') {
-      timerRef.current = setInterval(fetchLogs, 2000);
+      timerRef.current = setInterval(() => {
+        fetchLogs().catch(() => {});
+      }, 2000);
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [taskId, status]);
+  }, [fetchLogs, status]);
 
   useEffect(() => {
     if (!collapsed && scrollRef.current) {
@@ -68,9 +70,9 @@ export function ExecutionLogViewer({ api, taskId, status }: { api: any; taskId: 
         onClick={() => setCollapsed(false)}
       >
         <Space>
-          <CaretRightOutlined /> 📋 执行日志 ({logs.length} 条)
+          <CaretRightOutlined /> 📋 {t('Execution log ({{count}})', { count: logs.length })}
         </Space>
-        <span style={{ fontSize: 11 }}>{status === 'processing' ? '自动刷新中' : ''}</span>
+        <span style={{ fontSize: 11 }}>{status === 'processing' ? t('Auto refreshing') : ''}</span>
       </div>
     );
   }
@@ -93,10 +95,12 @@ export function ExecutionLogViewer({ api, taskId, status }: { api: any; taskId: 
         onClick={() => setCollapsed(true)}
       >
         <Space>
-          <CaretDownOutlined /> 📋 执行日志 ({logs.length} 条)
+          <CaretDownOutlined /> 📋 {t('Execution log ({{count}})', { count: logs.length })}
         </Space>
         <Space>
-          <span style={{ fontSize: 11, opacity: 0.7 }}>{status === 'processing' ? '每 2 秒自动刷新' : ''}</span>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>
+            {status === 'processing' ? t('Auto refresh every 2 seconds') : ''}
+          </span>
           <Button
             type="text"
             size="small"
@@ -123,12 +127,12 @@ export function ExecutionLogViewer({ api, taskId, status }: { api: any; taskId: 
         }}
       >
         {loading && logs.length === 0 ? (
-          <div style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>加载中...</div>
+          <div style={{ color: '#94a3b8', textAlign: 'center', padding: 20 }}>{t('Loading')}...</div>
         ) : logs.length === 0 ? (
           <div style={{ color: '#94a3b8', textAlign: 'center', padding: 20, lineHeight: 2 }}>
-            暂无执行日志
+            {t('No execution logs')}
             <br />
-            <span style={{ fontSize: 11, opacity: 0.6 }}>历史任务或 v1.0.64 之前的任务不含日志记录</span>
+            <span style={{ fontSize: 11, opacity: 0.6 }}>{t('Tasks before v1.0.64 may not contain logs')}</span>
           </div>
         ) : (
           logs.map((log: any, i: number) => (

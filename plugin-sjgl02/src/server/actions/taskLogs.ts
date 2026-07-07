@@ -1,14 +1,6 @@
 import { Context, Next } from '@nocobase/actions';
 import type { Database } from '@nocobase/database';
-
-function isAdminOrRoot(ctx: Context): boolean {
-  try {
-    const roleNames = (ctx.state.currentUser?.roles || []).map((r: any) => r.name);
-    return roleNames.some((n: string) => n === 'admin' || n === 'root');
-  } catch {
-    return false;
-  }
-}
+import { isAdminOrRoot } from './auth-utils';
 
 export async function listTaskLogs(ctx: Context, next: Next) {
   const { taskId } = ctx.action.params;
@@ -38,6 +30,6 @@ export async function writeTaskLog(db: Database, taskId: number, level: string, 
     const repo = db.getRepository('sjgl02_task_logs');
     await repo.create({ values: { taskId, level, message, timestamp: new Date() } });
   } catch (e) {
-    // 静默处理日志写入失败，避免影响主流程
+    console.warn('[sjgl02] writeTaskLog failed:', (e as Error)?.message || e);
   }
 }

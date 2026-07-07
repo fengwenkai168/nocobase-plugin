@@ -1,19 +1,14 @@
-import { setupTestApp, teardownTestApp, createTestCollections, loginAs, saveTablePermission } from './helpers/setup';
+import {
+  setupTestApp,
+  teardownTestApp,
+  createTestCollections,
+  loginAs,
+  saveTablePermission,
+  waitForTask,
+} from './helpers/setup';
 import { cleanupBusinessData, cleanupTargetTable, cleanupShadowTables } from './helpers/cleanup';
 import { createExcelFile, getFixturePath, cleanupFixture, createAttachment } from './helpers/fixtures';
 import { MockServer } from '@nocobase/test';
-
-async function waitForTask(app: MockServer, taskId: number, timeout = 30000): Promise<any> {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    const task = await app.db.getRepository('sjgl02_tasks').findOne({ filter: { id: taskId } });
-    if (['completed', 'failed', 'cancelled'].includes(task.get('status'))) {
-      return task;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error('等待任务完成超时');
-}
 
 describe('Import Execute', () => {
   let ctx: { app: MockServer; adminAgent: any; normalUser: any; normalRole: any };

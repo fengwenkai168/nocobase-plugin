@@ -7,9 +7,11 @@
  * For more information, please refer to: https://www.nocobase.com/agreement.
  */
 
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -23,6 +25,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 var tasks_exports = {};
 __export(tasks_exports, {
@@ -32,21 +42,8 @@ __export(tasks_exports, {
   listTasks: () => listTasks
 });
 module.exports = __toCommonJS(tasks_exports);
-var import_cancel_state = require("./cancel-state");
-function quoteIdentifier(name) {
-  const DQ = String.fromCharCode(34);
-  const DDQ = DQ + DQ;
-  return DQ + name.replace(new RegExp(DQ, "g"), DDQ) + DQ;
-}
-function isAdminOrRoot(ctx) {
-  var _a;
-  try {
-    const roleNames = (((_a = ctx.state.currentUser) == null ? void 0 : _a.roles) || []).map((r) => r.name);
-    return roleNames.some((n) => n === "admin" || n === "root");
-  } catch {
-    return false;
-  }
-}
+var import_import_utils = require("./import-utils");
+var import_auth_utils = require("./auth-utils");
 async function listTasks(ctx, next) {
   var _a, _b;
   const { taskType, status, search } = ctx.action.params;
@@ -78,11 +75,11 @@ async function listTasks(ctx, next) {
   const taskViewScope = await getTaskViewScope(ctx);
   if (taskViewScope === "own") {
     if (filter.$or) {
-      const baseFilter = { createdById: ((_a = ctx.state.currentUser) == null ? void 0 : _a.id) || -1 };
+      const baseFilter = { createdById: ((_a = ctx.state.currentUser) == null ? void 0 : _a.id) ?? -1 };
       filter.$and = [baseFilter, { $or: filter.$or }];
       delete filter.$or;
     } else {
-      filter.createdById = ((_b = ctx.state.currentUser) == null ? void 0 : _b.id) || -1;
+      filter.createdById = ((_b = ctx.state.currentUser) == null ? void 0 : _b.id) ?? -1;
     }
   }
   const repo = ctx.db.getRepository("sjgl02_tasks");
@@ -102,6 +99,7 @@ async function listTasks(ctx, next) {
   await next();
 }
 async function getTaskDetail(ctx, next) {
+  var _a, _b;
   const { taskId } = ctx.action.params;
   const repo = ctx.db.getRepository("sjgl02_tasks");
   const task = await repo.findOne({
@@ -110,6 +108,12 @@ async function getTaskDetail(ctx, next) {
   });
   if (!task) {
     ctx.throw(404, "Task not found");
+  }
+  const currentUserId = (_a = ctx.state.currentUser) == null ? void 0 : _a.id;
+  const isAdmin = (((_b = ctx.state.currentUser) == null ? void 0 : _b.roles) || []).some((r) => r.name === "admin" || r.name === "root");
+  const taskViewScope = await getTaskViewScope(ctx);
+  if (!isAdmin && taskViewScope === "own" && task.createdById !== currentUserId) {
+    ctx.throw(403, "Access denied");
   }
   ctx.body = task;
   await next();
@@ -124,22 +128,32 @@ async function cancelTask(ctx, next) {
     ctx.throw(404, "Task not found");
   }
   const currentUserId = (_a = ctx.state.currentUser) == null ? void 0 : _a.id;
-  if (!isAdminOrRoot(ctx) && task.createdById !== currentUserId) {
+  if (!(0, import_auth_utils.isAdminOrRoot)(ctx) && task.createdById !== currentUserId) {
     ctx.throw(403, "\u53EA\u80FD\u53D6\u6D88\u81EA\u5DF1\u521B\u5EFA\u7684\u4EFB\u52A1");
   }
   if (["completed", "failed", "cancelled"].includes(task.status)) {
     ctx.throw(400, "Cannot cancel a completed/failed/cancelled task");
   }
-  import_cancel_state.cancelFlags.add(Number(taskId));
-  try {
-    const quotedShadow = quoteIdentifier("_sjgl02_import_" + taskId);
-    await ctx.db.sequelize.query("DROP TABLE IF EXISTS " + quotedShadow);
-  } catch {
+  const taskIdNum = Number(taskId);
+  if (task.taskType === "import") {
+    try {
+      const quotedShadow = (0, import_import_utils.quoteIdentifier)("_sjgl02_import_" + taskIdNum);
+      await ctx.db.sequelize.query("DROP TABLE IF EXISTS " + quotedShadow);
+    } catch {
+    }
   }
   await repo.update({
     filterByTk: task.id,
     values: { status: "cancelled", progress: task.progress }
   });
+  if (task.taskType === "export") {
+    try {
+      const { activeWorkers } = await import("../workers/zombie-guard");
+      const child = activeWorkers.get(taskIdNum);
+      if (child && !child.killed) child.kill("SIGTERM");
+    } catch {
+    }
+  }
   ctx.body = { success: true };
   await next();
 }
@@ -152,7 +166,7 @@ async function deleteTask(ctx, next) {
   if (!task) {
     ctx.throw(404, "Task not found");
   }
-  if (!isAdminOrRoot(ctx) && task.createdById !== ((_a = ctx.state.currentUser) == null ? void 0 : _a.id)) {
+  if (!(0, import_auth_utils.isAdminOrRoot)(ctx) && task.createdById !== ((_a = ctx.state.currentUser) == null ? void 0 : _a.id)) {
     ctx.throw(403, "\u53EA\u80FD\u5220\u9664\u81EA\u5DF1\u521B\u5EFA\u7684\u4EFB\u52A1");
   }
   await ctx.db.getRepository("sjgl02_task_logs").destroy({ filter: { taskId } });

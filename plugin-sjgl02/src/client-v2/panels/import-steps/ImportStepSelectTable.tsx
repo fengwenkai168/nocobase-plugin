@@ -1,5 +1,7 @@
 import React from 'react';
 import { Card, Row, Col, Select, Button, Tag } from 'antd';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../../locale';
 import { ImportTableItem } from '../import-hooks/importTypes';
 
 interface ImportStepSelectTableProps {
@@ -17,15 +19,16 @@ export default function ImportStepSelectTable({
   onSelect,
   onNext,
 }: ImportStepSelectTableProps) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   return (
     <div>
       <Row gutter={16}>
         <Col span={12}>
-          <Card title="📋 选择目标数据表" size="small">
+          <Card title={`📋 ${t('Select target table')}`} size="small">
             <Select
               data-testid="import-table-select"
               style={{ width: '100%' }}
-              placeholder="— 请选择数据表 —"
+              placeholder={t('Please select a table')}
               loading={loading}
               showSearch
               value={selectedTable?.name || undefined}
@@ -37,21 +40,24 @@ export default function ImportStepSelectTable({
               }
               options={tables.map((t) => ({ value: t.name, label: `📁 ${t.title} (${t.name})` }))}
             />
-            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>共 {tables.length} 张表</div>
+            <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+              {t('{{count}} tables', { count: tables.length })}
+            </div>
           </Card>
         </Col>
         <Col span={12}>
-          <Card title="ℹ️ 导入说明" size="small">
+          <Card title={`ℹ️ ${t('Import instructions')}`} size="small">
             <div style={{ fontSize: 13, color: '#666', lineHeight: 1.9 }}>
               <p>
-                • 支持 <strong>.xlsx</strong> / <strong>.xls</strong> / <strong>.csv</strong>
+                • {t('Supports .xlsx / .xls / .csv')}: <strong>.xlsx</strong> / <strong>.xls</strong> /{' '}
+                <strong>.csv</strong>
               </p>
               <p>
-                • 文件最大 <strong>50 MB</strong>
+                • {t('File max 50 MB')}: <strong>50 MB</strong>
               </p>
               <p>
-                • 三种模式：<Tag color="blue">新增</Tag> <Tag color="green">更新</Tag>{' '}
-                <Tag color="orange">新增+更新</Tag>
+                • {t('Three modes: insert, update, upsert')}: <Tag color="blue">{t('Insert only')}</Tag>{' '}
+                <Tag color="green">{t('Update only')}</Tag> <Tag color="orange">{t('Upsert')}</Tag>
               </p>
             </div>
           </Card>
@@ -59,7 +65,7 @@ export default function ImportStepSelectTable({
       </Row>
       <div style={{ textAlign: 'right', marginTop: 12 }}>
         <Button type="primary" disabled={!selectedTable} onClick={onNext}>
-          下一步 →
+          {t('Next step')} →
         </Button>
       </div>
     </div>

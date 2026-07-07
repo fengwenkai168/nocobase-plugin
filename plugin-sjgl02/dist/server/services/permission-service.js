@@ -44,10 +44,11 @@ class PermissionService {
   }
   async findPermission(targetType, targetId, tableName) {
     try {
-      const [rows] = await this.db.sequelize.query(
-        'SELECT * FROM "sjgl02_table_permissions" WHERE "targetType" = $1 AND "targetId" = $2 AND "tableName" = $3',
-        { bind: [targetType, targetId, tableName], raw: true }
-      );
+      const repo = this.db.getRepository("sjgl02_table_permissions");
+      const rows = await repo.find({
+        filter: { targetType, targetId, tableName },
+        limit: 1
+      });
       return rows[0] || null;
     } catch {
       return null;
@@ -55,11 +56,11 @@ class PermissionService {
   }
   async findPermissionsByTarget(targetType, targetId) {
     try {
-      const [rows] = await this.db.sequelize.query(
-        'SELECT * FROM "sjgl02_table_permissions" WHERE "targetType" = $1 AND "targetId" = $2 ORDER BY "id"',
-        { bind: [targetType, targetId], raw: true }
-      );
-      return rows || [];
+      const repo = this.db.getRepository("sjgl02_table_permissions");
+      return await repo.find({
+        filter: { targetType, targetId },
+        sort: ["id"]
+      });
     } catch {
       return [];
     }
@@ -67,12 +68,14 @@ class PermissionService {
   async findPermissionsByRoles(roleNames) {
     if (roleNames.length === 0) return [];
     try {
-      const placeholders = roleNames.map((_, i) => "$" + (i + 1)).join(", ");
-      const [rows] = await this.db.sequelize.query(
-        `SELECT * FROM "sjgl02_table_permissions" WHERE "targetType" = 'role' AND "targetId" IN (` + placeholders + ') ORDER BY "id"',
-        { bind: roleNames, raw: true }
-      );
-      return rows || [];
+      const repo = this.db.getRepository("sjgl02_table_permissions");
+      return await repo.find({
+        filter: {
+          targetType: "role",
+          targetId: { $in: roleNames }
+        },
+        sort: ["id"]
+      });
     } catch {
       return [];
     }

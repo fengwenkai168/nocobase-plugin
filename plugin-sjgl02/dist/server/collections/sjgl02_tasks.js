@@ -48,6 +48,7 @@ var sjgl02_tasks_default = (0, import_database.defineCollection)({
     },
     { type: "string", name: "tableName" },
     { type: "string", name: "fileName" },
+    { type: "string", name: "fileNameTemplate" },
     {
       interface: "select",
       type: "string",
@@ -94,6 +95,7 @@ var sjgl02_tasks_default = (0, import_database.defineCollection)({
     { type: "json", name: "associationSheetTables" },
     { type: "json", name: "associationDisplayMode" },
     { type: "boolean", name: "includeAttachments", defaultValue: false },
+    { type: "json", name: "requiredFields" },
     { type: "string", name: "blankCellMode", defaultValue: "update" },
     { type: "string", name: "headerStyle", defaultValue: "title_id" },
     { type: "date", name: "completedAt" },

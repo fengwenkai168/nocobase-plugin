@@ -30,15 +30,7 @@ __export(taskLogs_exports, {
   writeTaskLog: () => writeTaskLog
 });
 module.exports = __toCommonJS(taskLogs_exports);
-function isAdminOrRoot(ctx) {
-  var _a;
-  try {
-    const roleNames = (((_a = ctx.state.currentUser) == null ? void 0 : _a.roles) || []).map((r) => r.name);
-    return roleNames.some((n) => n === "admin" || n === "root");
-  } catch {
-    return false;
-  }
-}
+var import_auth_utils = require("./auth-utils");
 async function listTaskLogs(ctx, next) {
   var _a;
   const { taskId } = ctx.action.params;
@@ -49,7 +41,7 @@ async function listTaskLogs(ctx, next) {
   if (!task) {
     ctx.throw(404, "\u4EFB\u52A1\u4E0D\u5B58\u5728");
   }
-  if (!isAdminOrRoot(ctx) && task.createdById !== ((_a = ctx.state.currentUser) == null ? void 0 : _a.id)) {
+  if (!(0, import_auth_utils.isAdminOrRoot)(ctx) && task.createdById !== ((_a = ctx.state.currentUser) == null ? void 0 : _a.id)) {
     ctx.throw(403, "\u53EA\u80FD\u67E5\u770B\u81EA\u5DF1\u4EFB\u52A1\u7684\u65E5\u5FD7");
   }
   const repo = ctx.db.getRepository("sjgl02_task_logs");
@@ -67,6 +59,7 @@ async function writeTaskLog(db, taskId, level, message) {
     const repo = db.getRepository("sjgl02_task_logs");
     await repo.create({ values: { taskId, level, message, timestamp: /* @__PURE__ */ new Date() } });
   } catch (e) {
+    console.warn("[sjgl02] writeTaskLog failed:", (e == null ? void 0 : e.message) || e);
   }
 }
 // Annotate the CommonJS export names for ESM import in node:

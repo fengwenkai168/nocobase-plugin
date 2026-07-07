@@ -1,13 +1,14 @@
-// @ts-nocheck
 import React from 'react';
 import { Tag } from 'antd';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../../locale';
 
 export const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
-  pending: { color: '#d97706', label: '排队中' },
-  processing: { color: '#3b82f6', label: '进行中' },
-  completed: { color: '#059669', label: '已完成' },
-  failed: { color: '#dc2626', label: '失败' },
-  cancelled: { color: '#6b7280', label: '已取消' },
+  pending: { color: '#d97706', label: 'Pending' },
+  processing: { color: '#3b82f6', label: 'Processing' },
+  completed: { color: '#059669', label: 'Completed' },
+  failed: { color: '#dc2626', label: 'Failed' },
+  cancelled: { color: '#6b7280', label: 'Cancelled' },
 };
 
 export const LOG_LEVEL_COLORS: Record<string, string> = {
@@ -18,13 +19,15 @@ export const LOG_LEVEL_COLORS: Record<string, string> = {
 };
 
 export function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const cfg = STATUS_CONFIG[status] || { color: '#999', label: status };
-  return <Tag color={cfg.color}>{cfg.label}</Tag>;
+  return <Tag color={cfg.color}>{t(cfg.label)}</Tag>;
 }
 
 export function TableTag({ name, title }: { name: string; title?: string }) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   if (name === '__all__') {
-    return <Tag color="#7c3aed">📦 全部数据表</Tag>;
+    return <Tag color="#7c3aed">📦 {t('All tables')}</Tag>;
   }
   const label = title || name;
   return (
@@ -44,8 +47,9 @@ export function FieldTag({ name, title }: { name: string; title?: string }) {
 }
 
 export function DataDot({ type, count }: { type: 'success' | 'failed' | 'total'; count: number }) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const colors = { success: '#059669', failed: '#dc2626', total: '#9ca3af' };
-  const labels = { success: '成功', failed: '失败', total: '总计' };
+  const labels = { success: 'Success', failed: 'Failed', total: 'Total' };
   return (
     <span style={{ color: colors[type], marginRight: 12, fontSize: 13 }}>
       <span
@@ -58,7 +62,7 @@ export function DataDot({ type, count }: { type: 'success' | 'failed' | 'total';
           marginRight: 4,
         }}
       />
-      {labels[type]}：{count}
+      {t(labels[type])}：{count}
     </span>
   );
 }
@@ -82,14 +86,21 @@ export function formatFileSize(bytes: number | null | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function formatDuration(start: string | Date, end: string | Date | null | undefined): string {
+export function formatDuration(
+  start: string | Date,
+  end: string | Date | null | undefined,
+  t?: (key: string, options?: any) => string,
+): string {
   if (!start || !end) return '—';
   const ms = new Date(end).getTime() - new Date(start).getTime();
   if (ms < 0) return '—';
   const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return `${seconds} 秒`;
+  if (seconds < 60) return t ? t('Duration seconds', { count: seconds }) : `${seconds} sec`;
   const minutes = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  if (minutes < 60) return secs > 0 ? `${minutes} 分 ${secs} 秒` : `${minutes} 分钟`;
-  return `${Math.floor(minutes / 60)} 小时 ${minutes % 60} 分钟`;
+  if (minutes < 60)
+    return t ? t('Duration minutes seconds', { min: minutes, sec: secs }) : `${minutes} min ${secs} sec`;
+  return t
+    ? t('Duration hours minutes', { hour: Math.floor(minutes / 60), min: minutes % 60 })
+    : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }

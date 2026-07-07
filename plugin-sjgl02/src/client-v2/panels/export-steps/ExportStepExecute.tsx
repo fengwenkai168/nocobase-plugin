@@ -1,5 +1,7 @@
 import React from 'react';
 import { Card, Button, Statistic, Row, Col } from 'antd';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../../locale';
 
 interface ExportStepExecuteProps {
   isAllTables: boolean;
@@ -20,36 +22,37 @@ export default function ExportStepExecute({
   onPrev,
   onExport,
 }: ExportStepExecuteProps) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   return (
     <div>
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="选择字段" value={isAllTables ? '全部' : selFieldsCount} />
+            <Statistic title={t('Selected fields')} value={isAllTables ? t('All') : selFieldsCount} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="预计行数" value={estimatedRows ?? '...'} />
+            <Statistic title={t('Estimated rows')} value={estimatedRows ?? '...'} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="文件命名" value={fileName} />
+            <Statistic title={t('File name')} value={fileName} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="格式" value={isAllTables ? '.zip' : includeAttachments ? '.zip' : '.xlsx'} />
+            <Statistic title={t('Format')} value={isAllTables ? '.zip' : includeAttachments ? '.zip' : '.xlsx'} />
           </Card>
         </Col>
       </Row>
       <div style={{ textAlign: 'right' }}>
         <Button onClick={onPrev} style={{ marginRight: 8 }}>
-          ← 上一步
+          ← {t('Previous step')}
         </Button>
         <Button data-testid="export-execute-btn" type="primary" onClick={onExport}>
-          ▶ 执行导出
+          ▶ {t('Execute export')}
         </Button>
       </div>
     </div>

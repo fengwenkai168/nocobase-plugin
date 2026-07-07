@@ -18,6 +18,7 @@ export default defineCollection({
     },
     { type: 'string', name: 'tableName' },
     { type: 'string', name: 'fileName' },
+    { type: 'string', name: 'fileNameTemplate' },
     {
       interface: 'select',
       type: 'string',
@@ -64,6 +65,7 @@ export default defineCollection({
     { type: 'json', name: 'associationSheetTables' },
     { type: 'json', name: 'associationDisplayMode' },
     { type: 'boolean', name: 'includeAttachments', defaultValue: false },
+    { type: 'json', name: 'requiredFields' },
     { type: 'string', name: 'blankCellMode', defaultValue: 'update' },
     { type: 'string', name: 'headerStyle', defaultValue: 'title_id' },
     { type: 'date', name: 'completedAt' },

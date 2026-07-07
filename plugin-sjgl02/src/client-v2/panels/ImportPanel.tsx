@@ -1,5 +1,7 @@
 import React from 'react';
 import { Steps, App } from 'antd';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../locale';
 import { useImportPanel } from './import-hooks/useImportPanel';
 import ImportStepSelectTable from './import-steps/ImportStepSelectTable';
 import ImportStepUpload from './import-steps/ImportStepUpload';
@@ -9,13 +11,18 @@ import { useAPI } from '../utils/api';
 export default function ImportPanel() {
   const client = useAPI();
   const { message, modal } = App.useApp();
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const state = useImportPanel(message);
 
   return (
     <div>
       <Steps
         current={state.step}
-        items={[{ title: '选择数据表' }, { title: '上传文件 & 字段映射' }, { title: '预览 & 执行' }]}
+        items={[
+          { title: t('Select target table') },
+          { title: t('Upload file & field mapping') },
+          { title: t('Preview & execute') },
+        ]}
         style={{ marginBottom: 24 }}
       />
       {state.step === 0 && (

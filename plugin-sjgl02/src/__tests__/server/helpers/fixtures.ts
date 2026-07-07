@@ -66,12 +66,13 @@ export function createExcelFile(
   headers: string[],
   rows: any[][],
   headerRow = 1,
+  preHeaderRows: any[][] = [],
 ): string {
   const wsData: any[][] = [];
 
-  // 如果表头不在第一行，前面补空行
-  for (let i = 1; i < headerRow; i++) {
-    wsData.push([]);
+  // 如果表头不在第一行，前面填入前置行（若有）或空行
+  for (let i = 0; i < headerRow - 1; i++) {
+    wsData.push(preHeaderRows[i] || []);
   }
 
   wsData.push(headers);
@@ -137,4 +138,31 @@ export function cleanupFixture(filePath: string) {
   } catch {
     // ignore
   }
+}
+
+/**
+ * 从导出任务中读取文件内容为 Buffer
+ */
+export async function readExportBuffer(app: MockServer, task: any): Promise<Buffer> {
+  const exportFileId = task.get('exportFileId');
+  if (!exportFileId) {
+    throw new Error('导出任务未生成文件');
+  }
+  const attachment = await app.db.getRepository('attachments').findOne({
+    filter: { id: exportFileId },
+  });
+  if (!attachment) {
+    throw new Error('导出文件附件记录不存在');
+  }
+  const storageDir = process.env.LOCAL_STORAGE_DEST || process.env.STORAGE_DIR || 'storage/uploads';
+  const filePath = path.join(storageDir, attachment.get('path') || attachment.get('filename'));
+  return fs.readFileSync(filePath);
+}
+
+/**
+ * 下载导出文件并返回 Buffer（通过 HTTP agent）
+ */
+export async function downloadExport(agent: any, taskId: number): Promise<Buffer> {
+  const res = await agent.get(`/sjgl02Export:download?taskId=${taskId}`).buffer(true);
+  return res.body;
 }

@@ -184,13 +184,45 @@ export async function createProductCollection(app: MockServer) {
       { type: 'string', name: 'supplier' },
       { type: 'boolean', name: 'published', defaultValue: false },
       { type: 'text', name: 'description' },
-      { type: 'attachment', name: 'cover' },
-      { type: 'attachment', name: 'files', multiple: true },
+      { type: 'belongsToMany', name: 'cover', target: 'attachments' },
+      { type: 'belongsToMany', name: 'files', target: 'attachments' },
     ],
   });
 
   await app.db.sync();
   return collection;
+}
+
+/**
+ * 等待任务完成（轮询 status 字段直到终态或超时）
+ * @param app MockServer 实例
+ * @param taskId 任务 ID
+ * @param timeout 超时毫秒数，默认 30 秒
+ * @param verbose 是否打印进度日志，默认 false
+ */
+export async function waitForTask(app: MockServer, taskId: number, timeout = 30000, verbose = false): Promise<any> {
+  const start = Date.now();
+  let lastStatus = '';
+  while (Date.now() - start < timeout) {
+    const task = await app.db.getRepository('sjgl02_tasks').findOne({ filter: { id: taskId } });
+    const status = task.get('status');
+    if (verbose && status !== lastStatus) {
+      const errMsg = task.get('errorMessage') || '';
+      const pRows = task.get('processedRows') || 0;
+      console.log(
+        `  [${((Date.now() - start) / 1000).toFixed(0)}s] status=${status} processed=${pRows} err=${errMsg.substring(
+          0,
+          60,
+        )}`,
+      );
+      lastStatus = status;
+    }
+    if (['completed', 'failed', 'cancelled'].includes(status)) {
+      return task;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error('等待任务完成超时');
 }
 
 /**

@@ -1,20 +1,6 @@
 import { Context, Next } from '@nocobase/actions';
-import { cancelFlags } from './cancel-state';
-
-function quoteIdentifier(name: string): string {
-  const DQ = String.fromCharCode(34);
-  const DDQ = DQ + DQ;
-  return DQ + name.replace(new RegExp(DQ, 'g'), DDQ) + DQ;
-}
-
-function isAdminOrRoot(ctx: Context): boolean {
-  try {
-    const roleNames = (ctx.state.currentUser?.roles || []).map((r: any) => r.name);
-    return roleNames.some((n: string) => n === 'admin' || n === 'root');
-  } catch {
-    return false;
-  }
-}
+import { quoteIdentifier } from './import-utils';
+import { isAdminOrRoot } from './auth-utils';
 
 export async function listTasks(ctx: Context, next: Next) {
   const { taskType, status, search } = ctx.action.params;
@@ -51,11 +37,11 @@ export async function listTasks(ctx: Context, next: Next) {
   const taskViewScope = await getTaskViewScope(ctx);
   if (taskViewScope === 'own') {
     if (filter.$or) {
-      const baseFilter = { createdById: ctx.state.currentUser?.id || -1 };
+      const baseFilter = { createdById: ctx.state.currentUser?.id ?? -1 };
       filter.$and = [baseFilter, { $or: filter.$or }];
       delete filter.$or;
     } else {
-      filter.createdById = ctx.state.currentUser?.id || -1;
+      filter.createdById = ctx.state.currentUser?.id ?? -1;
     }
   }
 
@@ -86,6 +72,12 @@ export async function getTaskDetail(ctx: Context, next: Next) {
   if (!task) {
     ctx.throw(404, 'Task not found');
   }
+  const currentUserId = ctx.state.currentUser?.id;
+  const isAdmin = (ctx.state.currentUser?.roles || []).some((r: any) => r.name === 'admin' || r.name === 'root');
+  const taskViewScope = await getTaskViewScope(ctx);
+  if (!isAdmin && taskViewScope === 'own' && task.createdById !== currentUserId) {
+    ctx.throw(403, 'Access denied');
+  }
   ctx.body = task;
   await next();
 }
@@ -105,17 +97,35 @@ export async function cancelTask(ctx: Context, next: Next) {
   if (['completed', 'failed', 'cancelled'].includes(task.status)) {
     ctx.throw(400, 'Cannot cancel a completed/failed/cancelled task');
   }
-  cancelFlags.add(Number(taskId));
-  try {
-    const quotedShadow = quoteIdentifier('_sjgl02_import_' + taskId);
-    await ctx.db.sequelize.query('DROP TABLE IF EXISTS ' + quotedShadow);
-  } catch {
-    /* 忽略 */
+
+  // 先更新 DB 状态（子进程每页检查此字段）
+  const taskIdNum = Number(taskId);
+
+  // 如果是导入任务，清理影子表
+  if (task.taskType === 'import') {
+    try {
+      const quotedShadow = quoteIdentifier('_sjgl02_import_' + taskIdNum);
+      await ctx.db.sequelize.query('DROP TABLE IF EXISTS ' + quotedShadow);
+    } catch {
+      /* 忽略 */
+    }
   }
+
   await repo.update({
     filterByTk: task.id,
     values: { status: 'cancelled', progress: task.progress },
   });
+
+  // DB 先标记为 cancelled，再杀子进程（避免 exit 事件竞态覆盖为 timeout）
+  if (task.taskType === 'export') {
+    try {
+      const { activeWorkers } = await import('../workers/zombie-guard');
+      const child = activeWorkers.get(taskIdNum);
+      if (child && !child.killed) child.kill('SIGTERM');
+    } catch {
+      /* 忽略 */
+    }
+  }
   ctx.body = { success: true };
   await next();
 }

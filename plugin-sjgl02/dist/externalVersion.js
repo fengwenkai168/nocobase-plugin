@@ -8,16 +8,15 @@
  */
 
 module.exports = {
-  "@nocobase/client": "2.1.9",
   "react": "18.2.0",
+  "@ant-design/icons": "5.6.1",
+  "@nocobase/client": "2.1.9",
   "react-i18next": "11.18.6",
   "@nocobase/flow-engine": "2.1.9",
   "@nocobase/client-v2": "2.1.9",
   "@nocobase/server": "2.1.9",
-  "@nocobase/test": "2.1.9",
   "antd": "5.24.2",
-  "@ant-design/icons": "5.6.1",
   "@nocobase/actions": "2.1.9",
-  "async-mutex": "0.5.0",
-  "@nocobase/database": "2.1.9"
+  "@nocobase/database": "2.1.9",
+  "sequelize": "6.35.2"
 };

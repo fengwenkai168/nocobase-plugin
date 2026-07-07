@@ -26,10 +26,13 @@ export function useViewScope(api: any, target?: { type?: string; id?: string | n
   }, [api, target?.id, target?.type]);
 
   const handleViewScopeChange = (val: string) => {
+    const prev = viewScope;
     setViewScope(val);
-    const data: any = { taskViewScope: val };
+    const data: Record<string, unknown> = { taskViewScope: val };
     if (target?.type === 'user' && target?.id) data.userId = String(target.id);
-    return api.request({ url: 'sjgl02Permissions:saveSettings', method: 'post', data }).catch(() => {});
+    return api.request({ url: 'sjgl02Permissions:saveSettings', method: 'post', data }).catch(() => {
+      setViewScope(prev);
+    });
   };
 
   return { viewScope, setViewScope: handleViewScopeChange, loading };

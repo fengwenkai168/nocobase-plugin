@@ -1,5 +1,7 @@
 import React from 'react';
 import { Card, Button, Space, Select, Tag, Input, Checkbox, Switch, Radio, Row, Col } from 'antd';
+import { useTranslation } from 'react-i18next';
+import { NAMESPACE } from '../../locale';
 import { ExportTableItem, PermSourceOption, ExportFieldItem } from '../export-hooks/exportTypes';
 
 interface ExportStepConfigProps {
@@ -53,6 +55,7 @@ export default function ExportStepConfig({
   onPrev,
   onNext,
 }: ExportStepConfigProps) {
+  const { t } = useTranslation([NAMESPACE, 'client'], { nsMode: 'fallback' });
   const regular = fields.filter(
     (f) => !['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(f.type || '') && !f.isForeignKey,
   );
@@ -64,7 +67,7 @@ export default function ExportStepConfig({
       {isAdminOrRoot && !isAllTables && (
         <Card size="small" style={{ marginBottom: 16, backgroundColor: '#f0f7ff', border: '1px solid #bae0ff' }}>
           <Space>
-            <span style={{ color: '#333', fontWeight: 500, fontSize: 13 }}>切换已配置的方案：</span>
+            <span style={{ color: '#333', fontWeight: 500, fontSize: 13 }}>{t('Scheme switch')}：</span>
             <Select
               value={
                 permSource?.type === 'admin' ? 'admin' : permSource ? `${permSource.type}:${permSource.id}` : 'admin'
@@ -78,11 +81,9 @@ export default function ExportStepConfig({
         </Card>
       )}
       {isAllTables ? (
-        <Card title="📦 全部数据表导出" size="small" style={{ marginBottom: 16 }}>
-          <p>
-            ✅ 将导出系统中所有数据表，最终打包为 <strong>ZIP 压缩包</strong>
-          </p>
-          <p style={{ marginTop: 8 }}>📋 包含以下 {tables.length} 张表：</p>
+        <Card title={`📦 ${t('All tables export')}`} size="small" style={{ marginBottom: 16 }}>
+          <p>✅ {t('All tables export description')}</p>
+          <p style={{ marginTop: 8 }}>📋 {t('Includes the following {{count}} tables', { count: tables.length })}：</p>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             <Space wrap>
               {tables.map((t: any) => (
@@ -95,23 +96,28 @@ export default function ExportStepConfig({
         </Card>
       ) : (
         <>
-          <Card data-testid="export-fields-section" title="☑️ 字段选择" size="small" style={{ marginBottom: 16 }}>
+          <Card
+            data-testid="export-fields-section"
+            title={`☑️ ${t('Field selection')}`}
+            size="small"
+            style={{ marginBottom: 16 }}
+          >
             <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid #f0f0f0' }}>
               <Checkbox
                 indeterminate={selFields.length > 0 && selFields.length < fields.length}
                 checked={selFields.length === fields.length && fields.length > 0}
                 onChange={() => setSelFields(selFields.length === fields.length ? [] : fields.map((f) => f.name))}
               >
-                全选{' '}
+                {t('Select all')}{' '}
                 <span style={{ color: '#999', fontSize: 12 }}>
-                  已选: {selFields.length}/{fields.length}
+                  {t('Selected: {{selected}}/{{total}}', { selected: selFields.length, total: fields.length })}
                 </span>
               </Checkbox>
             </div>
             {regular.length > 0 && (
               <>
                 <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, color: '#1677ff' }}>
-                  📄 常规字段 ({regular.length})
+                  📄 {t('Regular fields')} ({regular.length})
                 </div>
                 <Space wrap style={{ marginBottom: 12 }}>
                   {regular.map((f) => (
@@ -125,7 +131,7 @@ export default function ExportStepConfig({
             {assoc.length > 0 && (
               <>
                 <div style={{ fontWeight: 600, fontSize: 12, color: '#7c3aed', marginBottom: 8 }}>
-                  🔗 关联字段 ({assoc.length})
+                  🔗 {t('Association fields')} ({assoc.length})
                 </div>
                 <Space wrap style={{ marginBottom: 12 }}>
                   {assoc.map((f) => (
@@ -139,7 +145,7 @@ export default function ExportStepConfig({
             {fkFields.length > 0 && (
               <>
                 <div style={{ fontWeight: 600, fontSize: 12, color: '#d97706', marginBottom: 8 }}>
-                  🔑 关联主键 ({fkFields.length})
+                  🔑 {t('Foreign key fields')} ({fkFields.length})
                 </div>
                 <Space wrap>
                   {fkFields.map((f) => (
@@ -152,17 +158,17 @@ export default function ExportStepConfig({
             )}
           </Card>
           {assoc.length > 0 && (
-            <Card title="📑 关联数据 Sheet" size="small" style={{ marginBottom: 16 }}>
+            <Card title={`📑 ${t('Association data sheet')}`} size="small" style={{ marginBottom: 16 }}>
               <Space>
                 <Switch checked={includeAssocSheet} onChange={onIncludeAssocSheetChange} />
-                <span>包含关联数据 Sheet</span>
+                <span>{t('Include association sheet')}</span>
               </Space>
               {includeAssocSheet && (
                 <div style={{ marginTop: 8 }}>
                   <Select
                     mode="multiple"
                     style={{ width: '100%' }}
-                    placeholder="选择要包含的关联表"
+                    placeholder={t('Please select association tables to include')}
                     value={selectedAssocTables}
                     onChange={onSelectedAssocTablesChange}
                     options={assoc
@@ -178,41 +184,41 @@ export default function ExportStepConfig({
           )}
         </>
       )}
-      <Card title="⚙️ 高级选项" size="small" style={{ marginBottom: 16 }}>
+      <Card title={`⚙️ ${t('Advanced options')}`} size="small" style={{ marginBottom: 16 }}>
         <Row gutter={[16, 12]}>
           <Col span={24}>
             <Space>
-              <span style={{ color: '#666', fontWeight: 500 }}>文件命名规则：</span>
+              <span style={{ color: '#666', fontWeight: 500 }}>{t('File name template')}：</span>
               <Input style={{ width: 280 }} value={fileName} onChange={(e) => onFileNameChange(e.target.value)} />
             </Space>
             <div style={{ fontSize: 11, color: '#999', marginTop: 4, marginLeft: 90 }}>
-              支持 {`{表名}`} {`{日期}`} 占位符
+              {t('Supports {tableName} {date} placeholders')}
             </div>
           </Col>
           <Col span={24}>
             <Space>
-              <span style={{ color: '#666', fontWeight: 500 }}>表头格式：</span>
+              <span style={{ color: '#666', fontWeight: 500 }}>{t('Header format')}：</span>
               <Radio.Group value={headerStyle} onChange={(e) => onHeaderStyleChange(e.target.value)} size="small">
-                <Radio.Button value="title_id">字段名(字段标识)</Radio.Button>
-                <Radio.Button value="title">字段名</Radio.Button>
-                <Radio.Button value="id">字段标识</Radio.Button>
+                <Radio.Button value="title_id">{t('Field name (field ID)')}</Radio.Button>
+                <Radio.Button value="title">{t('Field name')}</Radio.Button>
+                <Radio.Button value="id">{t('Field ID')}</Radio.Button>
               </Radio.Group>
             </Space>
           </Col>
           <Col span={24}>
             <Space>
               <Switch checked={includeAttachments} onChange={onIncludeAttachmentsChange} />
-              <span style={{ color: '#666' }}>包含附件文件</span>
+              <span style={{ color: '#666' }}>{t('Include attachments')}</span>
             </Space>
           </Col>
         </Row>
       </Card>
       <div style={{ textAlign: 'right', marginTop: 16 }}>
         <Button onClick={onPrev} style={{ marginRight: 8 }}>
-          ← 上一步
+          ← {t('Previous step')}
         </Button>
         <Button type="primary" onClick={onNext} disabled={!selTable || (!isAllTables && selFields.length === 0)}>
-          下一步 →
+          {t('Next step')} →
         </Button>
       </div>
     </div>

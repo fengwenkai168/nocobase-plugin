@@ -220,11 +220,17 @@ async function savePermissions(ctx, next) {
   await next();
 }
 async function getSettings(ctx, next) {
-  var _a;
+  var _a, _b;
   const repo = ctx.db.getRepository("sjgl02_settings");
-  const userId = ctx.action.params.userId || ((_a = ctx.state.currentUser) == null ? void 0 : _a.id);
+  const currentUserId = (_a = ctx.state.currentUser) == null ? void 0 : _a.id;
+  const requestedUserId = ctx.action.params.userId;
+  const isAdmin = (((_b = ctx.state.currentUser) == null ? void 0 : _b.roles) || []).some((r) => r.name === "admin" || r.name === "root");
+  if (!isAdmin && requestedUserId != null && requestedUserId !== currentUserId) {
+    ctx.throw(403, "Access denied");
+  }
+  const userId = requestedUserId ?? currentUserId;
   let settings = null;
-  if (userId) settings = await repo.findOne({ filter: { userId } });
+  if (userId != null) settings = await repo.findOne({ filter: { userId } });
   if (!settings) {
     settings = await repo.findOne({ filter: { userId: { $is: null } } });
   }
@@ -232,16 +238,21 @@ async function getSettings(ctx, next) {
   await next();
 }
 async function saveSettings(ctx, next) {
-  var _a;
+  var _a, _b;
   const values = ctx.action.params.values || ctx.action.params;
   const repo = ctx.db.getRepository("sjgl02_settings");
-  const userId = values.userId || ((_a = ctx.state.currentUser) == null ? void 0 : _a.id);
+  const currentUserId = (_a = ctx.state.currentUser) == null ? void 0 : _a.id;
+  const isAdmin = (((_b = ctx.state.currentUser) == null ? void 0 : _b.roles) || []).some((r) => r.name === "admin" || r.name === "root");
+  const userId = values.userId ?? currentUserId;
+  if (!isAdmin && values.userId != null && values.userId !== currentUserId) {
+    ctx.throw(403, "Access denied");
+  }
   let settings = null;
-  if (userId) settings = await repo.findOne({ filter: { userId } });
+  if (userId != null) settings = await repo.findOne({ filter: { userId } });
   if (settings) {
     await repo.update({ filterByTk: settings.id, values: { ...values, userId } });
   } else {
-    await repo.create({ values: { ...values, userId: userId || null } });
+    await repo.create({ values: { ...values, userId: userId ?? null } });
   }
   ctx.body = { success: true };
   await next();
