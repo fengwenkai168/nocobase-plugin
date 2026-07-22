@@ -1,0 +1,2269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据管理 sjgl02 - 交互原型 v3</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;padding:16px;color:#333;font-size:13px}
+.app{max-width:1280px;margin:0 auto}
+.header{background:linear-gradient(135deg,#1677ff,#0958d9);border-radius:12px;padding:14px 24px;color:#fff;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:18px;font-weight:600}.header .sub{opacity:.8;font-size:12px;margin-top:2px}
+.header .badge{background:rgba(255,255,255,.2);border-radius:20px;padding:4px 14px;font-size:11px}
+.tabs{display:flex;gap:4px;background:#fff;border-radius:10px 10px 0 0;padding:4px 4px 0 4px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.tab{padding:12px 24px;cursor:pointer;border-radius:8px 8px 0 0;font-size:14px;font-weight:500;color:#666;display:flex;align-items:center;gap:8px;transition:all .15s;user-select:none;border:none;background:none;font-family:inherit}
+.tab.active{background:#f0f5ff;color:#1677ff;position:relative}
+.tab.active::after{content:'';position:absolute;bottom:0;left:12px;right:12px;height:2px;background:#1677ff;border-radius:2px 2px 0 0}
+.tab:hover:not(.active){background:#fafafa}
+.content{background:#fff;border-radius:0 0 10px 10px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.06);min-height:600px}
+.tab-page{display:none}.tab-page.active{display:block}
+.steps{display:flex;margin-bottom:20px;background:#fafafa;border-radius:8px;padding:4px}
+.step{flex:1;text-align:center;padding:10px 16px;border-radius:6px;font-size:13px;color:#999;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s;cursor:pointer;user-select:none}
+.step.active{background:#1677ff;color:#fff;font-weight:500}.step.done{color:#1677ff;cursor:pointer}
+.step-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;border:2px solid currentColor;flex-shrink:0}
+.step.active .step-num{background:#fff;color:#1677ff;border-color:#fff}.step.done .step-num{background:#1677ff;color:#fff;border-color:#1677ff}
+.panel{border:1px solid #e8e8e8;border-radius:8px;padding:16px;margin-bottom:16px}
+.panel-title{font-size:14px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;line-height:20px}
+.tag-blue{background:#e6f4ff;color:#1677ff}.tag-red{background:#fff2f0;color:#ff4d4f}
+.tag-orange{background:#fff7e6;color:#fa8c16}.tag-green{background:#f6ffed;color:#52c41a}
+.tag-purple{background:#f5f3ff;color:#7c3aed}.tag-cyan{background:#ecfeff;color:#0891b2}
+.tag-default{background:#f5f5f5;color:#666}.tag-gold{background:#fffbe6;color:#d4b106;border:1px solid #ffe58f}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid transparent;font-weight:500;transition:all .15s;user-select:none;font-family:inherit}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:#1677ff;color:#fff;border-color:#1677ff}.btn-primary:hover:not(:disabled){background:#4096ff}
+.btn-default{background:#fff;color:#333;border-color:#d9d9d9}.btn-default:hover:not(:disabled){border-color:#1677ff;color:#1677ff}
+.btn-danger{color:#ff4d4f;border-color:#ff4d4f;background:#fff}.btn-sm{padding:4px 12px;font-size:12px}
+.btn-text{border:none;background:none;color:#666;padding:4px 8px;cursor:pointer;font-family:inherit;font-size:13px}
+.btn-text:hover{color:#1677ff}.btn-dashed{border:1px dashed #d9d9d9;background:#fff;color:#666;width:100%;justify-content:center}
+.btn-dashed:hover{border-color:#1677ff;color:#1677ff}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{background:#fafafa;padding:10px 12px;text-align:left;font-weight:500;color:#666;border-bottom:1px solid #f0f0f0;white-space:nowrap}
+.tbl td{padding:10px 12px;border-bottom:1px solid #f0f0f0}.tbl tr:hover td{background:#fafafa}
+.upload-zone{border:2px dashed #d9d9d9;border-radius:8px;padding:40px 20px;text-align:center;cursor:pointer;transition:all .2s}
+.upload-zone:hover{border-color:#1677ff;background:#f0f5ff}
+.upload-zone .big-icon{font-size:40px;color:#bbb;margin-bottom:8px}
+.upload-zone .text{color:#333;font-size:14px}.upload-zone .hint{color:#999;font-size:12px;margin-top:4px}
+.toggle{width:36px;height:20px;border-radius:10px;background:#d9d9d9;position:relative;cursor:pointer;transition:all .2s;flex-shrink:0;display:inline-block}
+.toggle.on{background:#1677ff}.toggle::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px;transition:all .2s}
+.toggle.on::after{left:18px}
+.progress-bar{height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden;min-width:80px;display:inline-block;vertical-align:middle}
+.progress-bar .fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#52c41a,#73d13d);transition:width .3s}
+.progress-bar .fill.red{background:linear-gradient(90deg,#ff4d4f,#ff7875)}.progress-bar .fill.blue{background:linear-gradient(90deg,#1677ff,#4096ff)}.progress-bar .fill.gray{background:linear-gradient(90deg,#d9d9d9,#bfbfbf)}
+.sel{position:relative;display:inline-block}
+.sel-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #d9d9d9;border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;background:#fff;min-width:120px;transition:all .15s;font-family:inherit}
+.sel-btn:hover{border-color:#1677ff}.sel-btn.w-full{width:100%}
+.sel-dropdown{display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #d9d9d9;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:100;max-height:240px;overflow-y:auto;margin-top:2px}
+.sel-dropdown.open{display:block}
+.sel-opt{padding:8px 12px;cursor:pointer;font-size:13px}.sel-opt:hover{background:#f0f5ff;color:#1677ff}
+.sel-opt.disabled{color:#ccc;cursor:not-allowed}.sel-opt.disabled:hover{background:transparent;color:#ccc}
+.sel-opt .opt-desc{font-size:11px;color:#999;display:block;margin-top:2px}
+.sel-opt .opt-tags{display:flex;flex-wrap:wrap;gap:2px;margin-top:3px}
+.sel-opt .opt-tags .mini-tag{font-size:9px;padding:1px 5px;border-radius:3px;line-height:16px}
+.sel-opt .opt-tags .mini-tag.blue{background:#e6f4ff;color:#1677ff}
+.sel-opt .opt-tags .mini-tag.orange{background:#fff7e6;color:#fa8c16}
+.sel-opt .opt-tags .mini-tag.red{background:#fff2f0;color:#ff4d4f}
+.sel-opt .opt-tags .mini-tag.green{background:#f6ffed;color:#52c41a}
+.sel-opt .opt-tags .mini-tag.gray{background:#f5f5f5;color:#999}
+.sel-group-label{padding:6px 12px;font-size:11px;color:#999;font-weight:600;background:#fafafa}
+/* 权限详情摘要卡片 */
+.perm-summary{background:#f9f5ff;border:1px solid #e8d5f5;border-radius:8px;padding:12px 16px;margin:12px 0;display:none}
+.perm-summary.visible{display:block}
+.perm-summary .ps-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;font-size:13px}
+.perm-summary .ps-row:last-child{margin-bottom:0}
+.perm-summary .ps-label{color:#722ed1;font-weight:600;white-space:nowrap;min-width:70px;font-size:12px}
+.perm-summary .ps-value{flex:1;display:flex;flex-wrap:wrap;gap:3px}
+.perm-summary .ps-value .tag{font-size:11px;padding:2px 8px;line-height:18px}
+.perm-summary .ps-locked{display:inline-flex;align-items:center;gap:3px;background:#f0f0f0;color:#999;font-size:11px;padding:2px 8px;border-radius:10px}
+/* 导入模式锁定态 */
+.mode-locked{background:#f5f5f5!important;cursor:not-allowed!important;color:#999!important}
+.mode-selectable{border-color:#1677ff!important}
+.cb{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;user-select:none}
+.cb-box{width:16px;height:16px;border:1px solid #d9d9d9;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#fff}
+.cb-box.checked{background:#1677ff;border-color:#1677ff}.cb-box.checked::after{content:'✓';color:#fff;font-size:11px;font-weight:700}
+.cb-box.indeterminate{background:#1677ff;border-color:#1677ff}.cb-box.indeterminate::after{content:'−';color:#fff;font-size:11px;font-weight:700}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid-4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px}
+.stat-card{border:1px solid #f0f0f0;border-radius:8px;padding:16px 20px;text-align:center}
+.stat-card .num{font-size:24px;font-weight:600;color:#1677ff}.stat-card .lbl{font-size:12px;color:#999;margin-top:4px}
+.flex{display:flex;gap:12px}.flex-1{flex:1}.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}
+.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}.mb-16{margin-bottom:16px}
+.ml-auto{margin-left:auto}.text-center{text-align:center}.text-right{text-align:right}
+.text-muted{color:#999;font-size:12px}.text-danger{color:#ff4d4f}.fw-600{font-weight:600}
+.gap-4{gap:4px}.w-full{width:100%}
+.split{display:flex;gap:16px}
+.sidebar{width:240px;flex-shrink:0;border:1px solid #e8e8e8;border-radius:8px;padding:8px;overflow-y:auto;max-height:560px}
+.sidebar-title{font-size:13px;font-weight:600;padding:8px 8px 12px;color:#374151}
+.sidebar-group{font-size:11px;color:#999;padding:8px 8px 4px;font-weight:600}
+.sidebar-item{padding:8px 10px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:2px}
+.sidebar-item:hover{background:#f5f5f5}.sidebar-item.active{background:#e6f4ff;color:#1677ff}
+.sidebar .avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-weight:600;flex-shrink:0}
+.perm-card{border:1px solid #f0f0f0;border-radius:8px;padding:12px 14px;margin-bottom:8px}
+.perm-card.selected{border-color:#1677ff;background:#f0f5ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.perm-card.inherited{background:#f9f9f9;opacity:.85}
+.perm-card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.perm-card .tagrow{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.m-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center}
+.m-overlay.open{display:flex}
+.m-box{background:#fff;border-radius:10px;max-height:85vh;overflow-y:auto;box-shadow:0 6px 30px rgba(0,0,0,.15)}
+.m-box.w-sm{width:480px}.m-box.w-md{width:640px}.m-box.w-lg{width:780px}.m-box.w-xl{width:900px}
+.m-hd{padding:16px 24px;font-size:16px;font-weight:600;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
+.m-body{padding:20px 24px}.m-ft{padding:12px 24px;border-top:1px solid #f0f0f0;display:flex;gap:8px;justify-content:flex-end}
+.frm-row{margin-bottom:14px}.frm-row label{display:block;font-size:12px;color:#666;margin-bottom:4px;font-weight:500}
+.frm-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.d-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000}
+.d-overlay.open{display:block}
+.d-box{display:none;position:fixed;right:0;top:0;bottom:0;width:1024px;max-width:95vw;background:#f5f7fa;box-shadow:-4px 0 12px rgba(0,0,0,.1);z-index:1001;padding:24px;overflow-y:auto}
+.d-box.open{display:block}
+.d-box h3{font-size:16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;background:#fff;padding:16px 20px;border-radius:10px;margin:-8px -8px 16px -8px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.d-box .close-btn{cursor:pointer;font-size:20px;color:#999}
+/* 抽屉KPI卡片网格 */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.kpi-card{background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.04);min-width:0}
+.kpi-card .kpi-icon{font-size:14px;margin-bottom:4px}
+.kpi-card .kpi-label{font-size:12px;color:#8c8c8c;margin-bottom:4px}
+.kpi-card .kpi-value{font-size:14px;font-weight:600;color:#1f1f1f}
+.kpi-card .kpi-value.green{color:#52c41a}
+.kpi-card .kpi-value.blue{color:#1677ff}
+.kpi-card .kpi-progress{margin-top:6px}
+.kpi-card .kpi-progress .bar{height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden}
+.kpi-card .kpi-progress .bar .fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#52c41a,#73d13d);transition:width .3s}
+.kpi-card .kpi-progress .bar .fill.red{background:linear-gradient(90deg,#ff4d4f,#ff7875)}
+.kpi-card .kpi-progress .bar .fill.blue{background:linear-gradient(90deg,#1677ff,#4096ff)}
+.kpi-card .kpi-progress .bar .fill.gray{background:linear-gradient(90deg,#d9d9d9,#bfbfbf)}
+.kpi-card .kpi-progress .pct{font-size:12px;color:#8c8c8c;margin-top:2px}
+/* 抽屉内容卡片 */
+.drawer-section{background:#fff;border-radius:10px;padding:20px 24px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.drawer-section .sect-hd{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:14px;font-weight:600;color:#1f1f1f}
+.drawer-section .sect-hd .bar{width:4px;height:18px;border-radius:2px;background:#1677ff;flex-shrink:0}
+/* 斑马纹配置列表 */
+.zebra-list{border:1px solid #f0f0f0;border-radius:8px;overflow:hidden}
+.zebra-row{display:flex;align-items:center;min-height:44px;padding:0 16px;font-size:13px;border-bottom:1px solid #f0f0f0}
+.zebra-row:last-child{border-bottom:none}
+.zebra-row:nth-child(odd){background:#fafafa}
+.zebra-row:nth-child(even){background:#fff}
+.zebra-row .z-lbl{width:120px;flex-shrink:0;color:#8c8c8c}
+.zebra-row .z-val{flex:1;color:#1f1f1f;font-weight:500}
+/* 下载区 */
+.download-block{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px 20px;margin-bottom:16px;display:none}
+.download-block .dl-name{font-weight:600;color:#1f1f1f;margin-bottom:4px}
+.download-block .dl-info{font-size:12px;color:#8c8c8c;margin-bottom:8px}
+.filter-group{display:flex;gap:6px;flex-wrap:wrap}
+.filter-btn{padding:4px 14px;border-radius:6px;font-size:12px;cursor:pointer;border:1px solid #d9d9d9;background:#fff;color:#666;transition:all .15s;font-family:inherit}
+.filter-btn.active{background:#1677ff;color:#fff;border-color:#1677ff}
+.filter-btn:hover:not(.active){border-color:#1677ff;color:#1677ff}
+.s-input{padding:8px 12px;border:1px solid #d9d9d9;border-radius:6px;font-size:13px;width:100%;outline:none;font-family:inherit}
+.s-input:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.1)}
+.s-input-wrap{position:relative}.s-input-wrap .icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#999}
+.s-input-wrap .s-input{padding-left:30px}
+.desc{font-size:13px}.desc-row{display:flex;border-bottom:1px solid #f0f0f0}
+.desc-row .lbl{width:100px;padding:8px 12px;color:#999;flex-shrink:0}.desc-row .val{flex:1;padding:8px 12px;font-weight:500}
+.step-content{display:none}.step-content.active{display:block}
+.alert{padding:10px 16px;border-radius:6px;font-size:13px;margin:12px 0;display:flex;align-items:flex-start;gap:8px}
+.alert-info{background:#e6f4ff;border:1px solid #91caff;color:#003eb3}.alert-success{background:#f6ffed;border:1px solid #b7eb8f;color:#135200}
+.alert-warning{background:#fffbe6;border:1px solid #ffe58f;color:#ad6800}
+.chips{display:flex;flex-wrap:wrap;gap:4px;padding:4px;border:1px solid #d9d9d9;border-radius:6px;min-height:32px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:4px;font-size:12px;background:#f0f0f0;border:1px solid #e8e8e8}
+.chip .rmv{cursor:pointer;color:#999;font-size:14px;margin-left:2px}.chip .rmv:hover{color:#ff4d4f}
+.sdot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px}
+.sdot.green{background:#52c41a}.sdot.red{background:#ff4d4f}.sdot.orange{background:#fa8c16}.sdot.blue{background:#1677ff}.sdot.gray{background:#d9d9d9}
+.subtab{padding:8px 16px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent;color:#999;margin-bottom:-1px}
+.subtab.active{border-bottom-color:#1677ff;color:#1677ff;font-weight:600}
+.sect-title{font-weight:600;font-size:13px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
+.sect-title .arrow{font-size:10px;transition:transform .2s}
+#toastContainer{position:fixed;top:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:10px 20px;border-radius:8px;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.1);animation:fadeIn .2s}
+.toast.success{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}.toast.info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.field-type-tag{font-size:10px;margin-left:4px}
+.info-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fafafa;border-radius:6px;margin-bottom:12px;font-size:13px}
+.info-bar .label{color:#999}.info-bar .value{font-weight:600}
+/* 预览确认卡片 */
+.confirm-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-bottom:16px}
+.confirm-card{border:1px solid #f0f0f0;border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:6px;background:#fff;transition:all .15s;min-width:0}
+.confirm-card:hover{border-color:#91caff;box-shadow:0 1px 4px rgba(22,119,255,.08)}
+.confirm-card .cc-icon{font-size:16px;flex-shrink:0;width:24px;height:24px;border-radius:4px;display:flex;align-items:center;justify-content:center;background:#f0f5ff}
+.confirm-card .cc-body{flex:1;min-width:0;overflow:hidden}
+.confirm-card .cc-label{font-size:10px;color:#999;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.confirm-card .cc-value{font-size:12px;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.confirm-card .cc-value .tag{font-size:10px;margin-left:2px}
+/* 预览表头换行样式 */
+#previewTable th{vertical-align:top;line-height:1.6;min-width:120px}
+#previewTable th .col-excel,#drawerPreviewTable th .col-excel{display:block;color:#1677ff;font-weight:600}
+#previewTable th .col-arrow,#drawerPreviewTable th .col-arrow{display:block;color:#999;font-size:10px;margin:2px 0}
+#previewTable th .col-field,#drawerPreviewTable th .col-field{display:block;color:#333}
+#previewTable th .col-tags,#drawerPreviewTable th .col-tags{display:flex;flex-wrap:wrap;gap:2px;margin-top:4px}
+#previewTable th .col-tags .tag,#drawerPreviewTable th .col-tags .tag{font-size:10px;padding:1px 4px;line-height:16px}
+#drawerPreviewTable th{vertical-align:top;line-height:1.6;min-width:120px}
+#drawerExportPreviewTable th{vertical-align:top;line-height:1.6;min-width:120px}
+#drawerExportPreviewTable th .col-excel{display:block;color:#1677ff;font-weight:600}
+#drawerExportPreviewTable th .col-arrow{display:block;color:#999;font-size:10px;margin:2px 0}
+#drawerExportPreviewTable th .col-field{display:block;color:#333}
+</style>
+</head>
+<body>
+<div class="app">
+<div class="header">
+  <div><h1>📊 数据管理 sjgl02</h1><div class="sub">导入导出 · 任务管理 · 表级权限控制</div></div>
+  <div class="badge">交互原型 v2.0.0</div>
+</div>
+<div class="tabs" id="tabBar">
+  <button class="tab active" data-tab="import">⬇ 导入</button>
+  <button class="tab" data-tab="export">⬆ 导出</button>
+  <button class="tab" data-tab="tasks">☰ 任务管理</button>
+  <button class="tab" data-tab="permissions">✓ 权限管理</button>
+</div>
+<div class="content">
+
+<!-- ============ TAB: 导入 ============ -->
+<div class="tab-page active" id="tp-import">
+  <div class="steps" id="importSteps">
+    <div class="step active" onclick="goImportStep(0)"><span class="step-num">1</span>选择数据表 &amp; 上传文件</div>
+    <div class="step" onclick="goImportStep(1)"><span class="step-num">2</span>配置映射</div>
+    <div class="step" onclick="goImportStep(2)"><span class="step-num">3</span>预览 &amp; 执行</div>
+  </div>
+
+  <!-- Step 0 -->
+  <div class="step-content active" id="is-0">
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">📋 选择目标数据表</div>
+        <div class="frm-row">
+          <label>数据表</label>
+          <div class="sel w-full">
+            <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="imTableName">- 请选择数据表 -</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" onclick="pickImportTable(this,'用户','users')">📁 用户(users)</div>
+              <div class="sel-opt" onclick="pickImportTable(this,'订单','orders')">📁 订单(orders)</div>
+              <div class="sel-opt" onclick="pickImportTable(this,'产品','products')">📁 产品(products)</div>
+              <div class="sel-opt" onclick="pickImportTable(this,'客户','customers')">📁 客户(customers)</div>
+              <div class="sel-opt" onclick="pickImportTable(this,'文章','posts')">📁 文章(posts)</div>
+            </div>
+          </div>
+        </div>
+        <div class="text-muted" style="margin-top:8px">💡 仅显示您有权限导入的数据表</div>
+        <div class="text-muted">📊 共 5 张数据表可供选择</div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">📤 上传文件</div>
+        <div class="upload-zone" id="imUploadZone" onclick="simulateUpload()">
+          <div class="big-icon">📤</div>
+          <div class="text">点击或拖拽上传文件</div>
+          <div class="hint">支持 .xlsx(上限 50 万行) / .xls(≤20万) / .csv 格式</div>
+        </div>
+      </div>
+    </div>
+    <div class="text-right mt-12">
+      <button class="btn btn-primary" id="imStep0Next" disabled onclick="goImportStep(1)">下一步 -></button>
+    </div>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="step-content" id="is-1">
+	    <div class="info-bar">
+	      <span class="label">📊 目标数据表:</span><span class="value" id="imTableDisplay">-</span>
+	      <span class="label" style="margin-left:16px">📁 上传文件:</span><span class="value" id="imFileDisplay">-</span>
+	    </div>
+
+	    <div class="panel">
+	      <div class="panel-title">⚙️ Sheet &amp; 表头设置</div>
+	      <div class="frm-inline">
+	        <span class="text-muted">Sheet名称：</span>
+	        <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span id="imSheetName">Sheet1</span><span>▼</span></button>
+	          <div class="sel-dropdown"><div class="sel-opt" onclick="pickVal(this,'Sheet1');document.getElementById('imSheetName').textContent='Sheet1'">Sheet1</div><div class="sel-opt" onclick="pickVal(this,'Sheet2');document.getElementById('imSheetName').textContent='Sheet2'">Sheet2</div></div>
+	        </div>
+	        <span class="text-muted">表头行：</span>
+	        <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>1</span><span>▼</span></button>
+	          <div class="sel-dropdown"><div class="sel-opt" onclick="pickVal(this,'1')">1</div><div class="sel-opt" onclick="pickVal(this,'2')">2</div><div class="sel-opt" onclick="pickVal(this,'3')">3</div></div>
+	        </div>
+	        <button class="btn btn-default btn-sm">🔄 刷新</button>
+	        <button class="btn btn-default btn-sm" onclick="openPreviewModal()">👁 预览前10行</button>
+	      </div>
+	    </div>
+
+		    <!-- 权限切换 -->
+	    <div class="panel" style="border-left:3px solid #722ed1">
+	      <div class="panel-title" style="color:#722ed1">🔑 权限切换 - 选择本次导入使用的权限配置</div>
+	      <div class="frm-row">
+	        <label>此表您拥有的权限配置（本表有配置的才显示）</label>
+	        <div class="sel w-full">
+	          <button class="sel-btn w-full" onclick="toggleSel(this)" id="imPermBtn"><span id="imPermSel">👤 当前用户自定义权限</span> <span>▼</span></button>
+	          <div class="sel-dropdown" id="imPermDropdown">
+	            <!-- JS动态生成 -->
+	          </div>
+	        </div>
+	      </div>
+	      <!-- 权限详情摘要卡片 -->
+	      <div class="perm-summary visible" id="imPermSummary">
+	        <div class="ps-row"><span class="ps-label">📋 类型</span><span class="ps-value"><span class="tag tag-purple" id="psTargetType">用户</span> <span id="psTargetName" style="font-weight:600">当前用户自定义权限</span></span></div>
+	        <div class="ps-row"><span class="ps-label">⬇ 导入模式</span><span class="ps-value" id="psModes"></span></div>
+	        <div class="ps-row"><span class="ps-label">🔑 唯一值</span><span class="ps-value" id="psUnique"></span></div>
+	        <div class="ps-row"><span class="ps-label">❗ 必填字段</span><span class="ps-value" id="psRequired"></span></div>
+	        <div class="ps-row"><span class="ps-label">✅ 可导入字段</span><span class="ps-value" id="psImportFields"></span></div>
+	      </div>
+	      <div class="alert alert-info" style="margin:8px 0 0">
+	        <span>💡</span>
+	        <span>选中权限配置后，下方"导入模式"锁定为该配置允许的模式。只有1个模式 → 只读锁定；多个模式 → 可切换。<strong>唯一值：权限已配置 → 预填锁定；未配置 → 自由选择。</strong>字段映射只显示"可导入"范围内的字段。admin/root 可切换全部权限，普通用户仅自己的。</span>
+	      </div>
+	    </div>
+
+    <!-- 导入模式 + 空白字段处理（同一行） -->
+    <div class="panel">
+      <div class="grid-2">
+        <div class="frm-row" style="margin:0">
+          <label>导入模式 <span class="text-muted" id="imModeHint">（由选中的权限配置决定）</span></label>
+          <div id="imModeArea" style="max-width:280px">
+            <!-- 动态生成下拉单选 -->
+          </div>
+        </div>
+        <div class="frm-row" style="margin:0">
+          <label>📝 空白字段处理模式</label>
+          <div class="frm-inline">
+            <label class="cb" onclick="toggleRadio(this,'blankStrategy')"><span class="cb-box checked" id="blankClear"></span> <strong>按Excel更新（清空）</strong></label>
+            <label class="cb" onclick="toggleRadio(this,'blankStrategy')" style="margin-left:12px"><span class="cb-box" id="blankSkip"></span> 不更新（保留原值）</label>
+          </div>
+        </div>
+      </div>
+</div>
+
+	    <!-- 唯一值字段 -->
+		    <div class="panel" id="imUniqueArea">
+	<div class="panel-title" style="color:#fa8c16">🔑 唯一值字段（用于匹配已有记录，最多3个）<span class="text-danger" style="font-size:11px;margin-left:4px">* 更新/upsert 模式必须至少选1个</span> <span id="uniqueLockBadge" style="display:none;font-size:11px;margin-left:8px;background:#f0f0f0;color:#999;padding:2px 8px;border-radius:10px">🔒 由权限锁定</span></div>
+	      <div class="text-muted mb-8" id="uniqueDesc">选择用于判断记录是否已存在的组合字段。所有字段值都匹配才视为同一条记录。更新/新增+更新模式下<b>必须至少选1个唯一值字段</b>，否则无法匹配已有记录。</div>
+		      <div class="chips" id="imUniqueChips">
+		        <span class="chip" style="background:#fff7e6;color:#fa8c16;border-color:#ffd591">手机号(phone) <span class="rmv" onclick="removeChip(this)">✕</span></span>
+		        <span class="chip" style="background:#fff7e6;color:#fa8c16;border-color:#ffd591">邮箱(email) <span class="rmv" onclick="removeChip(this)">✕</span></span>
+		        <div class="sel" style="display:inline-block" id="uniqueAddBtn"><button class="btn btn-default btn-sm" onclick="toggleSel(this);refreshUniqueDropdown()">+ 添加字段</button>
+		          <div class="sel-dropdown" id="imUniqueDropdown" style="min-width:180px"></div>
+		        </div>
+		      </div>
+	      <!-- 空值唯一值预检 -->
+	      <div class="alert alert-warning mt-8" id="emptyUniqueAlert" style="margin-bottom:0;display:none">
+	        <span>⚠️</span>
+	        <div>
+	          <strong>空值唯一值预检</strong>：<span id="uniqueCheckMode">更新(update)</span> 模式下，任何行的唯一值字段为空 → <strong class="text-danger">整批回滚</strong><br>
+	          <span class="text-muted" style="font-size:11px">系统在导入前会预检所有行的唯一值字段，发现空值立即终止并提示</span>
+	        </div>
+	      </div>
+	    </div>
+
+    <!-- 字段映射 -->
+    <div class="panel">
+      <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="fw-600" style="font-size:14px">📊 字段映射 <span class="text-muted" style="font-weight:400;font-size:12px" id="mapCountText">(共5列/已用3/剩余2)</span></div>
+        <div class="flex gap-4">
+          <button class="btn btn-default btn-sm" onclick="clearMapping()">🗑 清空匹配</button>
+          <button class="btn btn-default btn-sm" onclick="autoMatch()">⚡ 自动匹配</button>
+        </div>
+      </div>
+      <div class="text-muted mb-8" style="background:#f0f5ff;padding:6px 10px;border-radius:4px;font-size:12px">💡 在「Excel列」下拉中选择字段来源。选 Excel 列名则自动映射；选「自定义内容」可输入固定值；不选则为「忽略」。每个Excel列只能选一次，已选的变灰色。关联/附件字段可在「配置」列设置空值处理、匹配不到处理和更新模式；附件字段需先在「配置」列选择压缩包内文件夹。</div>
+      <table class="tbl" style="font-size:12px">
+        <thead><tr><th style="width:220px">Excel列</th><th style="width:80px;text-align:center">映射方式</th><th style="width:30px"></th><th>数据表字段(用户-users)</th><th style="width:120px">属性标签</th><th style="width:170px">配置</th></tr></thead>
+        <tbody id="imMapBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 附件导入 -->
+    <div class="panel">
+      <div class="panel-title">📎 附件导入</div>
+      <div class="frm-inline mb-12">
+        <span class="toggle" id="attachmentToggle" onclick="toggleAttachmentImport(this)"></span>
+        <span id="attachmentToggleLabel" style="font-size:13px;color:#999;margin-left:8px">不需要附件</span>
+      </div>
+      <div id="attachmentUploadArea" style="display:none">
+        <div id="archiveUploadBox" style="border:1px dashed #d9d9d9;border-radius:6px;padding:12px;text-align:center;color:#999;margin-bottom:12px;cursor:pointer" onclick="simulateArchiveUpload()">
+          📁 点击上传 attachments.tar.gz
+        </div>
+        <div class="alert alert-warning" style="margin:0">
+          <span>📋</span>
+          <div>
+            <strong>附件压缩包说明：</strong><br>
+            1. 将附件文件按文件夹分类整理（如 <code>photos/</code>、<code>docs/</code>），压缩为 <code>tar.gz</code> 格式<br>
+            2. 上传后，需在下方字段映射表的「配置」列为每个附件字段<strong>手动选择对应文件夹</strong>（必选，不选无法提交导入）<br>
+            3. Excel 中附件列填写文件名（含扩展名），如 <code>photo1.jpg</code><br>
+            4. 多个附件用逗号分隔，如 <code>photo1.jpg, doc.pdf</code><br>
+            5. 系统从该字段选中的文件夹中查找同名文件，上传并关联到数据行<br>
+            6. 压缩包内文件名必须与 Excel 中填写的文件名完全一致<br>
+            7. 支持的附件类型：图片(jpg/png/gif)、文档(pdf/doc/docx/xls/xlsx)、其他(zip/rar等)
+          </div>
+        </div>
+        <div class="mt-8">
+          <button class="btn btn-default btn-sm" onclick="showToast('模板下载中...','info')">📥 下载附件压缩包模板</button>
+          <span class="text-muted" style="margin-left:8px">预制 tar.gz 模板（含示例Excel + 空 attachments/ 文件夹）</span>
+        </div>
+      </div>
+      <div id="attachmentNoNeedHint" class="alert alert-info" style="margin:0">
+        <span>ℹ️</span>
+        <div><strong>本次导入不导入附件</strong>。若 Excel 中存在附件列，系统会忽略该列。</div>
+      </div>
+    </div>
+
+    <!-- NocoBase系统字段处理逻辑 -->
+    <div class="panel">
+      <div class="panel-title" style="cursor:pointer" onclick="toggleSystemFieldRules(this)"><span id="systemFieldRulesArrow" style="display:inline-block;width:14px;transition:transform .2s">▶</span> ⚙️ NocoBase 系统字段处理逻辑</div>
+      <div id="systemFieldRulesContent" style="display:none">
+      <div class="text-muted mb-12" style="font-size:12px">导入时对 NocoBase 系统字段（createdBy/updatedBy/createdAt/updatedAt）和特殊字段类型的自动处理规则</div>
+      <table class="tbl" style="font-size:12px">
+        <thead><tr><th style="width:160px">字段类型</th><th style="width:100px">导入模式:新增</th><th style="width:100px">导入模式:更新</th><th>处理逻辑说明</th></tr></thead>
+        <tbody>
+          <tr><td><strong>createdAt</strong> 创建时间</td><td><span class="tag tag-orange">忽略</span> <span class="tag tag-blue" style="margin-left:2px;font-size:10px">Excel映射优先</span></td><td><span class="tag tag-default">保留原值</span> <span class="tag tag-blue" style="margin-left:2px;font-size:10px">Excel映射优先</span></td><td>新建记录时系统自动填入当前时间，不看Excel里的值。更新记录时默认不改。但如果映射了Excel列，就用Excel的值。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 映射了Excel列且值不为空但格式无法解析为日期，该行失败</td></tr>
+          <tr><td><strong>updatedAt</strong> 更新时间</td><td><span class="tag tag-orange">忽略</span> <span class="tag tag-blue" style="margin-left:2px;font-size:10px">Excel映射优先</span></td><td><span class="tag tag-orange">忽略</span> <span class="tag tag-blue" style="margin-left:2px;font-size:10px">Excel映射优先</span></td><td>不管新增还是更新，系统都自动改成当前操作时间。但如果映射了Excel列，就用Excel的值。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 映射了Excel列且值不为空但格式无法解析为日期，该行失败</td></tr>
+          <tr><td><strong>createdById</strong> 创建人</td><td><span class="tag tag-orange">忽略</span> <span class="tag tag-blue" style="margin-left:2px;font-size:10px">Excel映射优先</span></td><td><span class="tag tag-default">保留原值</span> <span class="tag tag-blue" style="margin-left:2px;font-size:10px">Excel映射优先</span></td><td>新建时自动填为当前操作用户。更新时不改原创建人。但如果映射了Excel列，就用Excel的值。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 映射了Excel列且填的用户ID在系统中不存在，该行失败</td></tr>
+          <tr><td><strong>updatedById</strong> 更新人</td><td><span class="tag tag-orange">忽略</span> <span class="tag tag-blue" style="margin-left:2px;font-size:10px">Excel映射优先</span></td><td><span class="tag tag-orange">忽略</span> <span class="tag tag-blue" style="margin-left:2px;font-size:10px">Excel映射优先</span></td><td>不管新增还是更新，都自动填为当前操作人。但如果映射了Excel列，就用Excel的值。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 映射了Excel列且填的用户ID在系统中不存在，该行失败</td></tr>
+          <tr><td><strong>主键字段</strong> <span class="text-muted" style="font-size:10px">(动态发现，不写死id)</span></td><td><span class="tag tag-blue">可选</span></td><td><span class="tag tag-blue">可更新</span></td><td>系统动态获取目标表实际主键名和类型。自增型(bigInt/integer)：未映射自动生成。自动生成型(uuid/nanoid/snowflakeId)：未映射由hook自动生成。手动型(string)：必须映射。<br><span class="tag tag-red" style="font-size:10px">整批回滚</span> 手动型主键未映射或值为空<br><span class="tag tag-red" style="font-size:10px">整批回滚</span> 主键值与数据库已有记录重复<br><span class="tag tag-red" style="font-size:10px">整批回滚</span> 主键值与本批次其他行重复</td></tr>
+          <tr><td><strong>单行文本/多行文本</strong></td><td><span class="tag tag-green">直接写入</span></td><td><span class="tag tag-green">直接覆盖</span></td><td>Excel写什么就存什么，原样照搬。空值按"空白值处理"规则来。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 是必填字段且Excel值为空且空白策略为"清空"</td></tr>
+          <tr><td><strong>整数/数字</strong></td><td><span class="tag tag-green">类型转换</span></td><td><span class="tag tag-green">类型转换</span></td><td>Excel里数字可能是文本格式，系统自动转成数字。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 转不了（比如填了"abc"）<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 是必填字段且Excel值为空且空白策略为"清空"</td></tr>
+          <tr><td><strong>单选/多选</strong></td><td><span class="tag tag-blue">标签匹配</span></td><td><span class="tag tag-blue">标签匹配</span></td><td>Excel填选项显示名称（比如填"启用"不填1）。多选逗号分隔，比如"技术,产品"。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 填的选项名称在字段配置中不存在<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 是必填字段且Excel值为空且空白策略为"清空"</td></tr>
+          <tr><td><strong>布尔值</strong></td><td><span class="tag tag-blue">智能转换</span></td><td><span class="tag tag-blue">智能转换</span></td><td>填什么都认：true/false、是/否、1/0、启用/停用。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 填的值无法识别为布尔值（比如填了"可能"）</td></tr>
+          <tr><td><strong>日期时间</strong></td><td><span class="tag tag-blue">格式解析</span></td><td><span class="tag tag-blue">格式解析</span></td><td>不管什么格式都能识别：① 2026-07-09 15:30:00 ② 2026/07/09 15:30:00 ③ 2026-07-09（时间补零） ④ 2026-07-09T07:30:00.000Z（ISO） ⑤ 1752058200000（毫秒时间戳）或 1752058200（秒时间戳，自动判断） ⑥ 45837.645833（Excel内部序列号）<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 哪种格式都认不出来<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 是必填字段且Excel值为空且空白策略为"清空"。日期字段同理只取日期部分</td></tr>
+          <tr><td><strong>多对一(m2o)</strong></td><td><span class="tag tag-purple">按目标表主键关联</span></td><td><span class="tag tag-purple">按目标表主键更新</span></td><td>Excel填关联记录的主键值（动态获取目标表主键名，不写死id）。新增和更新都填主键值。多对一为单值关联，更新时直接替换，无追加模式。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 默认：填的主键值在关联表中不存在，该行失败（可在字段「配置」中改为「跳过该字段」）<br><span class="tag tag-blue" style="font-size:10px">字段级配置</span> 空值处理（保留原值/解除关联）、匹配不到处理（行失败/跳过），在字段映射「配置」列按字段设置</td></tr>
+          <tr><td><strong>一对多/多对多</strong></td><td><span class="tag tag-purple">默认全量替换</span></td><td><span class="tag tag-purple">覆盖/追加可配置</span></td><td>Excel填多个主键值逗号分隔（如"1,2,3"），系统按目标表实际主键批量关联。<strong>更新模式可配置（仅update/upsert）</strong>：覆盖更新（全量替换原有关联）或 追加更新（追加关联不删除原有）。Excel为空时<strong>空值处理可配置</strong>：清空关联 或 保留原关联。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 默认：填的任意一个主键值在关联表中不存在，该行失败（可配置「跳过该字段」：多值中任一匹配不到 → 整字段跳过，行继续导入）</td></tr>
+          <tr><td><strong>附件</strong></td><td><span class="tag tag-cyan">从tar.gz上传</span></td><td><span class="tag tag-cyan">覆盖/追加可配置</span></td><td>Excel填文件名（如"photo1.jpg"），系统从该字段<strong>手动选中的文件夹</strong>中查找文件上传并关联。多个附件逗号分隔。<strong>更新模式可配置（仅update/upsert）</strong>：覆盖更新（替换所有附件）或 追加更新（追加附件不删除原有）。<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 默认：选中文件夹下找不到对应文件，该行失败（可配置「跳过该附件」：单个文件跳过，其余正常导入）<br><span class="tag tag-red" style="font-size:10px">无法提交</span> 已映射附件字段但未选择文件夹；未上传压缩包但Excel附件列有值，该行失败<br><span class="tag tag-red" style="font-size:10px">该行失败</span> 文件格式不被系统允许（如.exe）</td></tr>
+          <tr><td><strong>子表格/子表单</strong></td><td><span class="tag tag-orange">忽略</span></td><td><span class="tag tag-orange">忽略</span></td><td>没法通过Excel导入，系统直接跳过。不会报错也不会失败</td></tr>
+          <tr><td><strong>公式/计算</strong></td><td><span class="tag tag-orange">忽略</span></td><td><span class="tag tag-orange">忽略</span></td><td>系统自动算的，不看Excel值，导入后重新计算。不会报错也不会失败</td></tr>
+        </tbody>
+	      </table>
+	      <div class="mt-8" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 12px;background:#fffbe6;border:1px solid #ffe58f;border-radius:6px;font-size:12px">
+	        <span><span class="tag tag-red" style="font-size:10px">⚠ 全局规则</span></span>
+	        <span>🔑 <strong>主键映射后可更新</strong> - 如果映射了主键列，Excel里填什么就写什么，但<strong>不能有空</strong>（有空格全部作废重来），<strong>不能重复</strong>（跟数据库已有或本批次内重复都全部作废重来）。没映射就系统自动生成</span>
+	        <span>📝 <strong>唯一值用来找记录</strong> - 更新/新增+更新模式下，靠唯一值字段去数据库找对应记录来更新。唯一值不能为空，为空全部作废重来</span>
+	        <span>⬆ <strong>系统字段映射优先</strong> - 创建时间、更新时间、创建人、更新人这4个字段，如果你映射了Excel列，就用Excel的值。没映射就系统自动处理</span>
+        <span>🔄 <strong>关联/附件字段级配置</strong> - 每个关联、附件字段可在字段映射「配置」列单独设置：空值处理（保留/清空）、匹配不到处理（行失败/跳过）、更新模式（覆盖/追加，仅 update/upsert）。多对一(m2o)为单值关联，更新时直接替换，无追加模式；附件字段必须先手动选择压缩包内文件夹</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-right mt-12">
+      <button class="btn btn-default" onclick="goImportStep(0)">← 上一步</button>
+      <button class="btn btn-primary" onclick="goImportStep(2)">下一步 -></button>
+    </div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="step-content" id="is-2">
+    <div class="fw-600 mb-16" style="font-size:14px">预览确认</div>
+
+    <div class="confirm-cards">
+      <div class="confirm-card">
+        <div class="cc-icon" style="background:#f6ffed">📊</div>
+        <div class="cc-body"><div class="cc-label">预计导入行数</div><div class="cc-value" style="font-size:20px;color:#1677ff">1,256</div></div>
+      </div>
+      <div class="confirm-card">
+        <div class="cc-icon" style="background:#fff2f0">✅</div>
+        <div class="cc-body"><div class="cc-label">错误行数</div><div class="cc-value" style="font-size:20px;color:#52c41a">0</div></div>
+      </div>
+      <div class="confirm-card">
+        <div class="cc-icon">📁</div>
+        <div class="cc-body"><div class="cc-label">导入文件</div><div class="cc-value" id="previewFileName">-</div></div>
+      </div>
+      <div class="confirm-card">
+        <div class="cc-icon">📊</div>
+        <div class="cc-body"><div class="cc-label">导入数据表</div><div class="cc-value" id="previewTableName">-</div></div>
+      </div>
+      <div class="confirm-card">
+        <div class="cc-icon">📄</div>
+        <div class="cc-body"><div class="cc-label">导入的Sheet</div><div class="cc-value" id="previewSheet">Sheet1</div></div>
+      </div>
+      <div class="confirm-card">
+        <div class="cc-icon">📝</div>
+        <div class="cc-body"><div class="cc-label">表头行</div><div class="cc-value">第1行</div></div>
+      </div>
+      <div class="confirm-card">
+        <div class="cc-icon">🔑</div>
+        <div class="cc-body"><div class="cc-label">导入模式</div><div class="cc-value" id="previewMode">-</div></div>
+      </div>
+      <div class="confirm-card">
+        <div class="cc-icon">🔑</div>
+        <div class="cc-body"><div class="cc-label">唯一值</div><div class="cc-value" id="previewUnique">-</div></div>
+      </div>
+      <div class="confirm-card">
+        <div class="cc-icon">📎</div>
+        <div class="cc-body"><div class="cc-label">附件</div><div class="cc-value" id="previewAttachment">未上传</div></div>
+      </div>
+      <div class="confirm-card">
+        <div class="cc-icon">⚙️</div>
+        <div class="cc-body"><div class="cc-label">空白值处理</div><div class="cc-value" id="previewBlank">按Excel更新（清空）</div></div>
+      </div>
+	  <div class="confirm-card">
+	    <div class="cc-icon">⚙️</div>
+	    <div class="cc-body"><div class="cc-label">事务模式</div><div class="cc-value">严格模式（失败全部回滚）</div></div>
+	  </div>
+		  <div class="confirm-card">
+		    <div class="cc-icon">⚠️</div>
+	    <div class="cc-body"><div class="cc-label">空值唯一值预检</div><div class="cc-value" id="previewUniquePrecheck">-</div></div>
+	  </div>
+    </div>
+
+    <div class="fw-600 mt-16 mb-8" style="font-size:13px">👁️ 预览数据（前10行）</div>
+    <div style="overflow-x:auto">
+      <table class="tbl" style="font-size:12px" id="previewTable">
+        <thead id="previewThead"></thead>
+        <tbody id="previewTbody"></tbody>
+      </table>
+    </div>
+
+    <div class="text-right mt-16">
+      <button class="btn btn-default" onclick="goImportStep(1)">← 上一步</button>
+      <button class="btn btn-primary" onclick="confirmImport()">▶ 执行导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TAB: 导出 ============ -->
+<div class="tab-page" id="tp-export">
+  <div class="steps" id="exportSteps">
+    <div class="step active" onclick="goExportStep(0)"><span class="step-num">1</span>选择数据表</div>
+    <div class="step" onclick="goExportStep(1)"><span class="step-num">2</span>选择字段 &amp; 配置</div>
+    <div class="step" onclick="goExportStep(2)"><span class="step-num">3</span>执行导出</div>
+  </div>
+  <div class="step-content active" id="es-0">
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-title">📋 选择数据表</div>
+        <div class="frm-row">
+          <label>数据表</label>
+          <div class="sel w-full">
+            <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="exTableName">- 请选择数据表 -</span> <span>▼</span></button>
+            <div class="sel-dropdown">
+              <div class="sel-opt" style="border-bottom:1px solid #f0f0f0;font-weight:600;color:#1677ff" onclick="pickExportTable(this,'全部数据表（含系统表）')">📦 全部数据表（含系统表）</div>
+              <div class="sel-opt" onclick="pickExportTable(this,'用户(users)')">📁 用户(users)</div>
+              <div class="sel-opt" onclick="pickExportTable(this,'订单(orders)')">📁 订单(orders)</div>
+              <div class="sel-opt" onclick="pickExportTable(this,'产品(products)')">📁 产品(products)</div>
+              <div class="sel-opt" onclick="pickExportTable(this,'客户(customers)')">📁 客户(customers)</div>
+            </div>
+          </div>
+        </div>
+        <div class="text-muted mt-8">💡 仅显示您有权限导出的数据表</div>
+        <div class="text-muted">📊 共 5 张表可供选择</div>
+        <div class="text-muted" style="margin-top:8px;color:#fa8c16">⭐ "全部数据表（含系统表）"仅 admin/root 可见</div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">⚙️ 简要配置</div>
+        <div style="font-size:13px;color:#666;line-height:2">
+          <p>• 支持全字段选择和自定义筛选</p>
+          <p>• 关联字段可选择「显示值」或「仅ID」</p>
+          <p>• 关联表可导出为单独Sheet或单独xlsx文件</p>
+          <p>• 支持附件打包导出(tar.gz)</p>
+          <p>• 超百万行自动分表</p>
+          <p>• 导出格式固定 xlsx</p>
+        </div>
+      </div>
+    </div>
+    <div class="text-right mt-12"><button class="btn btn-primary" id="exStep0Next" disabled onclick="goExportStep(1)">下一步 -></button></div>
+  </div>
+  <div class="step-content" id="es-1">
+    <div class="fw-600 mb-12" style="font-size:14px">目标表：<span id="exTableDisplay">-</span></div>
+
+    <!-- 全部数据表模式提示（仅全部数据表时显示） -->
+    <div class="panel" id="exAllTablesPanel" style="display:none;border-left:3px solid #1677ff">
+      <div class="alert alert-info" style="margin:0">
+        <span>📦</span>
+        <div>
+          <strong>将导出全部数据表（含系统表）</strong><br>
+          <span style="font-size:12px;color:#666">每张表导出全部字段为独立 xlsx 文件，打包为 tar.gz 下载。无需逐表配置字段和关联。</span>
+        </div>
+      </div>
+      <div class="grid-2 mt-12">
+        <div class="frm-row" style="margin:0">
+          <label>📅 日期时间导出格式（全局）</label>
+          <div class="sel" style="width:100%"><button class="sel-btn w-full" onclick="toggleSel(this)"><span>YYYY-MM-DD HH:mm:ss</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt" onclick="pickVal(this,'YYYY-MM-DD HH:mm:ss')">YYYY-MM-DD HH:mm:ss <span class="text-muted" style="font-size:11px">2026-07-09 15:30:00</span></div><div class="sel-opt" onclick="pickVal(this,'YYYY/MM/DD HH:mm:ss')">YYYY/MM/DD HH:mm:ss <span class="text-muted" style="font-size:11px">2026/07/09 15:30:00</span></div><div class="sel-opt" onclick="pickVal(this,'YYYY-MM-DD')">YYYY-MM-DD <span class="text-muted" style="font-size:11px">2026-07-09</span></div><div class="sel-opt" onclick="pickVal(this,'UTC ISO 8601')">UTC ISO 8601 <span class="text-muted" style="font-size:11px">2026-07-09T07:30:00.000Z</span></div><div class="sel-opt" onclick="pickVal(this,'时间戳(毫秒)')">时间戳(毫秒) <span class="text-muted" style="font-size:11px">1752058200000</span></div></div></div>
+          <div class="text-muted mt-8" style="font-size:11px">所有表的日期时间字段统一使用此格式导出</div>
+        </div>
+        <div class="frm-row" style="margin:0">
+	          <label>🔗 关联值导出格式（全局）</label>
+	          <div class="sel" style="width:100%"><button class="sel-btn w-full" onclick="toggleSel(this)"><span>显示值(关联表字段名称)</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt" onclick="pickVal(this,'显示值(关联表字段名称)')">显示值(关联表字段名称) <span class="text-muted" style="font-size:11px">如: 管理员</span></div><div class="sel-opt" onclick="pickVal(this,'主键值(动态)')">主键值(动态获取PK) <span class="text-muted" style="font-size:11px">如: 1/UUID等</span></div><div class="sel-opt" onclick="pickVal(this,'显示值+主键值')">显示值+主键值 <span class="text-muted" style="font-size:11px">如: 管理员(1)</span></div></div></div>
+          <div class="text-muted mt-8" style="font-size:11px">所有表的关联字段统一使用此格式导出</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 单表配置区域（全部数据表模式时隐藏） -->
+    <div id="exSingleTableConfig">
+    <!-- 权限切换 -->
+    <div class="panel" style="border-left:3px solid #722ed1">
+      <div class="panel-title" style="color:#722ed1">🔑 权限切换 - 选择本次导出使用的权限配置</div>
+      <div class="frm-row">
+        <label>此表您拥有的权限配置（本表有配置的才显示）</label>
+          <div class="sel w-full">
+          <button class="sel-btn w-full" onclick="toggleSel(this)"><span id="exPermSel">👤 当前用户自定义权限</span> <span>▼</span></button>
+          <div class="sel-dropdown">
+            <div class="sel-group-label">👤 用户权限</div>
+            <div class="sel-opt" onclick="pickExPerm(this,'user-self')">👤 当前用户自定义权限 <span class="opt-desc">可导出: 5个字段</span></div>
+            <div class="sel-group-label">🔐 角色权限</div>
+            <div class="sel-opt" onclick="pickExPerm(this,'admin')">🔐 管理员(admin) <span class="opt-desc">可导出: 全部字段</span></div>
+            <div class="sel-opt" onclick="pickExPerm(this,'importer')">🔐 数据导出员 <span class="opt-desc">可导出: 4个字段</span></div>
+            <div class="sel-opt" onclick="pickExPerm(this,'member')">🔐 member <span class="opt-desc">可导出: 2个字段</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="alert alert-info" style="margin:8px 0 0">
+        <span>💡</span>
+        <span>选中权限后，可导出字段自动锁定。<strong>admin/root 可切换全部权限配置</strong>，普通用户只能选自己的权限。</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">☑️ 字段选择（仅显示有权限导出的字段）</div>
+      <div class="mb-12"><label class="cb"><span class="cb-box indeterminate"></span> 全选</label> <span class="text-muted" style="margin-left:12px">已选: 17 / 20</span></div>
+      <div class="fw-600 mb-8" style="font-size:12px">📄 常规字段 (14)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px" id="exFields1"></div>
+
+      <div class="fw-600 mb-8" style="font-size:12px;color:#fa8c16">📅 日期时间字段 <span class="text-muted" style="font-weight:400">勾选后可配置导出格式</span></div>
+      <div id="exDateFields"></div>
+
+      <div class="fw-600 mb-8 mt-12" style="font-size:12px;color:#7c3aed">🔗 关联字段 (5) <span class="text-muted" style="font-weight:400">显示关联表字段名称(字段名)，勾选后可配置导出值</span></div>
+      <div id="exRelationFields"></div>
+
+      <div class="fw-600 mb-8 mt-12" style="font-size:12px;color:#0891b2">📎 附件字段 (2)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px" id="exFields3"></div>
+    </div>
+
+    </div><!-- end exSingleTableConfig -->
+
+    <!-- 关联表导出模式（单表模式显示，全部数据表模式隐藏） -->
+    <div class="panel" id="exRelationModePanel">
+      <div class="panel-title">📑 关联表导出模式</div>
+      <div class="frm-inline mb-12">
+        <span class="toggle" id="relationExportToggle" onclick="toggleRelationExport(this)"></span>
+        <span id="relationExportToggleLabel" style="font-size:13px;color:#999;margin-left:8px">不导出关联表</span>
+      </div>
+      <div id="relationExportConfig" style="display:none">
+        <div class="text-muted mb-12" style="font-size:12px">选择需要导出关联表数据的关联字段（多选），每个选中的关联表可作为单独Sheet或单独xlsx文件导出</div>
+        <div class="frm-row">
+          <label>选择关联表导出（多选）</label>
+          <div class="chips" id="exRelationChips">
+            <span class="chip" style="background:#e6f4ff;color:#1677ff;border-color:#91caff">角色(role) -> 角色(roles) <span class="rmv" onclick="removeRelationChip(this)">✕</span></span>
+            <span class="chip" style="background:#e6f4ff;color:#1677ff;border-color:#91caff">部门(dept) -> 部门(departments) <span class="rmv" onclick="removeRelationChip(this)">✕</span></span>
+            <span class="chip" style="background:#e6f4ff;color:#1677ff;border-color:#91caff">创建人(createdBy) -> 用户(users) <span class="rmv" onclick="removeRelationChip(this)">✕</span></span>
+            <span class="chip" style="background:#f9f0ff;color:#722ed1;border-color:#d3adf7">标签(tags) -> 标签(tags) [中间表:usersTags] <span class="rmv" onclick="removeRelationChip(this)">✕</span></span>
+            <div class="sel" style="display:inline-block"><button class="btn btn-default btn-sm" onclick="toggleSel(this);refreshRelationChips()">+ 添加关联表</button>
+              <div class="sel-dropdown" id="exRelationChipDropdown" style="min-width:260px"></div>
+            </div>
+          </div>
+        </div>
+        <div class="frm-inline mb-8" style="margin-top:12px">
+          <span class="text-muted">导出方式：</span>
+          <label class="cb" onclick="toggleRadio(this,'relExportMode')"><span class="cb-box checked" id="relSheet"></span> 关联表作为单独Sheet</label>
+          <label class="cb" onclick="toggleRadio(this,'relExportMode')" style="margin-left:16px"><span class="cb-box" id="relFile"></span> 关联表作为单独xlsx文件</label>
+        </div>
+        <div class="text-muted" style="font-size:12px;background:#f0f5ff;padding:8px 10px;border-radius:4px">
+          单独Sheet: Sheet命名 -> 主表字段名称(主表字段标识)-关联表名称(关联表标识)，例: 角色(role)-角色(roles)<br>
+          单独xlsx: 各文件独立命名，多个文件打包为tar.gz下载
+        </div>
+      </div>
+      <div id="relationExportNoNeedHint" class="alert alert-info" style="margin:0">
+        <span>ℹ️</span>
+        <div><strong>本次导出不包含关联表数据</strong>。主表导出仅包含当前表字段。</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">🏷️ 表头格式</div>
+      <div class="frm-inline">
+        <label class="cb" onclick="toggleRadio(this,'headerType')"><span class="cb-box checked"></span> 字段名称(字段名) <span class="text-muted">例: 地址(address)</span></label>
+        <label class="cb" onclick="toggleRadio(this,'headerType')" style="margin-left:16px"><span class="cb-box"></span> 字段名称 <span class="text-muted">例: 地址</span></label>
+        <label class="cb" onclick="toggleRadio(this,'headerType')" style="margin-left:16px"><span class="cb-box"></span> 字段名 <span class="text-muted">例: address</span></label>
+      </div>
+    </div>
+
+    <div class="panel" id="exDataRangePanel">
+      <div class="panel-title">📊 数据范围</div>
+      <div class="frm-inline mb-12">
+        <button class="filter-btn active" onclick="setDataRange(this,'all')">全部数据</button>
+        <button class="filter-btn" onclick="setDataRange(this,'filtered')">自定义条件</button>
+      </div>
+      <div id="filterArea" style="display:none">
+        <div class="fw-600 mb-8" style="font-size:13px">筛选条件（AND）</div>
+        <div class="frm-inline mb-8">
+          <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>年龄</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">年龄</div><div class="sel-opt">创建时间</div><div class="sel-opt">状态</div></div></div>
+          <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>大于</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">大于</div><div class="sel-opt">大于等于</div><div class="sel-opt">小于</div><div class="sel-opt">等于</div></div></div>
+          <input class="s-input" style="width:100px" value="18"><button class="btn btn-text" style="color:#ff4d4f">🗑</button>
+        </div>
+        <button class="btn btn-dashed btn-sm" style="width:auto" onclick="addFilterRow(this)">+ 添加条件</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">⚙️ 高级选项</div>
+      <div class="frm-inline mb-12"><span class="toggle on" onclick="toggleSwitch(this)"></span><span style="font-size:13px">导出附件（打包为tar.gz下载）</span></div>
+      <div class="text-muted" style="font-size:12px;margin-bottom:8px">💡 超过100万行自动分表（默认开启，无需设置）</div>
+      <div class="frm-inline"><span class="text-muted">导出格式：</span><strong>xlsx（固定）</strong></div>
+    </div>
+    <div class="text-right mt-12"><button class="btn btn-default" onclick="goExportStep(0)">← 上一步</button><button class="btn btn-primary" onclick="goExportStep(2)">下一步 -></button></div>
+  </div>
+  <div class="step-content" id="es-2">
+    <div class="fw-600 mb-16" style="font-size:14px">执行导出 - <span id="exPreviewTable">用户</span></div>
+
+    <!-- 单表导出 -->
+    <div id="exSingleStats">
+      <div class="confirm-cards">
+        <div class="confirm-card"><div class="cc-icon" style="background:#f6ffed">📊</div><div class="cc-body"><div class="cc-label">选择字段数</div><div class="cc-value" style="font-size:20px;color:#1677ff">17</div></div></div>
+        <div class="confirm-card"><div class="cc-icon" style="background:#f6ffed">📈</div><div class="cc-body"><div class="cc-label">预计导出行数</div><div class="cc-value" style="font-size:20px;color:#1677ff">5,230</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">📊</div><div class="cc-body"><div class="cc-label">导出数据表</div><div class="cc-value" id="exStatTable">用户(users)</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">📊</div><div class="cc-body"><div class="cc-label">数据范围</div><div class="cc-value">全部数据</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">🏷️</div><div class="cc-body"><div class="cc-label">表头格式</div><div class="cc-value">字段名称(字段名)</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">📑</div><div class="cc-body"><div class="cc-label">关联表导出</div><div class="cc-value">单独Sheet</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">📎</div><div class="cc-body"><div class="cc-label">导出附件</div><div class="cc-value">是 (tar.gz)</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">⚙️</div><div class="cc-body"><div class="cc-label">百万行分表</div><div class="cc-value">自动开启</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">📄</div><div class="cc-body"><div class="cc-label">导出格式</div><div class="cc-value">xlsx (固定)</div></div></div>
+      </div>
+      <div class="panel"><div class="panel-title">🏷️ 选中字段</div><div class="flex" style="flex-wrap:wrap" id="exSelectedFields"></div></div>
+      <div class="mt-8" style="padding:8px 12px;background:#f0f5ff;border-radius:6px;font-size:13px">📁 导出文件名：<strong>用户-users-20260709153000.xlsx</strong><br><span class="text-muted">格式: 数据表名称-数据表标识-年月日时分秒</span></div>
+    </div>
+
+    <!-- 全部数据表导出 -->
+    <div id="exAllTablesStats" style="display:none">
+      <div class="confirm-cards">
+        <div class="confirm-card"><div class="cc-icon" style="background:#f6ffed">📊</div><div class="cc-body"><div class="cc-label">导出表数量</div><div class="cc-value" style="font-size:20px;color:#1677ff">9</div></div></div>
+        <div class="confirm-card"><div class="cc-icon" style="background:#f6ffed">📈</div><div class="cc-body"><div class="cc-label">预计总行数</div><div class="cc-value" style="font-size:20px;color:#1677ff">32,195</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">📊</div><div class="cc-body"><div class="cc-label">导出范围</div><div class="cc-value">含系统表</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">📦</div><div class="cc-body"><div class="cc-label">打包格式</div><div class="cc-value">tar.gz</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">📎</div><div class="cc-body"><div class="cc-label">导出附件</div><div class="cc-value">是</div></div></div>
+        <div class="confirm-card"><div class="cc-icon">📄</div><div class="cc-body"><div class="cc-label">导出格式</div><div class="cc-value">xlsx (每表独立)</div></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">📋 导出表清单</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 用户(users) - 1,256行 含附件</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 角色(roles) - 8行</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 订单(orders) - 5,750行</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 产品(products) - 320行 含附件</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 分类(categories) - 24行</span>
+          <span class="tag tag-blue" style="font-size:13px;padding:6px 12px">📁 文章(posts) - 180行 含附件</span>
+          <span class="tag" style="background:#f9f0ff;color:#722ed1;font-size:13px;padding:6px 12px">🔗 用户标签(usersTags) - 45行 [中间表]</span>
+          <span class="tag" style="background:#f0f5ff;color:#1677ff;font-size:13px;padding:6px 12px">⚙️ 系统配置(settings) - 15行</span>
+          <span class="tag" style="background:#f0f5ff;color:#1677ff;font-size:13px;padding:6px 12px">⚙️ 审计日志(audit_logs) - 24,597行</span>
+        </div>
+      </div>
+      <div class="alert alert-info mt-8"><span>📦</span><span>将导出全部 9 张数据表（含系统表、含中间表），每张表导出全部字段为独立 xlsx 文件，打包为 tar.gz 下载。</span></div>
+      <div class="mt-8" style="padding:8px 12px;background:#f0f5ff;border-radius:6px;font-size:13px">📁 导出文件名：<strong>全部数据表-20260709153000.tar.gz</strong></div>
+    </div>
+
+    <div class="text-right mt-16"><button class="btn btn-default" onclick="goExportStep(1)">← 上一步</button><button class="btn btn-primary" onclick="confirmExport()">▶ 执行导出</button></div>
+  </div>
+</div>
+
+<!-- ============ TAB: 任务管理 ============ -->
+<div class="tab-page" id="tp-tasks">
+  <!-- 统计概览 -->
+  <div class="mb-16" id="taskStats" style="display:flex;gap:10px;flex-wrap:nowrap"></div>
+	  <!-- 筛选栏 -->
+	  <div class="flex mb-16" style="align-items:center">
+	    <div><div class="text-muted mb-8">任务类型</div><div class="filter-group" id="taskTypeFilter"><button class="filter-btn active" data-val="全部" onclick="applyTaskFilters()">全部</button><button class="filter-btn" data-val="导入" onclick="applyTaskFilters()">⬇ 导入</button><button class="filter-btn" data-val="导出" onclick="applyTaskFilters()">⬆ 导出</button></div></div>
+	    <div style="margin-left:16px"><div class="text-muted mb-8">状态</div><div class="filter-group" id="taskStatusFilter"><button class="filter-btn active" data-val="全部" onclick="applyTaskFilters()">全部</button><button class="filter-btn" data-val="排队中" onclick="applyTaskFilters()">⏳ 排队</button><button class="filter-btn" data-val="进行中" onclick="applyTaskFilters()">🔄 进行</button><button class="filter-btn" data-val="已完成" onclick="applyTaskFilters()">✅ 完成</button><button class="filter-btn" data-val="失败" onclick="applyTaskFilters()">❌ 失败</button><button class="filter-btn" data-val="已取消" onclick="applyTaskFilters()">🚫 已取消</button></div></div>
+	    <div class="ml-auto"><div class="s-input-wrap"><span class="icon">🔍</span><input class="s-input" id="taskSearch" style="width:200px" placeholder="搜索表名/任务ID..." oninput="applyTaskFilters()"></div></div>
+	  </div>
+  <!-- 任务表格列表 -->
+  <table class="tbl">
+    <thead><tr>
+      <th style="width:70px">任务ID</th>
+      <th style="width:60px">类型</th>
+      <th>目标表</th>
+      <th style="width:90px">状态</th>
+      <th style="width:150px">进度</th>
+      <th style="width:100px">数据量</th>
+      <th style="width:80px">创建人</th>
+      <th style="width:160px">创建时间</th>
+      <th style="width:120px">操作</th>
+    </tr></thead>
+    <tbody id="taskBody"></tbody>
+  </table>
+	  <!-- 分页 -->
+	  <div class="flex mt-16" style="justify-content:space-between;align-items:center" id="taskPagination"><span class="text-muted" id="taskPageInfo">共 5 条（每页 20 条）</span><div class="flex gap-4"><button class="btn btn-default btn-sm" disabled>‹</button><button class="btn btn-primary btn-sm">1</button><button class="btn btn-default btn-sm" disabled>›</button></div></div>
+</div>
+
+<!-- ============ TAB: 权限管理 ============ -->
+<div class="tab-page" id="tp-permissions">
+  <div class="split">
+    <div class="sidebar">
+      <div class="sidebar-title">👥 用户/角色</div>
+      <div class="s-input-wrap mb-8"><span class="icon">🔍</span><input class="s-input" placeholder="搜索..." oninput="filterSidebar(this)"></div>
+      <div class="sidebar-group">👤 用户 (3)</div>
+      <div class="sidebar-item active" data-type="user" data-name="张明" data-roles="管理员(admin),编辑(editor)" onclick="selectTarget(this)"><div class="avatar" style="background:#1677ff">张</div><div><div>张明</div><div style="font-size:11px;color:#999">管理员·编辑</div></div></div>
+      <div class="sidebar-item" data-type="user" data-name="李华" data-roles="member" onclick="selectTarget(this)"><div class="avatar" style="background:#1677ff">李</div><div><div>李华</div><div style="font-size:11px;color:#999">member</div></div></div>
+      <div class="sidebar-item" data-type="user" data-name="王芳" data-roles="编辑(editor)" onclick="selectTarget(this)"><div class="avatar" style="background:#1677ff">王</div><div><div>王芳</div><div style="font-size:11px;color:#999">编辑</div></div></div>
+      <div class="sidebar-group">🔐 角色 (3)</div>
+      <div class="sidebar-item" data-type="role" data-name="管理员" data-roleid="admin" onclick="selectTarget(this)"><div class="avatar" style="background:#52c41a">R</div><div><div>管理员(admin)</div></div></div>
+      <div class="sidebar-item" data-type="role" data-name="编辑" data-roleid="editor" onclick="selectTarget(this)"><div class="avatar" style="background:#52c41a">R</div><div><div>编辑(editor)</div></div></div>
+      <div class="sidebar-item" data-type="role" data-name="超级管理员" data-roleid="root" onclick="selectTarget(this)"><div class="avatar" style="background:#52c41a">R</div><div><div>超级管理员(root)</div></div></div>
+    </div>
+    <div class="flex-1">
+      <!-- 头部信息栏 -->
+      <div class="flex mb-16" style="justify-content:space-between;align-items:center">
+        <span style="font-size:15px;font-weight:600" id="permTargetTitle">👤 张明 的权限配置 <span class="tag tag-blue">用户</span></span>
+        <div class="frm-inline" style="gap:12px">
+          <div class="frm-inline" id="permScopeArea">
+            <span class="text-muted">任务查看范围：</span>
+            <div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span id="permScopeLabel">仅查看自己的</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt" onclick="setPermScope(this,'仅查看自己的')">仅查看自己的</div><div class="sel-opt" onclick="setPermScope(this,'查看全部')">查看全部</div></div></div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="permAddBtn" onclick="openPermEdit('✏️ 新增权限')">+ 添加权限配置</button>
+        </div>
+      </div>
+      <!-- 子Tab -->
+      <div style="display:flex;border-bottom:2px solid #f0f0f0;margin-bottom:12px">
+        <div class="subtab active" onclick="switchPermTab(this,'permContent')">✓ 权限配置</div>
+        <div class="subtab" onclick="switchPermTab(this,'logContent')">📋 操作日志（5条）</div>
+      </div>
+
+      <!-- admin/root 全部权限提示（仅 admin/root 角色显示） -->
+      <div class="panel" id="permAdminNotice" style="display:none;border-left:3px solid #ff4d4f;background:#fff2f0">
+        <div class="alert" style="margin:0;background:transparent;border:none;color:#820014">
+          <span style="font-size:24px">⚡</span>
+          <div>
+            <strong style="font-size:14px">此角色拥有全部权限，无需配置</strong><br>
+            <span style="font-size:12px;color:#666">admin/root 角色自动拥有所有数据表的导入、导出、全部模式、全部字段权限，包括系统表导出权限。不可修改、不可删除。</span>
+          </div>
+        </div>
+        <div class="mt-12" style="display:flex;flex-wrap:wrap;gap:8px">
+          <span class="tag tag-blue" style="font-size:12px;padding:4px 10px">✅ 导入: 全部数据表</span>
+          <span class="tag tag-green" style="font-size:12px;padding:4px 10px">✅ 导出: 全部数据表（含系统表）</span>
+          <span class="tag tag-orange" style="font-size:12px;padding:4px 10px">✅ 模式: 新增/更新/新增+更新</span>
+          <span class="tag tag-cyan" style="font-size:12px;padding:4px 10px">✅ 可导入: 全部字段</span>
+          <span class="tag tag-purple" style="font-size:12px;padding:4px 10px">✅ 可导出: 全部字段</span>
+          <span class="tag tag-red" style="font-size:12px;padding:4px 10px">✅ 任务管理: 查看全部</span>
+          <span class="tag tag-default" style="font-size:12px;padding:4px 10px">✅ 权限管理</span>
+        </div>
+      </div>
+
+      <!-- 普通权限配置内容（admin/root 时隐藏） -->
+      <div id="permContent">
+        <div class="flex mb-8" style="align-items:center">
+          <label class="cb" id="permSelectAll" onclick="toggleSelectAll(this)"><span class="cb-box" id="permSelectAllBox"></span></label><span class="text-muted">全选（仅自定义权限）</span><span class="text-muted" id="permSelectedCount" style="margin-left:8px;font-size:12px">已选 0 / 3</span>
+          <div class="ml-auto"><input class="s-input" style="width:180px" placeholder="搜索表名或标识..." oninput="filterPermCards(this)"></div>
+        </div>
+        <!-- 继承权限 -->
+        <div id="inheritedSection" class="sect-title" onclick="toggleSection('inherited')"><span class="arrow" id="inherited-arrow">▼</span>📦 角色继承的权限（按角色分组）<span class="text-muted" style="font-weight:400;font-size:12px;margin-left:4px">（只读，不可编辑）</span></div>
+        <div id="inherited-cards">
+          <div class="role-inherit-group" style="margin-bottom:12px">
+            <div class="sect-title" style="font-size:13px;font-weight:500" onclick="toggleSection('inherited-admin')"><span class="arrow" id="inherited-admin-arrow">▼</span>🔐 来自 管理员(admin)</div>
+            <div id="inherited-admin-cards">
+              <div class="panel" style="border-left:3px solid #ff4d4f;background:#fff2f0;margin-top:8px">
+                <div class="alert" style="margin:0;background:transparent;border:none;color:#820014">
+                  <span style="font-size:24px">⚡</span>
+                  <div>
+                    <strong style="font-size:14px">该角色拥有全部权限</strong><br>
+                    <span style="font-size:12px;color:#666">admin/root 角色自动拥有所有数据表的导入、导出、全部模式、全部字段权限，包括系统表导出权限。不可修改、不可删除。</span>
+                  </div>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+                  <span class="tag tag-blue" style="font-size:12px;padding:4px 10px">✅ 导入: 全部数据表</span>
+                  <span class="tag tag-green" style="font-size:12px;padding:4px 10px">✅ 导出: 全部数据表（含系统表）</span>
+                  <span class="tag tag-orange" style="font-size:12px;padding:4px 10px">✅ 模式: 新增/更新/新增+更新</span>
+                  <span class="tag tag-cyan" style="font-size:12px;padding:4px 10px">✅ 可导入: 全部字段</span>
+                  <span class="tag tag-purple" style="font-size:12px;padding:4px 10px">✅ 可导出: 全部字段</span>
+                  <span class="tag tag-red" style="font-size:12px;padding:4px 10px">✅ 任务管理: 查看全部</span>
+                  <span class="tag tag-default" style="font-size:12px;padding:4px 10px">✅ 权限管理</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="role-inherit-group" style="margin-bottom:12px">
+            <div class="sect-title" style="font-size:13px;font-weight:500" onclick="toggleSection('inherited-editor')"><span class="arrow" id="inherited-editor-arrow">▼</span>🔐 来自 编辑(editor)</div>
+            <div id="inherited-editor-cards">
+              <div class="perm-card inherited"><div class="perm-card-hd"><div class="flex gap-4" style="align-items:center"><strong>订单表(orders)</strong><span class="tag tag-purple">继承</span></div><button class="btn btn-text btn-sm" onclick="openDetailModal()">查看详情</button></div><div class="tagrow"><span class="tag tag-blue">导入:是</span><span class="tag tag-green">导出:否</span><span class="tag tag-orange">模式:新增</span><span class="tag tag-cyan">可导入:全部</span></div></div>
+            </div>
+          </div>
+        </div>
+        <!-- 自定义权限 -->
+        <div id="customSectionTitle" class="sect-title mt-16" onclick="toggleSection('custom')"><span class="arrow" id="custom-arrow">▼</span>✏️ 用户自定义权限（3条）</div>
+        <div id="custom-cards">
+          <div class="perm-card" id="permCard-1">
+            <div class="perm-card-hd">
+              <div class="flex gap-4" style="align-items:center"><strong>客户表(customers)</strong></div>
+              <div class="flex gap-4">
+                <button class="btn btn-text btn-sm" onclick="openPermEdit('编辑权限 · 客户表(customers)')">✏️ 编辑</button>
+                <button class="btn btn-text btn-sm" style="color:#ff4d4f" onclick="confirmDeletePerm(1,'客户表(customers)')">🗑 删除</button>
+              </div>
+            </div>
+            <div class="tagrow"><span class="tag tag-blue">导入:是</span><span class="tag tag-green">导出:否</span><span class="tag tag-orange">模式:新增+更新</span><span class="tag tag-orange">唯一值:客户编号</span><span class="tag tag-red">必填:姓名,手机号</span><span class="tag tag-cyan">可导入:5个字段</span><span class="tag tag-purple">可导出:-</span></div>
+          </div>
+          <div class="perm-card" id="permCard-2">
+            <div class="perm-card-hd">
+              <div class="flex gap-4" style="align-items:center"><strong>产品表(products)</strong></div>
+              <div class="flex gap-4">
+                <button class="btn btn-text btn-sm" onclick="openPermEdit('编辑权限 · 产品表(products)')">✏️ 编辑</button>
+                <button class="btn btn-text btn-sm" style="color:#ff4d4f" onclick="confirmDeletePerm(2,'产品表(products)')">🗑 删除</button>
+              </div>
+            </div>
+            <div class="tagrow"><span class="tag tag-blue">导入:是</span><span class="tag tag-green">导出:否</span><span class="tag tag-orange">模式:新增</span><span class="tag tag-red">必填:产品名称,价格</span><span class="tag tag-cyan">可导入:3个字段</span></div>
+          </div>
+          <div class="perm-card" id="permCard-3">
+            <div class="perm-card-hd">
+              <div class="flex gap-4" style="align-items:center"><strong>商城表(stores)</strong></div>
+              <div class="flex gap-4">
+                <button class="btn btn-text btn-sm" onclick="openPermEdit('编辑权限 · 商城表(stores)')">✏️ 编辑</button>
+                <button class="btn btn-text btn-sm" style="color:#ff4d4f" onclick="confirmDeletePerm(3,'商城表(stores)')">🗑 删除</button>
+              </div>
+            </div>
+            <div class="tagrow"><span class="tag tag-blue">导入:是</span><span class="tag tag-green">导出:是</span><span class="tag tag-orange">模式:新增+更新</span><span class="tag tag-orange">唯一值:编码</span><span class="tag tag-red">必填:编码</span><span class="tag tag-cyan">可导入:9个</span><span class="tag tag-purple">可导出:4个</span><span class="tag tag-default">📋 筛选:status=启用</span></div>
+          </div>
+        </div>
+      </div>
+      <!-- 操作日志 -->
+      <div id="logContent" style="display:none">
+        <div class="flex mb-12" style="align-items:center;gap:12px"><span class="text-muted">操作类型：</span><div class="filter-group"><button class="filter-btn active" onclick="filterLogByType(this,'全部')">全部</button><button class="filter-btn" onclick="filterLogByType(this,'创建')">创建</button><button class="filter-btn" onclick="filterLogByType(this,'修改')">修改</button><button class="filter-btn" onclick="filterLogByType(this,'删除')">删除</button><button class="filter-btn" onclick="filterLogByType(this,'切换')">切换</button></div><span class="text-muted" style="margin-left:12px">时间范围：</span><div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span id="logTimeRangeLabel">全部</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt" onclick="filterLogByTimeRange(this,'全部')">全部</div><div class="sel-opt" onclick="filterLogByTimeRange(this,'最近7天')">最近7天</div><div class="sel-opt" onclick="filterLogByTimeRange(this,'最近30天')">最近30天</div></div></div><span class="text-muted ml-auto" id="logCountLabel">共 5 条记录</span></div>
+        <table class="tbl" style="font-size:12px"><thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>目标</th><th>数据表</th><th>变更概要</th><th>详情</th></tr></thead><tbody>
+          <tr><td>06-30 18:30</td><td>nocobase</td><td><span class="tag tag-green">创建</span></td><td>张明(用户)</td><td><b>customers</b></td><td>新增权限:导入=是 导出=否 模式=upsert</td><td><button class="btn btn-text btn-sm" onclick="toggleLogDetail(0)">展开</button></td></tr>
+          <tr id="logDetail-0" style="display:none"><td colspan="7" style="background:#fffbe6;padding:10px 14px;font-size:11px;color:#555"><b>变更详情：</b><br><span style="color:#999">操作前：</span>无（新建）<br><span style="color:#52c41a">操作后：</span>canImport=true, canExport=false, importMode=["upsert"], importFields=["姓名","手机号","邮箱","地址","备注"], uniqueFields=["客户编号"], requiredFields=["姓名","手机号"]</td></tr>
+          <tr><td>06-30 17:15</td><td>nocobase</td><td><span class="tag tag-orange">修改</span></td><td>编辑(角色)</td><td><b>orders</b></td><td>修改权限:导入模式+唯一值字段变更</td><td><button class="btn btn-text btn-sm" onclick="toggleLogDetail(1)">展开</button></td></tr>
+          <tr id="logDetail-1" style="display:none"><td colspan="7" style="background:#fffbe6;padding:10px 14px;font-size:11px;color:#555"><b>变更详情：</b><br><span style="color:#999">操作前：</span>importMode=["insert"]<br><span style="color:#52c41a">操作后：</span>importMode=["insert","update"], uniqueFields=["订单编号"]</td></tr>
+          <tr><td>06-30 16:02</td><td>nocobase</td><td><span class="tag tag-red">删除</span></td><td>张明(用户)</td><td><b>inventory</b></td><td>移除权限:导入=否 导出=是</td><td><button class="btn btn-text btn-sm" onclick="toggleLogDetail(2)">展开</button></td></tr>
+          <tr id="logDetail-2" style="display:none"><td colspan="7" style="background:#fffbe6;padding:10px 14px;font-size:11px;color:#555"><b>变更详情：</b><br><span style="color:#999">操作前：</span>canImport=false, canExport=true<br><span style="color:#ff4d4f">操作结果：</span>已删除</td></tr>
+          <tr><td>06-29 14:20</td><td>admin</td><td><span class="tag tag-blue">切换</span></td><td>李华(用户)</td><td><b>products</b></td><td>切换开关:canImport 否->是</td><td><button class="btn btn-text btn-sm" onclick="toggleLogDetail(3)">展开</button></td></tr>
+          <tr id="logDetail-3" style="display:none"><td colspan="7" style="background:#fffbe6;padding:10px 14px;font-size:11px;color:#555"><b>变更详情：</b><br><span style="color:#999">操作前：</span>canImport=false<br><span style="color:#52c41a">操作后：</span>canImport=true</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div></div>
+
+<!-- MODALS -->
+<div class="m-overlay" id="modalConfirmImport"><div class="m-box w-sm"><div class="m-hd">⚠️ 确认导入</div><div class="m-body"><p style="font-size:14px;line-height:1.8" id="confirmImportText"></p></div><div class="m-ft"><button class="btn btn-default" onclick="closeModal('modalConfirmImport')">取消</button><button class="btn btn-primary" onclick="submitImport()">确认</button></div></div></div>
+<div class="m-overlay" id="modalConfirmExport"><div class="m-box w-sm"><div class="m-hd">⚠️ 确认导出</div><div class="m-body"><p style="font-size:14px;line-height:1.8">将导出约 <strong>5,230</strong> 行数据到 Excel 文件。<br>文件名：<strong>用户-users-20260709153000.xlsx</strong></p></div><div class="m-ft"><button class="btn btn-default" onclick="closeModal('modalConfirmExport')">取消</button><button class="btn btn-primary" onclick="submitExport()">确认</button></div></div></div>
+<div class="m-overlay" id="modalPermEdit"><div class="m-box w-lg"><div class="m-hd"><span id="permEditTitle">✏️ 新增权限</span><button class="btn btn-text" onclick="closeModal('modalPermEdit')" style="font-size:18px">✕</button></div><div class="m-body">
+  <div class="frm-row"><label>选择数据表 <span class="text-danger">*</span></label><div class="sel w-full"><button class="sel-btn w-full" onclick="toggleSel(this)"><span id="permEditTable">- 请选择数据表 -</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt" onclick="pickPermEditTable(this,'客户表(customers)')">客户表(customers)</div><div class="sel-opt" onclick="pickPermEditTable(this,'订单表(orders)')">订单表(orders)</div><div class="sel-opt" onclick="pickPermEditTable(this,'产品表(products)')">产品表(products)</div><div class="sel-opt" onclick="pickPermEditTable(this,'用户表(users)')">用户表(users)</div></div></div></div>
+  <div class="grid-2" style="margin:16px 0"><div class="frm-row" style="margin:0"><label>允许导入</label><div class="frm-inline"><span class="toggle on" id="permToggleImport" onclick="togglePermConfig('import')"></span><span style="font-size:13px;color:#52c41a" id="permImportLabel">开启</span></div></div><div class="frm-row" style="margin:0"><label>允许导出</label><div class="frm-inline"><span class="toggle" id="permToggleExport" onclick="togglePermConfig('export')"></span><span style="font-size:13px;color:#999" id="permExportLabel">关闭</span></div></div></div>
+  <div id="permImportConfig" style="border:1px solid #e6f4ff;border-radius:8px;padding:16px;margin-bottom:16px;background:#fafffe;border-left:3px solid #1677ff">
+    <div class="fw-600 mb-12" style="color:#1677ff;font-size:13px">⬇ 导入配置</div>
+    <div class="frm-row"><label>导入模式 <span class="text-muted">(可多选)</span> <span class="text-danger">*</span></label><div class="chips" id="permImportModes"><span class="chip" style="background:#e6f4ff;color:#1677ff">新增(insert) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip" style="background:#e6f4ff;color:#1677ff">新增+更新(upsert) <span class="rmv" onclick="removePermChip(this)">✕</span></span><div class="sel" style="display:inline-block"><button class="btn btn-text btn-sm" style="color:#1677ff;padding:2px 6px" onclick="toggleSel(this);renderPermModeDropdown()">+ 添加模式</button><div class="sel-dropdown" id="permImportModeDropdown"></div></div></div></div>
+    <div class="frm-row" id="permUniqueFieldsRow"><label>唯一值字段 <span class="text-muted">(update/upsert必填)</span> <span class="text-danger">*</span></label><div class="chips" id="permUniqueFields"><span class="chip" style="background:#fff7e6;color:#fa8c16">客户编号(customerCode) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip" style="background:#fff7e6;color:#fa8c16">手机号(phone) <span class="rmv" onclick="removePermChip(this)">✕</span></span><button class="btn btn-text btn-sm" style="color:#fa8c16;padding:2px 6px" onclick="addPermChip('uniqueField')">+ 添加字段</button></div></div>
+    <div class="frm-row"><label>必填字段 <span class="text-danger">*</span></label><div class="chips" id="permRequiredFields"><span class="chip" style="background:#fff2f0;color:#ff4d4f">姓名(name) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip" style="background:#fff2f0;color:#ff4d4f">手机号(phone) <span class="rmv" onclick="removePermChip(this)">✕</span></span><button class="btn btn-text btn-sm" style="color:#ff4d4f;padding:2px 6px" onclick="addPermChip('requiredField')">+ 添加字段</button></div></div>
+    <div class="frm-row" style="margin:0"><label>可导入字段 <span class="text-muted">(空=全部允许)</span></label><div class="chips" id="permImportFields"><span class="chip">姓名(name) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip">手机号(phone) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip">邮箱(email) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip">地址(address) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip">备注(remark) <span class="rmv" onclick="removePermChip(this)">✕</span></span><button class="btn btn-text btn-sm" style="color:#1677ff;padding:2px 6px" onclick="addPermChip('importField')">+ 添加字段</button></div></div>
+  </div>
+  <div id="permExportConfig" style="border:1px solid #f6ffed;border-radius:8px;padding:16px;border-left:3px solid #52c41a;display:none">
+    <div class="fw-600 mb-12" style="color:#52c41a;font-size:13px">⬆ 导出配置</div>
+    <div class="frm-row"><label>可导出字段 <span class="text-muted">(空=全部允许)</span></label><div class="chips" id="permExportFields"><span class="chip">姓名(name) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip">手机号(phone) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip">创建时间(createdAt) <span class="rmv" onclick="removePermChip(this)">✕</span></span><span class="chip">状态(status) <span class="rmv" onclick="removePermChip(this)">✕</span></span><button class="btn btn-text btn-sm" style="color:#52c41a;padding:2px 6px" onclick="addPermChip('exportField')">+ 添加字段</button></div></div>
+    <div class="frm-row" style="margin:0"><label>导出范围筛选 <span class="text-muted">(可选)</span></label><div id="permExportFilters"><div class="frm-inline mb-8"><div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>状态</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">状态</div><div class="sel-opt">金额</div><div class="sel-opt">创建时间</div></div></div><div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>等于</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">等于</div><div class="sel-opt">大于</div><div class="sel-opt">小于</div><div class="sel-opt">包含</div></div></div><input class="s-input" style="width:100px" value="启用"><span style="color:#ff4d4f;cursor:pointer;font-size:16px" onclick="this.parentElement.remove()">✕</span></div></div><button class="btn btn-text btn-sm" style="color:#1677ff" onclick="addPermExportFilter()">+ 添加筛选条件</button></div>
+  </div>
+  <div class="text-muted" style="font-size:12px;padding:4px 0">* 开启导入/导出开关后，可配置对应的详细规则</div>
+</div><div class="m-ft"><button class="btn btn-default" onclick="closeModal('modalPermEdit')">取消</button><button class="btn btn-primary" onclick="savePermConfig()">保存配置</button></div></div></div>
+<div class="m-overlay" id="modalDetail"><div class="m-box w-md"><div class="m-hd" style="background:#fafafa;color:#999"><span>📋 查看权限详情 · <span style="color:#722ed1">继承自角色权限</span></span><button class="btn btn-text" onclick="closeModal('modalDetail')" style="font-size:18px">✕</button></div><div class="m-body">
+  <div class="alert alert-info mb-16"><span>🔒</span><div><b>此权限为继承权限，不可在此编辑。</b><br><span style="font-size:11px;color:#666">来源：角色「编辑(editor)」-> 表「用户表(users)」如需修改请切换到对应角色。</span></div></div>
+  <table class="tbl" style="font-size:13px">
+    <tr><td style="color:#666;width:100px">数据表</td><td><b>用户表(users)</b></td></tr><tr style="background:#fafafa"><td style="color:#666">允许导入</td><td><span class="tag tag-blue">是</span></td></tr><tr><td style="color:#666">允许导出</td><td><span class="tag tag-blue">是</span></td></tr><tr style="background:#fafafa"><td style="color:#666">导入模式</td><td><span class="tag tag-orange">新增(insert)</span> <span class="tag tag-orange">更新(update)</span> <span class="tag tag-orange">新增+更新(upsert)</span></td></tr><tr><td style="color:#666">唯一值字段</td><td><span class="tag tag-orange">手机号(phone)</span> <span class="tag tag-orange">邮箱(email)</span></td></tr><tr style="background:#fafafa"><td style="color:#666">必填字段</td><td><span class="tag tag-red">姓名(name)</span> <span class="tag tag-red">手机号(phone)</span></td></tr><tr><td style="color:#666">可导入字段</td><td><span style="color:#52c41a">全部字段允许（未限制）</span></td></tr><tr style="background:#fafafa"><td style="color:#666">可导出字段</td><td><span style="color:#52c41a">全部字段允许（未限制）</span></td></tr><tr><td style="color:#666">导出筛选</td><td><span style="color:#999">无筛选条件</span></td></tr>
+  </table>
+</div><div class="m-ft" style="justify-content:center"><button class="btn btn-default" onclick="closeModal('modalDetail')">关闭</button></div></div></div>
+
+<!-- MODAL: 离开确认（脏数据） -->
+<div class="m-overlay" id="modalDirtyConfirm"><div class="m-box w-sm"><div class="m-hd">⚠️ 当前配置未保存</div><div class="m-body"><p style="font-size:14px;line-height:1.8">当前配置未保存，确认离开？<br><span class="text-muted">离开后已填写的字段映射、唯一值、导入模式等配置将丢失。</span></p></div><div class="m-ft"><button class="btn btn-default" onclick="closeModal('modalDirtyConfirm')">取消</button><button class="btn btn-primary" onclick="confirmDirtyLeave()">确认离开</button></div></div></div>
+
+<!-- MODAL: 删除权限确认 -->
+<div class="m-overlay" id="modalDeletePerm"><div class="m-box w-sm"><div class="m-hd">🗑 确认删除</div><div class="m-body"><p style="font-size:14px;line-height:1.8">确认删除 <strong id="deletePermName">-</strong> 的权限配置？<br><span class="text-muted">此操作不可撤销。</span></p></div><div class="m-ft"><button class="btn btn-default" onclick="closeModal('modalDeletePerm')">取消</button><button class="btn btn-danger" id="deletePermConfirmBtn">确认删除</button></div></div></div>
+
+<!-- PREVIEW MODAL (Excel前10行) -->
+<div class="m-overlay" id="modalPreview"><div class="m-box w-xl"><div class="m-hd"><span>👁️ Excel预览（前10行） - <span id="previewModalSheet">Sheet1</span></span><button class="btn btn-text" onclick="closeModal('modalPreview')" style="font-size:18px">✕</button></div><div class="m-body">
+  <div class="frm-inline mb-12"><span class="text-muted">Sheet：</span><div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>Sheet1</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">Sheet1</div><div class="sel-opt">Sheet2</div></div></div><span class="text-muted" style="margin-left:12px">表头行：第1行</span></div>
+  <div style="overflow-x:auto"><table class="tbl" style="font-size:12px"><thead><tr><th>姓名</th><th>手机号</th><th>年龄</th><th>邮箱</th><th>地址</th><th>状态</th></tr></thead><tbody>
+    <tr><td>张三</td><td>13800138001</td><td>28</td><td>zhangsan@example.com</td><td>北京市朝阳区</td><td>active</td></tr>
+    <tr><td>李四</td><td>13800138002</td><td>35</td><td>lisi@example.com</td><td>上海市浦东新区</td><td>active</td></tr>
+    <tr><td>王五</td><td>13800138003</td><td>22</td><td>wangwu@example.com</td><td>广州市天河区</td><td>active</td></tr>
+    <tr><td>赵六</td><td>13800138004</td><td>30</td><td>zhaoliu@example.com</td><td>深圳市南山区</td><td>active</td></tr>
+    <tr><td>孙七</td><td>13800138005</td><td>42</td><td>sunqi@example.com</td><td>杭州市西湖区</td><td>active</td></tr>
+    <tr><td>周八</td><td>13800138006</td><td>26</td><td>zhouba@example.com</td><td>成都市武侯区</td><td>active</td></tr>
+    <tr><td>吴九</td><td>13800138007</td><td>33</td><td>wujiu@example.com</td><td>武汉市洪山区</td><td>active</td></tr>
+    <tr><td>郑十</td><td>13800138008</td><td>29</td><td>zhengshi@example.com</td><td>南京市鼓楼区</td><td>active</td></tr>
+    <tr><td>钱十一</td><td>13800138009</td><td>38</td><td>qianshiyi@example.com</td><td>重庆市渝中区</td><td>active</td></tr>
+    <tr><td>孙十二</td><td>13800138010</td><td>45</td><td>sunshier@example.com</td><td>西安市雁塔区</td><td>active</td></tr>
+  </tbody></table></div>
+</div><div class="m-ft"><button class="btn btn-default" onclick="closeModal('modalPreview')">关闭</button></div></div></div>
+
+<!-- DRAWER -->
+<div class="d-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="d-box" id="drawerLog">
+  <h3>📋 任务详情 <span class="close-btn" onclick="closeDrawer()">✕</span></h3>
+
+  <!-- 区块一：KPI指标卡片 -->
+  <div class="kpi-grid" id="drawerKpiGrid"></div>
+
+  <!-- 区块二：任务配置详情 -->
+  <div class="drawer-section">
+    <div class="sect-hd"><span class="bar"></span>任务配置详情</div>
+    <div class="zebra-list" id="drawerConfigList"></div>
+  </div>
+
+  <!-- 导入配置详情 -->
+  <div id="drawerImportDetail">
+    <div class="drawer-section">
+      <div class="sect-hd"><span class="bar"></span>字段映射详情</div>
+      <table class="tbl" style="font-size:12px">
+        <thead><tr><th>Excel列</th><th style="width:80px;text-align:center">映射方式</th><th>数据表字段(标识) - 类型</th><th style="width:120px">标签</th></tr></thead>
+        <tbody id="drawerMapBody"></tbody>
+      </table>
+    </div>
+
+    <div class="drawer-section">
+      <div class="sect-hd"><span class="bar"></span>导入统计</div>
+      <div class="zebra-list" id="drawerImportStats"></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="sect-hd"><span class="bar"></span>导入数据预览（前10行）</div>
+      <div style="overflow-x:auto">
+        <table class="tbl" style="font-size:12px" id="drawerPreviewTable">
+          <thead id="drawerPreviewThead"></thead>
+          <tbody id="drawerPreviewTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 导出配置详情 -->
+  <div id="drawerExportDetail" style="display:none">
+    <div class="drawer-section">
+      <div class="sect-hd"><span class="bar"></span>导出字段</div>
+      <div class="flex" style="flex-wrap:wrap" id="drawerExportFields"></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="sect-hd"><span class="bar"></span>导出配置</div>
+      <div class="zebra-list" id="drawerExportConfig"></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="sect-hd"><span class="bar"></span>关联表导出详情</div>
+      <div id="drawerExportRelations"></div>
+    </div>
+
+    <div class="drawer-section">
+      <div class="sect-hd"><span class="bar"></span>导出数据预览（前10行）</div>
+      <div style="overflow-x:auto">
+        <table class="tbl" style="font-size:12px" id="drawerExportPreviewTable">
+          <thead id="drawerExportPreviewThead"></thead>
+          <tbody id="drawerExportPreviewTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 下载区域 -->
+  <div class="download-block" id="drawerDownload">
+    <div class="dl-name" id="drawerFileName">文件名：-</div>
+    <div class="dl-info" id="drawerFileInfo"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary btn-sm" id="drawerDownloadBtn">⬇ 下载导出文件</button>
+      <button class="btn btn-default btn-sm" id="drawerSourceBtn" style="display:none">⬇ 下载导入源文件</button>
+    </div>
+  </div>
+
+  <!-- 全部日志 -->
+  <div class="drawer-section">
+    <div class="sect-hd"><span class="bar"></span>全部日志 <span class="text-muted" style="font-weight:400;font-size:12px" id="drawerErrCount"></span></div>
+    <div id="drawerErrorContent" style="text-align:center;padding:24px;color:#999">✅ 该任务无日志记录</div>
+  </div>
+
+  <!-- 操作按钮 -->
+  <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end" id="drawerActions">
+    <button class="btn btn-default" onclick="closeDrawer()">关闭</button>
+  </div>
+</div>
+<div id="toastContainer"></div>
+
+<script>
+// ===== Tab =====
+let currentActiveTab = 'import';
+document.querySelectorAll('#tabBar .tab').forEach(tab=>tab.addEventListener('click',function(){
+  const nextTab = this.dataset.tab;
+  if (currentActiveTab === 'import' && isImportStep1Dirty() && nextTab !== 'import') {
+    pendingLeaveAction = () => switchTab(nextTab, this);
+    openModal('modalDirtyConfirm');
+    return;
+  }
+  switchTab(nextTab, this);
+}));
+function switchTab(tab, el){
+  document.querySelectorAll('#tabBar .tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-page').forEach(p=>p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  else document.querySelector('#tabBar .tab[data-tab="'+tab+'"]')?.classList.add('active');
+  document.getElementById('tp-'+tab).classList.add('active');
+  currentActiveTab = tab;
+  refreshTabPage(tab);
+}
+// ===== Leave confirmation (dirty data) =====
+let importStep1Dirty = false;
+let exportStep1Dirty = false;
+let pendingLeaveAction = null;
+function markImportStep1Dirty(){importStep1Dirty=true;}
+function markExportStep1Dirty(){exportStep1Dirty=true;}
+function resetImportStep1Dirty(){importStep1Dirty=false;}
+function resetExportStep1Dirty(){exportStep1Dirty=false;}
+function isImportStep1Dirty(){return document.getElementById('is-1')?.classList.contains('active') && importStep1Dirty;}
+function isExportStep1Dirty(){return document.getElementById('es-1')?.classList.contains('active') && exportStep1Dirty;}
+function confirmDirtyLeave(){
+  closeModal('modalDirtyConfirm');
+  if(typeof pendingLeaveAction==='function'){pendingLeaveAction();}
+  pendingLeaveAction=null;
+  resetImportStep1Dirty();
+  resetExportStep1Dirty();
+}
+function checkImportStep1Leave(targetStep, fallback){
+  if(isImportStep1Dirty() && targetStep!==1){
+    pendingLeaveAction = fallback;
+    openModal('modalDirtyConfirm');
+    return true;
+  }
+  return false;
+}
+function checkExportStep1Leave(targetStep, fallback){
+  if(isExportStep1Dirty() && targetStep!==1){
+    pendingLeaveAction = fallback;
+    openModal('modalDirtyConfirm');
+    return true;
+  }
+  return false;
+}
+window.addEventListener('beforeunload',function(e){
+  if(importStep1Dirty || exportStep1Dirty){
+    e.preventDefault();
+    e.returnValue='';
+  }
+});
+function refreshTabPage(tab){
+  if(tab==='import'){ goImportStep(0); uploadedFile=''; selectedImportTable=''; selectedImportTableId=''; document.getElementById('imUploadZone').innerHTML='<div class="big-icon">📤</div><div class="text">点击或拖拽上传文件</div><div class="hint">支持 .xlsx(上限 50 万行) / .xls(≤20万) / .csv 格式</div>'; document.getElementById('imTableName').textContent='- 请选择数据表 -'; document.getElementById('imStep0Next').disabled=true; resetImportStep1Dirty(); }
+  else if(tab==='export'){ goExportStep(0); selectedExportTable=''; document.getElementById('exTableName').textContent='- 请选择数据表 -'; document.getElementById('exStep0Next').disabled=true; resetExportStep1Dirty(); }
+  else if(tab==='tasks'){ renderTasks(); showToast('任务列表已刷新','info'); }
+  else if(tab==='permissions'){ selectedPermCards.clear(); updatePermCardSelection(); resetLogFilter(); showToast('权限页面已刷新','info'); }
+}
+// ===== Toast =====
+function showToast(msg,type){const c=document.getElementById('toastContainer');const t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300)},2500)}
+// ===== Dropdown =====
+function toggleSel(btn){const dd=btn.parentElement.querySelector('.sel-dropdown');if(!dd)return;document.querySelectorAll('.sel-dropdown.open').forEach(d=>{if(d!==dd)d.classList.remove('open')});dd.classList.toggle('open')}
+document.addEventListener('click',function(e){if(!e.target.closest('.sel'))document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'))});
+function pickVal(opt,val){const btn=opt.closest('.sel').querySelector('.sel-btn span:first-child');if(btn)btn.textContent=val;opt.closest('.sel-dropdown').classList.remove('open');if(opt.closest('#is-1'))markImportStep1Dirty();if(opt.closest('#es-1'))markExportStep1Dirty()}
+// ===== Toggle =====
+function toggleSwitch(el){el.classList.toggle('on');const label=el.nextElementSibling;if(label&&label.tagName==='SPAN'){if(el.classList.contains('on')){label.textContent='开启';label.style.color='#52c41a'}else{label.textContent='关闭';label.style.color='#999'}}if(el.closest('#es-1'))markExportStep1Dirty();if(el.closest('#is-1'))markImportStep1Dirty()}
+function toggleAttachmentImport(el){
+  el.classList.toggle('on');
+  var isOn=el.classList.contains('on');
+  var label=document.getElementById('attachmentToggleLabel');
+  if(label){label.textContent=isOn?'需要附件（上传 tar.gz）':'不需要附件';label.style.color=isOn?'#52c41a':'#999'}
+  document.getElementById('attachmentUploadArea').style.display=isOn?'block':'none';
+  document.getElementById('attachmentNoNeedHint').style.display=isOn?'none':'block';
+  markImportStep1Dirty();
+}
+function toggleRelationExport(el){
+  el.classList.toggle('on');
+  var isOn=el.classList.contains('on');
+  var label=document.getElementById('relationExportToggleLabel');
+  if(label){label.textContent=isOn?'导出关联表':'不导出关联表';label.style.color=isOn?'#52c41a':'#999'}
+  document.getElementById('relationExportConfig').style.display=isOn?'block':'none';
+  document.getElementById('relationExportNoNeedHint').style.display=isOn?'none':'block';
+  markExportStep1Dirty();
+}
+function toggleSystemFieldRules(titleEl){
+  var content=document.getElementById('systemFieldRulesContent');
+  var arrow=document.getElementById('systemFieldRulesArrow');
+  if(!content||!arrow)return;
+  var isOpen=content.style.display!=='none';
+  content.style.display=isOpen?'none':'block';
+  arrow.style.transform=isOpen?'rotate(-90deg)':'rotate(0deg)';
+  arrow.textContent=isOpen?'▶':'▼';
+}
+// ===== Checkbox/Radio =====
+function toggleField(label){const box=label.querySelector('.cb-box');if(box)box.classList.toggle('checked');updateExportFieldCount();if(label.closest('#es-1'))markExportStep1Dirty()}
+function toggleAllExportFields(label){
+  var box=label.querySelector('.cb-box');
+  var checkboxes=document.querySelectorAll('#exFields1 .cb-box,#exFields3 .cb-box,#exRelationFields .cb-box,#exDateFields .cb-box');
+  var allChecked=box.classList.contains('checked');
+  checkboxes.forEach(function(cb){if(allChecked){cb.classList.remove('checked')}else{cb.classList.add('checked')}});
+  if(allChecked){box.classList.remove('checked');box.classList.remove('indeterminate')}else{box.classList.add('checked')}
+  updateExportFieldCount();markExportStep1Dirty();
+}
+function updateExportFieldCount(){
+  var total=document.querySelectorAll('#exFields1 .cb-box,#exFields3 .cb-box,#exRelationFields .cb-box,#exDateFields .cb-box').length;
+  var checked=document.querySelectorAll('#exFields1 .cb-box.checked,#exFields3 .cb-box.checked,#exRelationFields .cb-box.checked,#exDateFields .cb-box.checked').length;
+  var el=document.getElementById('exSelectedCount');if(el)el.textContent='已选: '+checked+' / '+total;
+  var selAll=document.getElementById('exSelectAll');
+  if(selAll){selAll.classList.remove('indeterminate');if(checked===0){selAll.classList.remove('checked')}else if(checked===total){selAll.classList.add('checked')}else{selAll.classList.add('indeterminate')}}
+  var tags=[];
+  document.querySelectorAll('#exFields1 .cb-box.checked,#exRelationFields .cb-box.checked,#exDateFields .cb-box.checked,#exFields3 .cb-box.checked').forEach(function(b){
+    var lbl=b.parentElement;tags.push(getFieldNameId(lbl));
+  });
+  var sf=document.getElementById('exSelectedFields');if(sf)sf.innerHTML=tags.map(function(f){return '<span class="tag tag-blue">'+f+'</span>'}).join('');
+}
+function toggleRadio(label,groupName){const allLabels=document.querySelectorAll('[onclick*="'+groupName+'"]');allLabels.forEach(l=>{const b=l.querySelector('.cb-box');if(b)b.classList.remove('checked')});const box=label.querySelector('.cb-box');if(box)box.classList.add('checked');if(label.closest('#is-1'))markImportStep1Dirty();if(label.closest('#es-1'))markExportStep1Dirty()}
+
+// ===== Import =====
+let selectedImportTable='',selectedImportTableId='',uploadedFile='';let currentPermModes=['insert','upsert'];let selectedMode='upsert';let uniqueFieldsLocked=false;let currentPermKey='user-self';
+// 权限配置数据（模拟后端返回）
+const permConfigs={
+  'user-self':{key:'user-self',targetType:'user',targetName:'当前用户自定义权限',label:'👤 当前用户自定义权限',modes:['insert','upsert'],uniqueFields:['phone','email'],requiredFields:['name','phone'],importFields:['name','phone','email','address','remark','avatar','role','dept','tags'],exportFields:['name','phone','email','address','remark'],collections:['users'],uniqueLocked:true,desc:'模式: 新增, 新增+更新 | 唯一值: 🔒锁定 | 可导入: 9字段'},
+  'admin':{key:'admin',targetType:'role',targetName:'管理员(admin)',label:'🔐 管理员(admin)',modes:['insert','update','upsert'],uniqueFields:[],requiredFields:[],importFields:[],exportFields:[],collections:[],uniqueLocked:false,desc:'模式: 新增, 更新, 新增+更新 | 唯一值: ✏️可选 | 可导入: 全部'},
+  'importer':{key:'importer',targetType:'role',targetName:'数据导入员',label:'🔐 数据导入员',modes:['insert'],uniqueFields:['productCode'],requiredFields:['name','productCode'],importFields:['name','productCode','price','stock'],exportFields:['name','productCode','price','stock'],collections:['products'],uniqueLocked:true,desc:'模式: 新增 | 唯一值: 🔒锁定 | 可导入: 4字段'},
+  'member':{key:'member',targetType:'role',targetName:'member',label:'🔐 member',modes:['insert'],uniqueFields:[],requiredFields:[],importFields:[],exportFields:['name','phone'],collections:['users'],uniqueLocked:false,desc:'模式: 新增 | 唯一值: ✏️可选 | 可导入: 全部'},
+};
+
+function pickImportTable(opt,name,id){document.getElementById('imTableName').textContent=name+'('+id+')';selectedImportTable=name;selectedImportTableId=id;checkImStep0Ready();opt.closest('.sel-dropdown').classList.remove('open');renderPermDropdown()}
+function simulateUpload(){document.getElementById('imUploadZone').innerHTML='<div style="color:#52c41a;font-size:16px">✅ 上传成功！<br><span style="font-size:12px">文件：用户导入数据_20260709.xlsx (128 KB)</span></div>';uploadedFile='用户导入数据_20260709.xlsx';checkImStep0Ready();showToast('文件上传成功','success')}
+function checkImStep0Ready(){document.getElementById('imStep0Next').disabled=!(selectedImportTable&&uploadedFile)}
+function goImportStep(n){
+  if(checkImportStep1Leave(n, function(){goImportStep(n);})){return;}
+  if(n===2){
+    // 附件字段校验：已映射 Excel 列但未选择压缩包内文件夹 → 阻止进入下一步
+    var missing=[];
+    allFields.forEach(function(f,i){
+      if(f.type!=='附件')return;
+      var v=mapping[i];
+      if(v&&v!=='ignore'&&!String(v).startsWith('custom:')&&!getFieldCfg(f.id).folder){missing.push(f.name+'('+f.id+')')}
+    });
+    if(missing.length){showToast('请先在「配置」列为附件字段选择文件夹：'+missing.join('、'),'info');return;}
+  }
+  document.querySelectorAll('#importSteps .step').forEach((s,i)=>{s.classList.toggle('active',i===n);s.classList.toggle('done',i<n)});document.querySelectorAll('[id^="is-"]').forEach(el=>el.classList.remove('active'));document.getElementById('is-'+n).classList.add('active');if(n===1){document.getElementById('imTableDisplay').textContent=selectedImportTable+'('+selectedImportTableId+')';document.getElementById('imFileDisplay').textContent=uploadedFile;renderPermDropdown();initFieldMapping();renderModeButtons()};if(n===2){preparePreview();resetImportStep1Dirty()}}
+
+// 渲染权限下拉（按目标表过滤，本表有配置的才显示）
+function renderPermDropdown(){
+  var dd=document.getElementById('imPermDropdown');if(!dd)return;
+  var tableId=selectedImportTableId;
+  function visible(c){return !c.collections||c.collections.length===0||c.collections.indexOf(tableId)>=0;}
+  var html='<div class="sel-group-label">👤 用户权限</div>';
+  var user=permConfigs['user-self'];
+  if(user&&visible(user)){html+='<div class="sel-opt" onclick="pickPermByKey(\''+user.key+'\')"><b>'+user.targetName+'</b><div class="opt-tags">'+renderPermOptTags(user)+'</div></div>'}
+  html+='<div class="sel-group-label">🔐 角色权限</div>';
+  var anyRole=false;
+  ['admin','importer','member'].forEach(function(k){
+    var c=permConfigs[k];
+    if(!c||!visible(c))return;
+    anyRole=true;
+    html+='<div class="sel-opt" onclick="pickPermByKey(\''+c.key+'\')"><b>'+c.targetName+'</b><div class="opt-tags">'+renderPermOptTags(c)+'</div></div>'
+  });
+  if((!user||!visible(user))&&!anyRole){html+='<div class="sel-opt" style="color:#999">暂无可用权限配置</div>'}
+  dd.innerHTML=html;
+  // 若当前权限对当前表不可用，自动切换到第一个可用权限
+  var current=permConfigs[currentPermKey];
+  if(!current||!visible(current)){
+    var fallback=user&&visible(user)?user:(anyRole?permConfigs[['admin','importer','member'].find(function(k){var c=permConfigs[k];return c&&visible(c)})]:null);
+    if(fallback){pickPermByKey(fallback.key)}
+  }
+}
+function renderPermOptTags(c){
+  var tags='';
+  c.modes.forEach(function(m){tags+='<span class="mini-tag blue">'+(m==='insert'?'新增':m==='update'?'更新':'新增+更新')+'</span>'});
+  if(c.uniqueFields.length>0){tags+='<span class="mini-tag orange">唯一值:'+c.uniqueFields.length+'个</span>'}
+  else{tags+='<span class="mini-tag green">唯一值:可选</span>'}
+  if(c.requiredFields.length>0){tags+='<span class="mini-tag red">必填:'+c.requiredFields.length+'个</span>'}
+  if(c.importFields.length>0){tags+='<span class="mini-tag gray">可导入:'+c.importFields.length+'字段</span>'}
+  else{tags+='<span class="mini-tag gray">可导入:全部</span>'}
+  return tags;
+}
+
+// 按 key 选中权限配置
+function pickPermByKey(key){
+  var c=permConfigs[key];if(!c)return;
+  currentPermKey=key;currentPermModes=c.modes.slice();uniqueFieldsLocked=c.uniqueLocked;
+  selectedMode=c.modes[c.modes.length-1];
+  document.getElementById('imPermSel').textContent=c.label;
+  openCfgFieldId=null;
+  renderModeButtons();updateUniqueLockState();renderPermSummary();updateFieldMappingByPerm();initFieldMapping();
+  document.querySelectorAll('.sel-dropdown.open').forEach(function(d){d.classList.remove('open')});
+}
+
+// 渲染权限详情摘要卡片
+function renderPermSummary(){
+  var c=permConfigs[currentPermKey];if(!c)return;
+  document.getElementById('psTargetType').textContent=c.targetType==='user'?'用户':'角色';
+  document.getElementById('psTargetType').className='tag tag-'+(c.targetType==='user'?'blue':'green');
+  document.getElementById('psTargetName').textContent=c.targetName;
+  // 模式
+  var modeHtml='';c.modes.forEach(function(m){modeHtml+='<span class="tag tag-blue">'+(m==='insert'?'新增(insert)':m==='update'?'更新(update)':'新增+更新(upsert)')+'</span>'});
+  if(c.modes.length<=1)modeHtml+='<span class="ps-locked">🔒 只读（权限限定唯一模式）</span>';
+  document.getElementById('psModes').innerHTML=modeHtml||'<span class="text-muted">-</span>';
+  // 唯一值
+  if(c.uniqueFields.length>0){
+    var ufHtml='';c.uniqueFields.forEach(function(f){ufHtml+='<span class="tag tag-orange">'+f+'</span>'});
+    ufHtml+='<span class="ps-locked">🔒 由权限锁定</span>';
+    document.getElementById('psUnique').innerHTML=ufHtml;
+  }else{document.getElementById('psUnique').innerHTML='<span class="tag tag-green">✏️ 自由选择</span> <span class="text-muted" style="font-size:11px">（update/upsert模式至少选1个）</span>'}
+  // 必填
+  if(c.requiredFields.length>0){var rfHtml='';c.requiredFields.forEach(function(f){rfHtml+='<span class="tag tag-red">'+f+'</span>'});document.getElementById('psRequired').innerHTML=rfHtml}
+  else{document.getElementById('psRequired').innerHTML='<span class="text-muted">无</span>'}
+  // 可导入字段
+  if(c.importFields.length>0){var ifHtml='';c.importFields.forEach(function(f){ifHtml+='<span class="tag tag-blue">'+f+'</span>'});document.getElementById('psImportFields').innerHTML=ifHtml+' <span class="text-muted" style="font-size:11px">（共'+c.importFields.length+'个字段）</span>'}
+  else{document.getElementById('psImportFields').innerHTML='<span class="tag tag-green">全部字段</span> <span class="text-muted" style="font-size:11px">（未限制）</span>'}
+  document.getElementById('imPermSummary').classList.add('visible');
+}
+
+// 根据权限更新字段映射白名单
+function updateFieldMappingByPerm(){
+  var c=permConfigs[currentPermKey];if(!c)return;
+  var whitelist=c.importFields; // 空=全部允许
+  allFields.forEach(function(f,i){
+    var tr=document.getElementById('mapMode_'+i)?.closest('tr');
+    if(!tr)return;
+    if(whitelist.length>0&&!whitelist.includes(f.id)){
+      // 不在白名单中的字段：隐藏该行
+      tr.style.display='none';
+      if(mapping.hasOwnProperty(i))delete mapping[i]; // 清除不在白名单的映射
+    }else{
+      tr.style.display='';
+    }
+  });
+  updateMapCount();
+}
+
+// 保留旧 pickPerm 兼容
+function pickPerm(opt,label,modes,lockedUnique){pickPermByKey(lockedUnique?'user-self':'admin')}
+
+function renderModeButtons(){const area=document.getElementById('imModeArea');const hint=document.getElementById('imModeHint');if(currentPermModes.length<=1){hint.textContent='（权限限定唯一模式，只读不可切换）';area.innerHTML='<div class="sel" style="width:100%"><button class="sel-btn w-full mode-locked" disabled><span>🔒 '+modeLabel(currentPermModes[0])+'</span></button></div>';selectedMode=currentPermModes[0]}else{hint.textContent='（权限允许的模式，可下拉切换）';let opts='';currentPermModes.forEach(m=>{opts+='<div class="sel-opt" onclick="pickMode(\''+m+'\')">'+modeLabel(m)+'</div>'});area.innerHTML='<div class="sel" style="width:100%"><button class="sel-btn w-full mode-selectable" onclick="toggleSel(this)"><span id="imModeLabel">'+modeLabel(selectedMode)+'</span><span>▼</span></button><div class="sel-dropdown">'+opts+'</div></div>'};updateImportUniqueArea()}
+function modeLabel(m){return m==='insert'?'新增(insert)':m==='update'?'更新(update)':'新增+更新(upsert)'}
+function pickMode(m){selectedMode=m;const label=document.getElementById('imModeLabel');if(label)label.textContent=modeLabel(m);document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'));updateImportUniqueArea();initFieldMapping();markImportStep1Dirty()}
+function updateEmptyUniqueAlert(){const alert=document.getElementById('emptyUniqueAlert');const modeLabelEl=document.getElementById('uniqueCheckMode');if(selectedMode==='update'||selectedMode==='upsert'){alert.style.display='flex';modeLabelEl.textContent=modeLabel(selectedMode)}else{alert.style.display='none'}}
+function updateImportUniqueArea(){const area=document.getElementById('imUniqueArea');if(!area)return;area.style.display=selectedMode==='insert'?'none':'block';updateEmptyUniqueAlert()}
+function updateUniqueLockState(){var c=permConfigs[currentPermKey];uniqueFieldsLocked=c?c.uniqueLocked:false;const badge=document.getElementById('uniqueLockBadge');const addBtn=document.getElementById('uniqueAddBtn');const desc=document.getElementById('uniqueDesc');const chips=document.querySelectorAll('#imUniqueChips .chip .rmv');if(uniqueFieldsLocked){if(badge)badge.style.display='inline-block';if(addBtn)addBtn.style.display='none';if(desc)desc.textContent='唯一值字段由权限配置锁定，不可修改。';chips.forEach(function(rmv){rmv.style.display='none'});updateUniqueChipsFromPerm()}else{if(badge)badge.style.display='none';if(addBtn)addBtn.style.display='inline-block';if(desc)desc.textContent='选择用于判断记录是否已存在的组合字段。所有字段值都匹配才视为同一条记录。更新/新增+更新模式下必须至少选1个唯一值字段，否则无法匹配已有记录。';chips.forEach(function(rmv){rmv.style.display=''})}}
+// 根据权限预填唯一值字段chips
+function updateUniqueChipsFromPerm(){
+  var c=permConfigs[currentPermKey];if(!c||!c.uniqueFields.length)return;
+  var container=document.getElementById('imUniqueChips');
+  // 清除现有chips
+  container.querySelectorAll('.chip').forEach(function(ch){ch.remove()});
+  // 添加权限指定的唯一值
+  c.uniqueFields.forEach(function(f){
+    var chip=document.createElement('span');chip.className='chip';chip.style.cssText='background:#fff7e6;color:#fa8c16;border-color:#ffd591';chip.innerHTML=f+' <span class="rmv" style="display:none">✕</span>';container.insertBefore(chip,container.querySelector('.sel'));
+  });
+  refreshUniqueDropdown();
+}
+// ===== Unique fields =====
+function removeChip(span){if(uniqueFieldsLocked){showToast('唯一值字段由权限配置锁定，不可修改','info');return}span.parentElement.remove();refreshUniqueDropdown();markImportStep1Dirty()}
+function refreshUniqueDropdown(){const dd=document.getElementById('imUniqueDropdown');if(!dd)return;const selected=new Set();document.querySelectorAll('#imUniqueChips .chip').forEach(c=>{const txt=c.textContent.trim().split(' ')[0];selected.add(txt)});const all=['姓名','手机号','邮箱','年龄','地址','工号','身份证号','部门'];dd.innerHTML=all.map(f=>{const dis=selected.has(f);return '<div class="sel-opt '+(dis?'disabled':'')+'" '+(dis?'':'onclick="addUniqueField(this,\''+f+'\')"')+'>'+f+(dis?'（已选择）':'')+'</div>'}).join('')}
+function addUniqueField(opt,name){const c=document.getElementById('imUniqueChips');const cnt=document.querySelectorAll('#imUniqueChips .chip').length;if(cnt>=3){showToast('最多3个字段','info');return}const chip=document.createElement('span');chip.className='chip';chip.style.cssText='background:#fff7e6;color:#fa8c16;border-color:#ffd591';chip.innerHTML=name+' <span class="rmv" onclick="removeChip(this)">✕</span>';const addBtn=c.querySelector('.sel');c.insertBefore(chip,addBtn);opt.closest('.sel-dropdown').classList.remove('open');refreshUniqueDropdown();markImportStep1Dirty()}
+
+// ===== Field mapping =====
+const allExcelCols=['姓名','手机号','年龄','邮箱','地址'];
+	const allFields=[
+	  {name:'姓名',id:'name',required:true,isUnique:true,isPrimary:true,type:'',fieldType:'单行文本'},
+	  {name:'手机号',id:'phone',required:true,isUnique:true,type:'',fieldType:'手机号'},
+	  {name:'年龄',id:'age',required:false,type:'',fieldType:'整数'},
+	  {name:'邮箱',id:'email',required:false,isUnique:true,type:'',fieldType:'电子邮箱'},
+	  {name:'地址',id:'address',required:false,type:'',fieldType:'多行文本'},
+	  {name:'头像',id:'avatar',required:false,type:'附件',fieldType:'附件'},
+	  {name:'角色',id:'role',required:false,type:'关联',fieldType:'多对一',target:'角色(roles)'},
+	  {name:'部门',id:'dept',required:false,type:'关联',fieldType:'多对一',target:'部门(departments)'},
+	  {name:'标签',id:'tags',required:false,type:'关联',fieldType:'多对多',target:'标签(tags)'},
+	  {name:'创建时间',id:'createdAt',required:false,type:'',fieldType:'日期时间',isSystem:true},
+	  {name:'更新时间',id:'updatedAt',required:false,type:'',fieldType:'日期时间',isSystem:true},
+	  {name:'创建人',id:'createdById',required:false,type:'关联',fieldType:'创建人',isSystem:true},
+	  {name:'更新人',id:'updatedById',required:false,type:'关联',fieldType:'更新人',isSystem:true}
+	];
+let mapping={0:'姓名',1:'手机号',2:'年龄'};
+// ===== 字段级配置（关联/附件） =====
+const fieldConfigs={};
+function getFieldCfg(fieldId){
+  if(!fieldConfigs[fieldId])fieldConfigs[fieldId]={emptyStrategy:'skip',notFound:'fail',updateMode:'overwrite',folder:null};
+  return fieldConfigs[fieldId];
+}
+let openCfgFieldId=null;
+// 附件压缩包状态（模拟）
+let attachmentArchiveUploaded=false;
+const archiveFolders=['photos','docs','avatars','misc'];
+function simulateArchiveUpload(){
+  attachmentArchiveUploaded=true;
+  document.getElementById('archiveUploadBox').innerHTML='<span style="color:#52c41a">✅ 已上传 attachments.tar.gz (2.4 MB)</span><span class="text-muted" style="margin-left:8px;font-size:11px">包含文件夹: '+archiveFolders.join('、')+'</span>';
+  showToast('压缩包上传成功，请在字段映射「配置」列为附件字段选择文件夹','success');
+  initFieldMapping();markImportStep1Dirty();
+}
+function pickAttachFolder(fieldId,folder){
+  getFieldCfg(fieldId).folder=folder;
+  openCfgFieldId=fieldId;
+  document.querySelectorAll('.sel-dropdown.open').forEach(function(d){d.classList.remove('open')});
+  initFieldMapping();markImportStep1Dirty();
+  showToast('附件字段文件夹已选择：'+folder,'success');
+}
+function toggleFieldCfgPanel(fieldId){
+  openCfgFieldId=openCfgFieldId===fieldId?null:fieldId;
+  initFieldMapping();
+}
+function setFieldCfg(fieldId,key,value,el){
+  getFieldCfg(fieldId)[key]=value;
+  var group=el.closest('[data-cfg-group]');
+  if(group){group.querySelectorAll('.cb-box').forEach(function(b){b.classList.remove('checked')});el.querySelector('.cb-box').classList.add('checked')}
+  markImportStep1Dirty();
+}
+function cfgRadio(fieldId,key,value,current,label,desc){
+  var checked=current===value;
+  return '<label class="cb" style="margin-right:16px" onclick="setFieldCfg(\''+fieldId+'\',\''+key+'\',\''+value+'\',this)"><span class="cb-box '+(checked?'checked':'')+'"></span> <strong style="font-weight:500">'+label+'</strong>'+(desc?'<span class="text-muted" style="font-size:11px"> '+desc+'</span>':'')+'</label>';
+}
+function buildFolderOpts(fieldId){
+  return archiveFolders.map(function(fd){return '<div class="sel-opt" onclick="pickAttachFolder(\''+fieldId+'\',\''+fd+'\')">📁 '+fd+'</div>'}).join('');
+}
+function buildConfigCell(f){
+  if(f.isSystem||(f.type!=='关联'&&f.type!=='附件'))return '<span class="text-muted">-</span>';
+  if(f.type==='关联')return '<button class="btn btn-default btn-sm" onclick="toggleFieldCfgPanel(\''+f.id+'\')">⚙️ 配置</button>';
+  if(!attachmentArchiveUploaded)return '<span class="text-muted" style="font-size:11px">请先上传压缩包</span>';
+  var cfg=getFieldCfg(f.id);
+  if(!cfg.folder)return '<div class="sel" style="display:inline-block"><button class="btn btn-primary btn-sm" onclick="toggleSel(this)">📁 选文件夹 <span>▼</span></button><div class="sel-dropdown" style="min-width:140px">'+buildFolderOpts(f.id)+'</div></div>';
+  return '<button class="btn btn-default btn-sm" onclick="toggleFieldCfgPanel(\''+f.id+'\')" title="点击打开配置，可重新选择文件夹">📁 '+cfg.folder+'</button> <button class="btn btn-default btn-sm" onclick="toggleFieldCfgPanel(\''+f.id+'\')">⚙️ 配置</button>';
+}
+function buildCfgPanel(f){
+  var cfg=getFieldCfg(f.id);
+  var isAttach=f.type==='附件';
+  var isM2o=f.fieldType==='多对一';
+  var isUpMode=selectedMode==='update'||selectedMode==='upsert';
+  var showUpdateMode=isUpMode&&!isM2o;
+  var color=isAttach?'#0891b2':'#722ed1';
+  var border=isAttach?'#a5f3fc':'#d3adf7';
+  var html='<div style="border:1px solid '+border+';border-left:3px solid '+color+';border-radius:8px;padding:12px 16px;background:#fff">';
+  html+='<div class="fw-600 mb-8" style="font-size:13px;color:'+color+'">'+(isAttach?'📎 附件字段配置':'🔗 关联字段配置')+' - '+f.name+'('+f.id+') <span class="text-muted" style="font-weight:400;font-size:11px">'+f.fieldType+(f.target?' → '+f.target:'')+'</span></div>';
+  if(isAttach){
+    html+='<div class="frm-row"><label>📁 附件文件夹 <span class="text-danger">*</span> <span class="text-muted">（从压缩包中选择，可重新选择其他文件夹）</span></label><div class="frm-inline"><div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>'+(cfg.folder?'📁 '+cfg.folder:'- 请选择文件夹 -')+'</span><span>▼</span></button><div class="sel-dropdown" style="min-width:160px">'+buildFolderOpts(f.id)+'</div></div><span class="text-muted" style="font-size:11px">压缩包内文件夹: '+archiveFolders.join('、')+'</span></div></div>';
+  }
+  html+='<div class="frm-row"><label>空值处理 <span class="text-muted">（Excel 该字段为空时）</span></label><div class="frm-inline" data-cfg-group="emptyStrategy">'
+    +cfgRadio(f.id,'emptyStrategy','skip',cfg.emptyStrategy,'跳过不更新',isAttach?'（保留原附件）':'（保留原值）')
+    +cfgRadio(f.id,'emptyStrategy','clear',cfg.emptyStrategy,'清空该字段',isAttach?'（删除附件）':'（解除关联）')
+    +'</div></div>';
+  html+='<div class="frm-row"><label>匹配不到处理 <span class="text-muted">（'+(isAttach?'选中文件夹下找不到对应文件':'填的主键值在关联表中不存在')+'时）</span></label><div class="frm-inline" data-cfg-group="notFound">'
+    +cfgRadio(f.id,'notFound','fail',cfg.notFound,'该行导入失败','（严格模式）')
+    +cfgRadio(f.id,'notFound','skip',cfg.notFound,isAttach?'跳过该附件':'跳过该字段',isAttach?'（单个文件跳过，其余正常导入）':'（多值任一匹配不到 → 整字段跳过）')
+    +'</div></div>';
+  if(showUpdateMode){
+    html+='<div class="frm-row" style="margin-bottom:0"><label>更新模式 <span class="text-muted">（仅 update/upsert 模式生效）</span></label><div class="frm-inline" data-cfg-group="updateMode">'
+      +cfgRadio(f.id,'updateMode','overwrite',cfg.updateMode,'覆盖更新',isAttach?'（替换所有附件）':'（全量替换原有关联）')
+      +cfgRadio(f.id,'updateMode','append',cfg.updateMode,'追加更新',isAttach?'（追加附件不删除原有）':'（追加关联不删除原有）')
+      +'</div></div>';
+  }else if(isM2o&&isUpMode){
+    html+='<div class="text-muted" style="font-size:11px;margin-bottom:8px">💡 多对一为单值关联，更新时直接替换，无追加模式</div>';
+  }
+  html+='<div class="text-muted" style="font-size:11px;margin-top:4px">💡 '+(isAttach?'Excel 中填写文件名（如 photo.jpg），系统从选中的文件夹查找匹配；多个附件逗号分隔。':'Excel 中填写目标表主键值（多对多逗号分隔，如 1,2,3）。')+'</div>';
+  html+='</div>';
+  return html;
+}
+function initFieldMapping(){
+  const body=document.getElementById('imMapBody');body.innerHTML='';
+  allFields.forEach((f,i)=>{
+    const tr=document.createElement('tr');tr.setAttribute('data-field-id',f.id);
+    const val=mapping[i];
+    let displayVal='未选择',modeTag='<span class="tag tag-default">忽略</span>',color='#999';
+    if(val&&val!=='ignore'&&!val.startsWith('custom:')){displayVal=val;modeTag='<span class="tag tag-blue">Excel列</span>';color='#333'}
+    else if(val&&val.startsWith('custom:')){displayVal='✏️ '+(val.split(':')[1]||'输入固定值...');modeTag='<span class="tag tag-green">固定值</span>';color='#52c41a'}
+    const typeTag=f.type?'<span class="tag tag-'+(f.type==='关联'?'purple':'cyan')+' field-type-tag">'+f.type+'</span>':'';
+    let attrTags='';
+    if(f.isPrimary)attrTags+='<span class="tag tag-gold">主键:'+f.id+'</span> ';
+    if(f.isUnique)attrTags+='<span class="tag tag-orange">唯一值</span> ';
+    if(f.required)attrTags+='<span class="tag tag-red">必填</span> ';
+    if(f.isSystem){attrTags+='<span class="tag tag-default">系统字段</span> ';if(val&&val!=='ignore'&&!val.startsWith('custom:')){attrTags+='<span class="tag tag-blue" style="font-size:10px">⬆ Excel优先</span> ';tr.style.background='#f0f5ff'}}
+    tr.innerHTML='<td><div class="sel" style="width:100%"><button class="sel-btn w-full" onclick="toggleSel(this);refreshMapDropdown('+i+')"><span style="color:'+color+'" id="mapVal_'+i+'">'+displayVal+'</span><span>▼</span></button><div class="sel-dropdown" id="mapDD_'+i+'"></div></div></td><td style="text-align:center" id="mapMode_'+i+'">'+modeTag+'</td><td class="text-center text-muted">-></td><td '+(f.isSystem&&val&&val!=='ignore'&&!val.startsWith('custom:')?'style="font-weight:600"':'')+'>'+(f.required?'<span class="text-danger">*</span> ':'')+f.name+'('+f.id+')<span class="text-muted" style="font-size:11px"> - '+f.fieldType+'</span> '+typeTag+'</td><td>'+attrTags+'</td><td style="white-space:nowrap">'+buildConfigCell(f)+'</td>';
+    body.appendChild(tr);
+    if(openCfgFieldId===f.id&&(f.type==='关联'||f.type==='附件')){
+      const cfgTr=document.createElement('tr');
+      cfgTr.innerHTML='<td colspan="6" style="background:#fafbff;padding:10px 14px">'+buildCfgPanel(f)+'</td>';
+      body.appendChild(cfgTr);
+    }
+  });
+  refreshAllDropdowns();updateMapCount();updateFieldMappingByPerm();updateConflictWarnings();
+}
+function refreshAllDropdowns(){for(let i=0;i<allFields.length;i++)refreshMapDropdown(i)}
+function getColumnUsage(){const usedBy={};Object.entries(mapping).forEach(([k,v])=>{if(v&&!v.startsWith('custom:')&&v!=='ignore'){usedBy[v]=usedBy[v]||[];usedBy[v].push(k)}});return usedBy}
+function refreshMapDropdown(idx){const dd=document.getElementById('mapDD_'+idx);if(!dd)return;const usedBy=getColumnUsage();let html='<div class="sel-opt" style="color:#999" onclick="pickMap('+idx+',\'ignore\')">🚫 未选择（忽略）</div>';allExcelCols.forEach(col=>{const dis=usedBy[col]&&usedBy[col].length>0&&usedBy[col].indexOf(String(idx))<0;const usedByField=dis?(usedBy[col].map(function(i){return allFields[i].name}).join('、')||'其他字段'):'';html+='<div class="sel-opt '+(dis?'disabled':'')+'" '+(dis?'':'onclick="pickMap('+idx+',\''+col+'\')"')+'>'+col+(dis?'（已被 '+usedByField+' 占用）':'')+'</div>'});html+='<div class="sel-opt" onclick="pickMapCustom('+idx+')">✏️ 自定义内容</div>';dd.innerHTML=html}
+function pickMap(idx,val){if(val==='ignore'){delete mapping[idx];document.getElementById('mapVal_'+idx).textContent='未选择';document.getElementById('mapVal_'+idx).style.color='#999';document.getElementById('mapMode_'+idx).innerHTML='<span class="tag tag-default">忽略</span>'}else{mapping[idx]=val;document.getElementById('mapVal_'+idx).textContent=val;document.getElementById('mapVal_'+idx).style.color='#333';document.getElementById('mapMode_'+idx).innerHTML='<span class="tag tag-blue">Excel列</span>'}document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'));refreshAllDropdowns();updateMapCount();updateSystemFieldRow(idx);updateConflictWarnings();markImportStep1Dirty()}
+function updateSystemFieldRow(idx){const f=allFields[idx];if(!f||!f.isSystem)return;const val=mapping[idx];const tr=document.getElementById('mapMode_'+idx)?.closest('tr');if(!tr)return;const td4=tr.querySelectorAll('td')[3];const td5=tr.querySelectorAll('td')[4];if(val&&val!=='ignore'&&!val.startsWith('custom:')){tr.style.background='#f0f5ff';if(td4)td4.style.fontWeight='600';if(td5&&!td5.querySelector('.tag-blue')){td5.innerHTML+=' <span class="tag tag-blue" style="font-size:10px">⬆ Excel优先</span>'}}else{tr.style.background='';if(td4)td4.style.fontWeight='';if(td5){const badge=td5.querySelector('.tag-blue');if(badge&&badge.textContent.includes('Excel优先'))badge.remove()}}}
+function pickMapCustom(idx){const span=document.getElementById('mapVal_'+idx);const currentVal=(mapping[idx]&&mapping[idx].startsWith('custom:'))?(mapping[idx].split(':')[1]||''):'';span.innerHTML='<span style="display:flex;align-items:center;gap:4px"><input id="mapInput_'+idx+'" style="border:none;outline:none;flex:1;font-size:13px;font-family:inherit;color:#52c41a" placeholder="输入固定值..." value="'+currentVal+'" oninput="setCustomVal('+idx+',this.value)" onkeydown="if(event.key===\'Enter\'){confirmCustomVal('+idx+');event.preventDefault()}"><button class="btn btn-primary btn-sm" style="padding:2px 8px" onclick="confirmCustomVal('+idx+')" title="确认">✓</button></span>';mapping[idx]='custom:'+currentVal;document.getElementById('mapMode_'+idx).innerHTML='<span class="tag tag-green">固定值</span>';document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'));updateSystemFieldRow(idx);updateConflictWarnings();markImportStep1Dirty();setTimeout(()=>document.getElementById('mapInput_'+idx)?.focus(),50)}
+function confirmCustomVal(idx){const input=document.getElementById('mapInput_'+idx);if(input){setCustomVal(idx,input.value);showToast('自定义内容已保存','success')}document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'))}
+function setCustomVal(idx,val){mapping[idx]='custom:'+val;updateSystemFieldRow(idx);updateMapCount();updateConflictWarnings();markImportStep1Dirty()}
+function updateMapCount(){const used=Object.values(mapping).filter(v=>v&&!v.startsWith('custom:')&&v!=='ignore').length;const remaining=allExcelCols.length-used;document.getElementById('mapCountText').textContent='(共'+allExcelCols.length+'列/已用'+used+'/剩余'+remaining+')'}
+function updateConflictWarnings(){const usedBy=getColumnUsage();allFields.forEach((f,i)=>{const modeCell=document.getElementById('mapMode_'+i);if(!modeCell)return;const val=mapping[i];if(!val||val==='ignore'||val.startsWith('custom:'))return;const col=val;if(usedBy[col]&&usedBy[col].length>1){const firstIdx=usedBy[col][0];const isConflict=i!==Number(firstIdx);if(isConflict){modeCell.innerHTML='<span class="tag tag-red">冲突</span><br><span class="text-danger" style="font-size:11px">该Excel列已被 '+allFields[firstIdx].name+' 使用</span>';const tr=modeCell.closest('tr');if(tr)tr.style.background='#fff2f0'}}})}
+function autoMatch(){let idx=0;allFields.forEach((f,i)=>{if(!f.isSystem&&idx<allExcelCols.length){mapping[i]=allExcelCols[idx];idx++}});initFieldMapping();showToast('自动匹配完成（已跳过系统字段）','success');markImportStep1Dirty()}
+function clearMapping(){mapping={};initFieldMapping();showToast('已清空所有匹配','info');markImportStep1Dirty()}
+
+// ===== Preview modal =====
+function openPreviewModal(){openModal('modalPreview')}
+
+// ===== Step 2 preview =====
+function preparePreview(){
+  document.getElementById('previewFileName').textContent=uploadedFile||'-';
+  document.getElementById('previewTableName').textContent=selectedImportTable+'('+selectedImportTableId+')';
+	  document.getElementById('previewMode').textContent=modeLabel(selectedMode);
+  // unique fields
+  const uniqueFields=[];document.querySelectorAll('#imUniqueChips .chip').forEach(c=>{const t=c.textContent.trim().split(' ')[0];if(t)uniqueFields.push(t)});document.getElementById('previewUnique').textContent=uniqueFields.length?uniqueFields.join(', '):'无';
+  // attachment
+  const attachToggle=document.getElementById('attachmentToggle');
+  let attachText='未上传';
+  if(attachToggle&&attachToggle.classList.contains('on')){
+    const folderInfo=[];
+    allFields.forEach(function(f,i){
+      if(f.type!=='附件')return;
+      var v=mapping[i];
+      if(v&&v!=='ignore'&&!String(v).startsWith('custom:')){folderInfo.push(f.name+'→'+(getFieldCfg(f.id).folder||'未选'))}
+    });
+    attachText='已上传压缩包'+(folderInfo.length?'（'+folderInfo.join('，')+'）':'');
+  }
+  document.getElementById('previewAttachment').textContent=attachText;
+	  // blank strategy
+	  const blankClear=document.getElementById('blankClear');document.getElementById('previewBlank').textContent=(blankClear&&blankClear.classList.contains('checked'))?'按Excel更新（清空）':'不更新（保留原值）';
+	  // unique precheck
+	  const isUpMode=selectedMode==='update'||selectedMode==='upsert';
+	  document.getElementById('previewUniquePrecheck').textContent=isUpMode?'开启（空值全字段预检 → 整批回滚）':'仅新增模式（不检查）';
+  // preview table - 换行显示表头
+  const thead=document.getElementById('previewThead');const tbody=document.getElementById('previewTbody');
+  let headerHtml='<tr>';const mappedFields=[];Object.entries(mapping).forEach(([fi,val])=>{if(val&&!val.startsWith('custom:')&&val!=='ignore'){const f=allFields[fi];mappedFields.push({excel:val,field:f})}else if(val&&val.startsWith('custom:')){const f=allFields[fi];mappedFields.push({excel:'(自定义)',field:f,custom:val.split(':')[1]||''})}});
+  mappedFields.forEach(m=>{let tagsHtml='';if(m.field.isPrimary)tagsHtml+='<span class="tag tag-gold">主键:'+m.field.id+'</span>';if(m.field.isUnique)tagsHtml+='<span class="tag tag-orange">唯一值</span>';if(m.field.required)tagsHtml+='<span class="tag tag-red">必填</span>';headerHtml+='<th><span class="col-excel">导入: '+m.excel+'</span><span class="col-arrow">▼</span><span class="col-field">数据表: '+m.field.name+'('+m.field.id+') - '+m.field.fieldType+'</span>'+(tagsHtml?'<span class="col-tags">'+tagsHtml+'</span>':'')+'</th>'});headerHtml+='</tr>';thead.innerHTML=headerHtml;
+  // body
+  const sampleData=[['张三','13800138001','28','zhangsan@example.com','北京市朝阳区'],['李四','13800138002','35','lisi@example.com','上海市浦东新区'],['王五','13800138003','22','wangwu@example.com','广州市天河区']];
+  let bodyHtml='';sampleData.slice(0,10).forEach((row,i)=>{let tr='<tr>';mappedFields.forEach((m,mi)=>{const colIdx=allExcelCols.indexOf(m.excel);const val=m.custom!==undefined?('<span style="color:#52c41a">'+m.custom+'</span>'):colIdx>=0?row[colIdx]:'-';tr+='<td>'+val+'</td>'});tr+='</tr>';bodyHtml+=tr});tbody.innerHTML=bodyHtml;
+  // confirm text
+	  document.getElementById('confirmImportText').innerHTML='此操作将导入 <strong>1,256</strong> 行数据。<br>导入文件：<strong>'+(uploadedFile||'-')+'</strong><br>导入数据表：<strong>'+selectedImportTable+'('+selectedImportTableId+')</strong><br>导入模式：<strong>'+modeLabel(selectedMode)+'</strong><br>'+(isUpMode?'<span class="text-danger">⚠ 空值唯一值预检已开启，任何行唯一值字段为空将整批回滚</span><br>':'')+'事务模式：<strong>严格模式（失败全部回滚）</strong>';
+}
+// ===== Anti-double-click submit =====
+let importSubmitting=false, exportSubmitting=false;
+function confirmImport(){
+  if(importSubmitting)return;
+  const btn=document.querySelector('#is-2 .btn-primary');
+  importSubmitting=true;
+  btn.disabled=true; btn.textContent='提交中...';
+  setTimeout(()=>{
+    openModal('modalConfirmImport');
+    importSubmitting=false;
+    btn.disabled=false; btn.textContent='▶ 执行导入';
+  }, 500);
+}
+function submitImport(){
+  if(importSubmitting)return;
+  const btn=document.querySelector('#modalConfirmImport .btn-primary');
+  importSubmitting=true;
+  btn.disabled=true; btn.textContent='提交中...';
+  setTimeout(()=>{
+    closeModal('modalConfirmImport');
+    showToast('导入任务已提交！请到「任务管理」Tab 查看','success');
+    goImportStep(0);
+    importSubmitting=false;
+    btn.disabled=false; btn.textContent='确认';
+  }, 800);
+}
+function confirmExport(){
+  if(exportSubmitting)return;
+  const btn=document.querySelector('#es-2 .btn-primary');
+  exportSubmitting=true;
+  btn.disabled=true; btn.textContent='提交中...';
+  setTimeout(()=>{
+    openModal('modalConfirmExport');
+    exportSubmitting=false;
+    btn.disabled=false; btn.textContent='▶ 执行导出';
+  }, 500);
+}
+function submitExport(){
+  if(exportSubmitting)return;
+  const btn=document.querySelector('#modalConfirmExport .btn-primary');
+  exportSubmitting=true;
+  btn.disabled=true; btn.textContent='提交中...';
+  setTimeout(()=>{
+    closeModal('modalConfirmExport');
+    showToast('导出任务已提交！请到「任务管理」Tab 查看','success');
+    goExportStep(0);
+    exportSubmitting=false;
+    btn.disabled=false; btn.textContent='确认';
+  }, 800);
+}
+
+// ===== Export =====
+let selectedExportTable='';
+function pickExportTable(opt,name){document.getElementById('exTableName').textContent=name;selectedExportTable=name;document.getElementById('exStep0Next').disabled=false;opt.closest('.sel-dropdown').classList.remove('open')}
+var currentExportPermKey='user-self';
+function pickExPerm(opt,key){
+  var c=permConfigs[key];
+  var label=c?c.label:key;
+  document.getElementById('exPermSel').textContent=label;
+  opt.closest('.sel-dropdown').classList.remove('open');
+  currentExportPermKey=key;
+  applyExportPermissionFilter();
+  showToast('权限配置已切换：'+label,'info');
+  markExportStep1Dirty();
+}
+function applyExportPermissionFilter(){
+  var c=permConfigs[currentExportPermKey];
+  var whitelist=c?c.exportFields:null;
+  document.querySelectorAll('#exFields1 .cb[data-field],#exFields3 .cb[data-field],#exDateFields > div[data-field],#exRelationFields > div[data-field]').forEach(function(el){
+    var id=el.dataset.field;
+    if(whitelist&&whitelist.length>0&&whitelist.indexOf(id)<0){
+      el.style.opacity='0.4';
+      el.style.pointerEvents='none';
+      var box=el.querySelector('.cb-box');
+      if(box)box.classList.remove('checked');
+    }else{
+      el.style.opacity='';
+      el.style.pointerEvents='';
+    }
+  });
+  updateExportFieldCount();
+}
+function isExportAllTables(){return document.getElementById('exTableName').textContent==='全部数据表（含系统表）'}
+function goExportStep(n){if(checkExportStep1Leave(n,function(){goExportStep(n);})){return;}document.querySelectorAll('#exportSteps .step').forEach((s,i)=>{s.classList.toggle('active',i===n);s.classList.toggle('done',i<n)});document.querySelectorAll('[id^="es-"]').forEach(el=>el.classList.remove('active'));document.getElementById('es-'+n).classList.add('active');if(n===1){document.getElementById('exTableDisplay').textContent=selectedExportTable;var allTables=isExportAllTables();document.getElementById('exSingleTableConfig').style.display=allTables?'none':'block';document.getElementById('exRelationModePanel').style.display=allTables?'none':'block';document.getElementById('exDataRangePanel').style.display=allTables?'none':'block';document.getElementById('exAllTablesPanel').style.display=allTables?'block':'none';if(!allTables)renderExportFields()}if(n===2){var allTables2=isExportAllTables();document.getElementById('exPreviewTable').textContent=selectedExportTable?selectedExportTable.split('(')[0]:'';if(allTables2){document.getElementById('exSingleStats').style.display='none';document.getElementById('exAllTablesStats').style.display='block'}else{document.getElementById('exSingleStats').style.display='block';document.getElementById('exAllTablesStats').style.display='none'}resetExportStep1Dirty()}}
+function setDataRange(btn,mode){btn.parentElement.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('filterArea').style.display=mode==='filtered'?'block':'none';markExportStep1Dirty()}
+function addFilterRow(btn){const div=document.createElement('div');div.className='frm-inline mb-8';div.innerHTML='<div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>字段</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">状态</div><div class="sel-opt">金额</div></div></div><div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>等于</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">等于</div><div class="sel-opt">大于</div></div></div><input class="s-input" style="width:100px" placeholder="值"><span style="color:#ff4d4f;cursor:pointer" onclick="this.parentElement.remove()">✕</span>';btn.parentElement.insertBefore(div,btn);markExportStep1Dirty()}
+function confirmExport(){openModal('modalConfirmExport')}
+var exRelations=[{n:'角色',id:'role',ft:'多对一',target:'角色(roles)',targetField:'角色名(title)',pkField:'id(id)'},{n:'部门',id:'dept',ft:'多对一',target:'部门(departments)',targetField:'部门名(name)',pkField:'id(id)'},{n:'创建人',id:'createdBy',ft:'多对一',target:'用户(users)',targetField:'昵称(nickname)',pkField:'id(id)'},{n:'上级',id:'parent',ft:'多对一',target:'用户(users)',targetField:'昵称(nickname)',pkField:'id(id)'},{n:'标签',id:'tags',ft:'多对多',target:'标签(tags)',targetField:'标签名(name)',pkField:'id(id)',through:'usersTags(用户标签)',foreignKey:'userId',otherKey:'tagId'}];
+var exCheckedRelations=new Set(['角色','部门','创建人','上级','标签']);
+var exDateFields=[{n:'创建时间',id:'createdAt',ft:'日期时间'},{n:'更新时间',id:'updatedAt',ft:'日期时间'},{n:'生日',id:'birthday',ft:'日期'}];
+function renderExportFields(){
+  var regular=[{n:'姓名',id:'name',ft:'单行文本'},{n:'手机号',id:'phone',ft:'手机号'},{n:'邮箱',id:'email',ft:'电子邮箱'},{n:'年龄',id:'age',ft:'整数'},{n:'地址',id:'address',ft:'多行文本'},{n:'状态',id:'status',ft:'单选'},{n:'备注',id:'remark',ft:'多行文本'},{n:'性别',id:'gender',ft:'单选'},{n:'身份证号',id:'idCard',ft:'单行文本'},{n:'身高',id:'height',ft:'数字'},{n:'体重',id:'weight',ft:'数字'}];
+  var attachments=[{n:'头像',id:'avatar',ft:'附件'},{n:'附件',id:'files',ft:'附件'}];
+  var checkedRegular=new Set(['姓名','手机号','邮箱','年龄','地址','状态','备注','性别']);
+  document.getElementById('exFields1').innerHTML=regular.map(f=>'<label class="cb" data-field="'+f.id+'" onclick="toggleField(this)"><span class="cb-box '+(checkedRegular.has(f.n)?'checked':'')+'"></span> '+f.n+'('+f.id+') <span class="text-muted" style="font-size:11px">- '+f.ft+'</span></label>').join('');
+  document.getElementById('exFields3').innerHTML=attachments.map(f=>'<label class="cb" data-field="'+f.id+'" onclick="toggleField(this)"><span class="cb-box '+(f.n==='头像'?'checked':'')+'"></span> '+f.n+'('+f.id+') <span class="text-muted" style="font-size:11px">- '+f.ft+'</span></label>').join('');
+  renderDateFields();
+  renderRelationFields();
+  refreshRelationChips();
+  updateExportFieldCount();
+}
+function getFieldNameId(lbl){
+  var txt=lbl.textContent.trim();
+  var name=txt.split('(')[0].trim();
+  var id=(txt.match(/\(([^)]+)\)/)||['',''])[1];
+  return name+(id?'('+id+')':'');
+}
+function renderDateFields(){
+  var formats={'日期时间':['YYYY-MM-DD HH:mm:ss','YYYY/MM/DD HH:mm:ss','YYYY-MM-DD','UTC ISO 8601','时间戳(毫秒)','时间戳(秒)'],'日期':['YYYY-MM-DD','YYYY/MM/DD','DD/MM/YYYY','UTC ISO 8601','时间戳(毫秒)']};
+  var previews={'YYYY-MM-DD HH:mm:ss':'2026-07-09 15:30:00','YYYY/MM/DD HH:mm:ss':'2026/07/09 15:30:00','YYYY-MM-DD':'2026-07-09','YYYY/MM/DD':'2026/07/09','DD/MM/YYYY':'09/07/2026','UTC ISO 8601':'2026-07-09T07:30:00.000Z','时间戳(毫秒)':'1752058200000','时间戳(秒)':'1752058200'};
+  var html='';
+  exDateFields.forEach(function(f){
+    var checked=true;
+    var opts=formats[f.ft]||['YYYY-MM-DD HH:mm:ss'];
+    var defaultFmt=opts[0];
+    var optHtml=opts.map(function(o){return '<div class="sel-opt" onclick="pickDateFormat(this)">'+o+'</div>'}).join('');
+    html+='<div data-field="'+f.id+'" style="display:flex;align-items:center;gap:4px;margin-bottom:6px;padding:6px 8px;background:'+(checked?'#fff7e6':'#fafafa')+';border-radius:6px">'+
+      '<label class="cb" onclick="toggleDateField(this)"><span class="cb-box '+(checked?'checked':'')+'"></span></label>'+
+      '<span style="font-size:13px">'+f.n+'('+f.id+') <span class="text-muted" style="font-size:11px">- '+f.ft+'</span></span>'+
+      '<span style="margin-left:8px;display:inline-flex;align-items:center;gap:4px">'+
+      '<span class="text-muted" style="font-size:11px">格式:</span>'+
+      '<div class="sel" style="min-width:160px"><button class="sel-btn" style="padding:3px 8px;font-size:12px;min-width:160px" onclick="toggleSel(this)"><span>'+defaultFmt+'</span><span>▼</span></button><div class="sel-dropdown">'+optHtml+'</div></div>'+
+      '<span class="text-muted" style="font-size:11px;margin-left:4px">预览: '+(previews[defaultFmt]||'-')+'</span></span>'+
+      '</div>';
+  });
+  document.getElementById('exDateFields').innerHTML=html;
+}
+function toggleDateField(label){
+  var box=label.querySelector('.cb-box');box.classList.toggle('checked');updateExportFieldCount();markExportStep1Dirty();
+}
+function pickDateFormat(opt){
+  var btn=opt.closest('.sel').querySelector('.sel-btn span:first-child');
+  if(btn)btn.textContent=opt.textContent;
+  var row=opt.closest('div[style*="display:flex"]');
+  var previewSpan=row.querySelectorAll('.text-muted')[row.querySelectorAll('.text-muted').length-1];
+  var previews={'YYYY-MM-DD HH:mm:ss':'2026-07-09 15:30:00','YYYY/MM/DD HH:mm:ss':'2026/07/09 15:30:00','YYYY-MM-DD':'2026-07-09','YYYY/MM/DD':'2026/07/09','DD/MM/YYYY':'09/07/2026','UTC ISO 8601':'2026-07-09T07:30:00.000Z','时间戳(毫秒)':'1752058200000','时间戳(秒)':'1752058200'};
+  if(previewSpan)previewSpan.textContent='预览: '+(previews[opt.textContent]||'-');
+  opt.closest('.sel-dropdown').classList.remove('open');
+  markExportStep1Dirty();
+}
+function renderRelationFields(){
+  var html='';
+  exRelations.forEach(function(r){
+    var checked=exCheckedRelations.has(r.n);
+    var cfgHtml=checked?
+      '<span style="margin-left:8px;display:inline-flex;align-items:center;gap:4px">'+
+      '<span class="text-muted" style="font-size:11px">导出值:</span>'+
+      '<div class="sel" style="min-width:160px"><button class="sel-btn" style="padding:3px 8px;font-size:12px;min-width:160px" onclick="toggleSel(this)"><span>显示值('+r.targetField+')</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">显示值('+r.targetField+') <span class="text-muted" style="font-size:11px">如: 管理员</span></div><div class="sel-opt">主键值('+r.pkField+') <span class="text-muted" style="font-size:11px">如: 1</span></div><div class="sel-opt">显示值+主键值 <span class="text-muted" style="font-size:11px">如: 管理员(1)</span></div></div></div>'+
+      '</span>':'';
+    var throughHtml=r.through?'<span class="text-muted" style="font-size:11px">| 中间表:'+r.through+' 外键:'+r.foreignKey+'/'+r.otherKey+'</span>':'';
+    var relInfo=r.ft==='多对多'?
+      ' <span class="text-muted" style="font-size:11px">-> 关联表:'+r.target+' 显示字段:'+r.targetField+'</span>'+throughHtml:
+      ' <span class="text-muted" style="font-size:11px">-> 关联表:'+r.target+' 显示字段:'+r.targetField+'</span>';
+    html+='<div data-field="'+r.id+'" style="display:flex;align-items:center;gap:4px;margin-bottom:6px;padding:6px 8px;background:'+(checked?'#f0f5ff':'#fafafa')+';border-radius:6px">'+
+      '<label class="cb" onclick="toggleRelationField(this,\''+r.n+'\')"><span class="cb-box '+(checked?'checked':'')+'"></span></label>'+
+      '<span style="font-size:13px">'+r.n+'('+r.id+') <span class="text-muted" style="font-size:11px">- '+r.ft+'</span>'+relInfo+'</span>'+
+      cfgHtml+
+      '</div>';
+  });
+  document.getElementById('exRelationFields').innerHTML=html;
+}
+function toggleRelationField(label,name){
+  var box=label.querySelector('.cb-box');
+  if(exCheckedRelations.has(name)){exCheckedRelations.delete(name);box.classList.remove('checked')}
+  else{exCheckedRelations.add(name);box.classList.add('checked')}
+  renderRelationFields();
+  refreshRelationChips();
+  updateExportFieldCount();
+  markExportStep1Dirty();
+}
+function refreshRelationChips(){
+  var dd=document.getElementById('exRelationChipDropdown');if(!dd)return;
+  var selected=new Set();document.querySelectorAll('#exRelationChips .chip').forEach(function(c){var t=c.textContent.trim().split('(')[0].trim();selected.add(t)});
+  dd.innerHTML=exRelations.map(function(r){
+    var dis=selected.has(r.n);
+    var label=r.n+'('+r.id+') -> '+r.target;
+    if(r.through)label+=' [中间表:'+r.through+']';
+    return '<div class="sel-opt '+(dis?'disabled':'')+'" '+(dis?'':'onclick="addRelationChip(this,\''+r.n+'\',\''+r.id+'\',\''+r.target+'\','+(r.through?'\''+r.through+'\'':'null')+')"')+'>'+label+(dis?'（已选）':'')+'</div>';
+  }).join('');
+}
+function addRelationChip(opt,name,id,target,through){
+  var c=document.getElementById('exRelationChips');
+  var chip=document.createElement('span');chip.className='chip';
+  if(through){chip.style.cssText='background:#f9f0ff;color:#722ed1;border-color:#d3adf7';chip.innerHTML=name+'('+id+') -> '+target+' [中间表:'+through+'] <span class="rmv" onclick="removeRelationChip(this)">✕</span>'}
+  else{chip.style.cssText='background:#e6f4ff;color:#1677ff;border-color:#91caff';chip.innerHTML=name+'('+id+') -> '+target+' <span class="rmv" onclick="removeRelationChip(this)">✕</span>'}
+  var addBtn=c.querySelector('.sel');c.insertBefore(chip,addBtn);
+  opt.closest('.sel-dropdown').classList.remove('open');refreshRelationChips();markExportStep1Dirty();
+}
+function removeRelationChip(span){span.parentElement.remove();refreshRelationChips();markExportStep1Dirty()}
+
+// ===== Modal =====
+function openModal(id){document.getElementById(id).classList.add('open')}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+
+// ===== Tasks =====
+const tasks=[{id:1001,type:'import',table:'用户(users)',status:'completed',progress:100,count:'1,256行',total:1256,success:1256,failed:0,creator:'张明',created:'2026-07-10 10:30:00',completed:'2026-07-10 10:32:15',duration:'2分15秒',fileName:'用户导入数据_20260710.xlsx',fileSize:'128 KB',sheet:'Sheet1',headerRow:'第1行',mode:'新增+更新(upsert)',uniqueFields:'手机号(phone), 邮箱(email)',blankStrategy:'按Excel更新（清空）',attach:'未上传',permConfig:'当前用户自定义权限'},{id:1002,type:'export',table:'订单(orders)',status:'processing',progress:60,count:'3450/5750',total:5750,success:3450,failed:0,creator:'李华',created:'2026-07-10 11:15:00',completed:'-',duration:'-',fileName:'订单-orders-20260710111500.xlsx',fileSize:'-',sheet:'Sheet1',headerRow:'-',mode:'-',uniqueFields:'-',blankStrategy:'-',attach:'是(含附件tar.gz)',permConfig:'管理员权限(admin)'},{id:1003,type:'import',table:'产品(products)',status:'failed',progress:45,count:'89/200',total:200,success:0,failed:111,creator:'王芳',created:'2026-07-10 09:00:00',completed:'-',duration:'-',fileName:'产品导入_20260710.xlsx',fileSize:'52 KB',sheet:'Sheet1',headerRow:'第1行',mode:'新增(insert)',uniqueFields:'产品编号(productCode)',blankStrategy:'不更新（保留原值）',attach:'未上传',permConfig:'数据导入员权限'},{id:1004,type:'export',table:'分类(categories)',status:'pending',progress:0,count:'-',total:0,success:0,failed:0,creator:'张明',created:'2026-07-09 18:00:00',completed:'-',duration:'-',fileName:'分类-categories-20260709180000.xlsx',fileSize:'-',sheet:'-',headerRow:'-',mode:'-',uniqueFields:'-',blankStrategy:'-',attach:'否',permConfig:'管理员权限(admin)'},{id:1005,type:'export',table:'订单(orders)',status:'completed',progress:100,count:'5,750行',total:5750,success:5750,failed:0,creator:'李华',created:'2026-07-10 14:00:00',completed:'2026-07-10 14:05:30',duration:'5分30秒',fileName:'订单-orders-20260710140000.xlsx',fileSize:'2.3 MB',sheet:'Sheet1',headerRow:'-',mode:'-',uniqueFields:'-',blankStrategy:'-',attach:'是(含附件tar.gz)',permConfig:'管理员权限(admin)'},
+{id:1006,type:'import',table:'文章(posts)',status:'canceled',progress:23,count:'52/230',total:230,success:0,failed:0,creator:'王芳',created:'2026-07-11 08:20:00',completed:'2026-07-11 08:21:05',duration:'45秒',fileName:'文章导入_20260711.xlsx',fileSize:'36 KB',sheet:'Sheet1',headerRow:'第1行',mode:'新增+更新(upsert)',uniqueFields:'文章编号(articleCode)',blankStrategy:'按Excel更新（清空）',attach:'未上传',permConfig:'当前用户自定义权限'}];
+const statusMap={completed:{dot:'green',text:'已完成'},processing:{dot:'blue',text:'进行中'},failed:{dot:'red',text:'失败'},pending:{dot:'orange',text:'排队中'},canceled:{dot:'gray',text:'已取消'}};
+function renderTasks(){
+  var filtered=getFilteredTasks();
+  var allTasks=tasks;
+  var total=allTasks.length;
+  var completed=allTasks.filter(function(t){return t.status==='completed'}).length;
+  var processing=allTasks.filter(function(t){return t.status==='processing'}).length;
+  var failed=allTasks.filter(function(t){return t.status==='failed'}).length;
+	var pending=allTasks.filter(function(t){return t.status==='pending'}).length;
+	var canceled=allTasks.filter(function(t){return t.status==='canceled'}).length;
+	document.getElementById('taskStats').innerHTML=
+	    '<div class="confirm-card" style="flex:1;cursor:pointer" onclick="quickFilterStatus(\'全部\')"><div class="cc-icon">📋</div><div class="cc-body"><div class="cc-label">任务总数</div><div class="cc-value" style="font-size:20px;color:#1677ff">'+total+'</div></div></div>'+
+	    '<div class="confirm-card" style="flex:1;cursor:pointer" onclick="quickFilterStatus(\'已完成\')"><div class="cc-icon" style="background:#f6ffed">✅</div><div class="cc-body"><div class="cc-label">已完成</div><div class="cc-value" style="font-size:20px;color:#52c41a">'+completed+'</div></div></div>'+
+	    '<div class="confirm-card" style="flex:1;cursor:pointer" onclick="quickFilterStatus(\'进行中\')"><div class="cc-icon" style="background:#e6f4ff">🔄</div><div class="cc-body"><div class="cc-label">进行中</div><div class="cc-value" style="font-size:20px;color:#1677ff">'+processing+'</div></div></div>'+
+	    '<div class="confirm-card" style="flex:1;cursor:pointer" onclick="quickFilterStatus(\'排队中\')"><div class="cc-icon" style="background:#fff7e6">⏳</div><div class="cc-body"><div class="cc-label">排队中</div><div class="cc-value" style="font-size:20px;color:#fa8c16">'+pending+'</div></div></div>'+
+	    '<div class="confirm-card" style="flex:1;cursor:pointer" onclick="quickFilterStatus(\'失败\')"><div class="cc-icon" style="background:#fff2f0">❌</div><div class="cc-body"><div class="cc-label">失败</div><div class="cc-value" style="font-size:20px;color:#ff4d4f">'+failed+'</div></div></div>'+
+	    '<div class="confirm-card" style="flex:1;cursor:pointer" onclick="quickFilterStatus(\'已取消\')"><div class="cc-icon" style="background:#f5f5f5">🚫</div><div class="cc-body"><div class="cc-label">已取消</div><div class="cc-value" style="font-size:20px;color:#999">'+canceled+'</div></div></div>';
+  // 任务表格列表
+  var body=document.getElementById('taskBody');body.innerHTML='';
+  if(filtered.length===0){
+    body.innerHTML='<tr><td colspan="9" style="text-align:center;padding:40px;color:#999"><div style="font-size:40px;margin-bottom:8px">📭</div><div>没有匹配的任务记录</div><div style="font-size:12px;margin-top:4px">尝试调整筛选条件或搜索关键词</div></td></tr>';
+  }
+  filtered.forEach(function(t){
+    var s=statusMap[t.status];
+    var fillClass=t.status==='failed'?'red':t.status==='processing'?'blue':t.status==='pending'?'gray':t.status==='canceled'?'gray':'';
+    var actions='<button class="btn btn-text btn-sm" onclick="event.stopPropagation();openDrawer('+t.id+')">👁 查看</button>';
+    if(t.status==='processing'||t.status==='pending'){actions+='<button class="btn btn-text btn-sm" style="color:#fa8c16" onclick="event.stopPropagation();cancelTask('+t.id+')">⏹ 取消</button>'}
+    if(t.status==='completed'&&t.type==='export'){actions+='<button class="btn btn-text btn-sm" style="color:#52c41a" onclick="event.stopPropagation();showToast(\'下载中...\',\'info\')">⬇ 下载</button>'}
+    if(t.status==='canceled'){actions='<button class="btn btn-text btn-sm" onclick="event.stopPropagation();openDrawer('+t.id+')">👁 查看</button>'}
+    body.innerHTML+='<tr style="cursor:pointer" onclick="openDrawer('+t.id+')" title="完成时间: '+t.completed+' | 耗时: '+t.duration+'"><td>#'+t.id+'</td><td><span class="tag tag-'+(t.type==='import'?'blue':'green')+'">'+(t.type==='import'?'⬇导入':'⬆导出')+'</span></td><td>'+t.table+'</td><td><span class="sdot '+s.dot+'"></span>'+s.text+'</td><td><div class="progress-bar" style="width:100px"><div class="fill '+fillClass+'" style="width:'+t.progress+'%"></div></div> <span class="text-muted" style="font-size:11px">'+t.progress+'%</span></td><td>'+t.count+'</td><td>'+t.creator+'</td><td style="font-size:12px;color:#999;white-space:nowrap">'+t.created+'</td><td style="white-space:nowrap" onclick="event.stopPropagation()">'+actions+'</td></tr>';
+  });
+  // 更新分页
+  var infoEl=document.getElementById('taskPageInfo');if(infoEl)infoEl.textContent='共 '+filtered.length+' 条（每页 20 条）';
+}
+
+// 筛选状态和函数
+var taskTypeFilter='全部',taskStatusFilter='全部',taskSearchKeyword='';
+function getFilteredTasks(){
+  return tasks.filter(function(t){
+    if(taskTypeFilter==='导入'&&t.type!=='import')return false;
+    if(taskTypeFilter==='导出'&&t.type!=='export')return false;
+    if(taskStatusFilter!=='全部'&&statusMap[t.status].text!==taskStatusFilter)return false;
+    if(taskSearchKeyword){
+      var kw=taskSearchKeyword.toLowerCase();
+      if(String(t.id).indexOf(kw)<0&&t.table.toLowerCase().indexOf(kw)<0&&t.creator.toLowerCase().indexOf(kw)<0)return false;
+    }
+    return true;
+  });
+}
+function applyTaskFilters(){
+  // 判断触发来源
+  var el=this;
+  if(el&&el.closest&&el.closest('#taskTypeFilter')){taskTypeFilter=el.dataset.val}
+  if(el&&el.closest&&el.closest('#taskStatusFilter')){taskStatusFilter=el.dataset.val}
+  var searchEl=document.getElementById('taskSearch');if(searchEl)taskSearchKeyword=searchEl.value;
+  document.querySelectorAll('#taskTypeFilter .filter-btn').forEach(function(b){b.classList.toggle('active',b.dataset.val===taskTypeFilter)});
+  document.querySelectorAll('#taskStatusFilter .filter-btn').forEach(function(b){b.classList.toggle('active',b.dataset.val===taskStatusFilter)});
+  renderTasks();
+}
+function quickFilterStatus(statusText){
+  taskTypeFilter='全部';taskStatusFilter=statusText;
+  var searchEl=document.getElementById('taskSearch');if(searchEl)searchEl.value='';taskSearchKeyword='';
+  document.querySelectorAll('#taskTypeFilter .filter-btn').forEach(function(b){b.classList.toggle('active',b.dataset.val==='全部')});
+  document.querySelectorAll('#taskStatusFilter .filter-btn').forEach(function(b){b.classList.toggle('active',b.dataset.val===statusText)});
+  renderTasks();
+}
+function cancelTask(taskId){
+  var t=tasks.find(function(x){return x.id===taskId});if(!t)return;
+  if(!(t.status==='processing'||t.status==='pending'))return;
+  t.status='canceled';t.duration='-';t.completed=new Date().toISOString().replace('T',' ').substring(0,19);
+  t.success=0;t.failed=0;
+  showToast('任务 #'+taskId+' 已取消<br><span style=\"font-size:11px\">严格模式下已写入数据全部回滚</span>','success');
+  renderTasks();closeDrawer();
+}
+// 旧 setTaskFilter 兼容
+function setTaskFilter(btn){applyTaskFilters.call(btn)}
+// ===== Drawer error logs & polling =====
+let currentDrawerTaskId=null;
+let drawerPollTimer=null;
+let currentDrawerErrors=[];
+let currentDrawerErrorLimit=10;
+const DRAWER_ERROR_PAGE_SIZE=10;
+function generateDrawerErrors(t){
+  const errors=[];
+  const reasons=[
+    {field:'产品名称(name)',reason:'必填字段为空',sample:'name=""'},
+    {field:'价格(price)',reason:'类型转换失败',sample:'price="abc"'},
+    {field:'产品编号(productCode)',reason:'唯一值冲突',sample:'productCode="P001"（已存在）'},
+    {field:'库存(stock)',reason:'整数转换失败',sample:'stock="12.5"'},
+    {field:'状态(status)',reason:'选项不存在',sample:'status="未知"'},
+    {field:'创建时间(createdAt)',reason:'日期格式错误',sample:'createdAt="2026/13/45"'},
+    {field:'角色(role)',reason:'关联记录不存在',sample:'role="9999"'},
+    {field:'邮箱(email)',reason:'邮箱格式错误',sample:'email="invalid-email"'},
+    {field:'手机号(phone)',reason:'手机号格式错误',sample:'phone="123"'},
+    {field:'附件(avatar)',reason:'文件不存在',sample:'avatar="missing.jpg"'}
+  ];
+  for(let i=0;i<t.failed;i++){
+    const r=reasons[i%reasons.length];
+    const row=90+i*5;
+    errors.push({row:row,field:r.field,reason:r.reason,sample:r.sample});
+  }
+  return errors;
+}
+function renderDrawerErrors(){
+  const errC=document.getElementById('drawerErrorContent');
+  const t=tasks.find(x=>x.id===currentDrawerTaskId);
+  if(!t || t.type!=='import')return;
+  const totalLogs=t.total, successLogs=t.success, failedLogs=t.failed;
+  document.getElementById('drawerErrCount').textContent='';
+  let logHtml='';
+  logHtml+='<div style="display:flex;gap:0;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid #f0f0f0">';
+  var successPct=totalLogs>0?Math.round(successLogs/totalLogs*100):0;
+  var failedPct=totalLogs>0?100-successPct:0;
+  if(successLogs>0)logHtml+='<div style="flex:'+successPct+';background:#52c41a;color:#fff;padding:8px 12px;text-align:center;font-size:12px;min-width:0">✅ '+successLogs+'行成功 ('+successPct+'%)</div>';
+  if(failedLogs>0)logHtml+='<div style="flex:'+failedPct+';background:#ff4d4f;color:#fff;padding:8px 12px;text-align:center;font-size:12px;min-width:0">❌ '+failedLogs+'行失败 ('+failedPct+'%)</div>';
+  if(successLogs===0&&failedLogs===0)logHtml+='<div style="flex:1;background:#d9d9d9;color:#666;padding:8px 12px;text-align:center;font-size:12px">暂无数据</div>';
+  logHtml+='</div>';
+  if(failedLogs>0){
+    const shown=currentDrawerErrors.slice(0, currentDrawerErrorLimit);
+    logHtml+='<div class="flex mb-8" style="align-items:center;justify-content:space-between"><div class="fw-600" style="font-size:13px;color:#ff4d4f">失败明细</div><input class="s-input" style="width:160px" placeholder="搜索行号/字段..." oninput="filterDrawerErrors(this.value)"></div>';
+    logHtml+='<table class="tbl" style="font-size:12px"><thead><tr><th style="width:60px">行号</th><th style="width:140px">字段</th><th>错误原因</th><th style="width:180px">原始数据</th></tr></thead><tbody id="drawerErrorTbody">';
+    shown.forEach(e=>{logHtml+='<tr style="background:#fff2f0"><td>'+e.row+'</td><td>'+e.field+'</td><td><span class="tag tag-red">'+e.reason+'</span></td><td>'+e.sample+'</td></tr>'});
+    logHtml+='</tbody></table>';
+    if(currentDrawerErrorLimit<failedLogs){
+      logHtml+='<div class="text-center mt-8"><button class="btn btn-default btn-sm" onclick="loadMoreDrawerErrors()">加载更多（已显示 '+Math.min(currentDrawerErrorLimit,failedLogs)+' / '+failedLogs+'）</button></div>';
+    }
+    logHtml+='<div class="flex mt-8" style="justify-content:space-between;align-items:center"><span class="text-muted">已显示 '+Math.min(currentDrawerErrorLimit,failedLogs)+' / '+failedLogs+' 条失败</span><button class="btn btn-danger btn-sm" onclick="downloadErrorReportCSV()">📥 导出错误报告（CSV）</button></div>';
+  } else if(successLogs>0){
+    logHtml+='<div style="padding:12px 16px;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;text-align:center"><span style="color:#52c41a;font-size:14px;font-weight:600">✅ 全部 '+successLogs+' 行导入成功，无失败记录</span></div>';
+  }
+  errC.innerHTML=logHtml;
+}
+function loadMoreDrawerErrors(){
+  currentDrawerErrorLimit+=DRAWER_ERROR_PAGE_SIZE;
+  renderDrawerErrors();
+}
+function filterDrawerErrors(keyword){
+  const tbody=document.getElementById('drawerErrorTbody');
+  if(!tbody)return;
+  const kw=keyword.toLowerCase();
+  tbody.querySelectorAll('tr').forEach(tr=>{tr.style.display=tr.textContent.toLowerCase().includes(kw)?'':'none'});
+}
+function downloadErrorReportCSV(){
+  const t=tasks.find(x=>x.id===currentDrawerTaskId);
+  if(!t || !t.failed)return;
+  const rows=currentDrawerErrors.slice(0,t.failed).map(e=>[e.row,e.field,e.reason,e.sample].join(','));
+  const csv=['行号,字段,错误原因,原始数据'].concat(rows).join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='错误报告-'+t.fileName.replace(/\.[^.]+$/,'')+'-'+t.id+'.csv';a.click();
+  URL.revokeObjectURL(url);
+  showToast('错误报告已下载','success');
+}
+function startDrawerPoll(id){
+  stopDrawerPoll();
+  drawerPollTimer=setInterval(()=>{
+    const t=tasks.find(x=>x.id===id);
+    if(!t || (t.status!=='processing' && t.status!=='pending')){stopDrawerPoll();return;}
+    if(t.status==='pending'){
+      t.status='processing';
+      t.count='0/'+t.total;
+      showToast('任务 #'+id+' 开始执行','info');
+      renderTasks();
+      openDrawer(id);
+      return;
+    }
+    if(t.status==='processing' && t.progress<100){
+      t.progress=Math.min(t.progress+Math.floor(Math.random()*10),100);
+      const processed=Math.round(t.total*t.progress/100);
+      t.count=processed+'/'+t.total;
+      t.success=processed;
+      if(t.progress===100){
+        t.status='completed';
+        t.completed=new Date().toISOString().replace('T',' ').substring(0,19);
+        t.duration='自动完成';
+        showToast('任务 #'+id+' 已完成','success');
+        stopDrawerPoll();
+      }
+      renderTasks();
+      openDrawer(id);
+    }
+  },2000);
+}
+function stopDrawerPoll(){if(drawerPollTimer){clearInterval(drawerPollTimer);drawerPollTimer=null}}
+function openDrawer(id){
+  const t=tasks.find(x=>x.id===id);if(!t)return;const s=statusMap[t.status];
+  currentDrawerTaskId=t.id;
+  if(t.status==='processing' || t.status==='pending'){
+    if(!drawerPollTimer){showToast('任务进行中，进度将自动刷新','info');}
+    startDrawerPoll(t.id);
+  }
+  var statusColor=t.status==='completed'?'#52c41a':t.status==='failed'?'#ff4d4f':t.status==='processing'?'#1677ff':t.status==='pending'?'#fa8c16':'#999';
+  var typeIcon=t.type==='import'?'📥':'📤';
+  var typeLabel=t.type==='import'?'导入':'导出';
+  var typeColor=t.type==='import'?'#1677ff':'#52c41a';
+  var progressFillClass=t.status==='failed'?'red':t.status==='processing'?'blue':t.status==='pending'||t.status==='canceled'?'gray':'';
+
+  // 区块一：KPI卡片网格
+  document.getElementById('drawerKpiGrid').innerHTML=
+    '<div class="kpi-card"><div class="kpi-icon">'+typeIcon+'</div><div class="kpi-label">任务类型</div><div class="kpi-value blue">'+typeLabel+'</div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon">'+(t.status==='completed'?'✅':t.status==='failed'?'❌':t.status==='processing'?'🔄':t.status==='pending'?'⏳':'🚫')+'</div><div class="kpi-label">状态</div><div class="kpi-value green">'+s.text+'</div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon">📊</div><div class="kpi-label">目标数据表</div><div class="kpi-value">'+t.table+'</div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon">📈</div><div class="kpi-label">进度</div><div class="kpi-value">'+t.progress+'%</div><div class="kpi-progress"><div class="bar"><div class="fill '+progressFillClass+'" style="width:'+t.progress+'%"></div></div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon">👤</div><div class="kpi-label">创建人</div><div class="kpi-value">'+t.creator+'</div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon">🕐</div><div class="kpi-label">创建时间</div><div class="kpi-value" style="font-size:13px">'+t.created+'</div></div>'+
+    (t.completed!=='-'?'<div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-label">完成时间</div><div class="kpi-value" style="font-size:13px">'+t.completed+'</div></div>':'')+
+    (t.duration!=='-'?'<div class="kpi-card"><div class="kpi-icon">⏱</div><div class="kpi-label">耗时</div><div class="kpi-value">'+t.duration+'</div></div>':'')+
+    '<div class="kpi-card"><div class="kpi-icon">🔢</div><div class="kpi-label">数据量</div><div class="kpi-value">'+t.count+'</div></div>';
+
+  // 区块二：配置详情斑马纹列表
+  var configRows=[
+    {lbl:'任务ID',val:'#'+t.id},
+    {lbl:'文件名',val:t.fileName}
+  ];
+  if(t.fileSize!=='-')configRows.push({lbl:'文件大小',val:t.fileSize});
+  if(t.sheet!=='-')configRows.push({lbl:'Sheet',val:t.sheet});
+  if(t.headerRow!=='-')configRows.push({lbl:'表头行',val:t.headerRow});
+  if(t.mode!=='-')configRows.push({lbl:'导入模式',val:t.mode});
+  if(t.uniqueFields!=='-')configRows.push({lbl:'唯一值字段',val:t.uniqueFields});
+  if(t.blankStrategy!=='-')configRows.push({lbl:'空白值处理',val:t.blankStrategy});
+  if(t.attach!=='-')configRows.push({lbl:'附件',val:t.attach});
+  configRows.push({lbl:'权限配置',val:t.permConfig});
+  configRows.push({lbl:'事务模式',val:'严格模式（失败全部回滚）'});
+  var cfHtml='';
+  configRows.forEach(function(r){cfHtml+='<div class="zebra-row"><span class="z-lbl">'+r.lbl+'</span><span class="z-val">'+r.val+'</span></div>'});
+  document.getElementById('drawerConfigList').innerHTML=cfHtml;
+  document.getElementById('drawerImportDetail').style.display=t.type==='import'?'block':'none';
+  document.getElementById('drawerExportDetail').style.display=t.type==='export'?'block':'none';
+  if(t.type==='import'){
+    document.getElementById('drawerMapBody').innerHTML='<tr><td>姓名</td><td style="text-align:center"><span class="tag tag-blue">Excel列</span></td><td>姓名(name) - 单行文本</td><td><span class="tag tag-gold">主键:id</span> <span class="tag tag-orange">唯一值</span> <span class="tag tag-red">必填</span></td></tr><tr><td>手机号</td><td style="text-align:center"><span class="tag tag-blue">Excel列</span></td><td>手机号(phone) - 手机号</td><td><span class="tag tag-orange">唯一值</span> <span class="tag tag-red">必填</span></td></tr><tr><td>年龄</td><td style="text-align:center"><span class="tag tag-blue">Excel列</span></td><td>年龄(age) - 整数</td><td><span class="tag tag-purple">关联</span></td></tr><tr><td style="color:#999">未选择</td><td style="text-align:center"><span class="tag tag-default">忽略</span></td><td>邮箱(email) - 电子邮箱</td><td><span class="tag tag-orange">唯一值</span></td></tr><tr><td style="color:#52c41a">active</td><td style="text-align:center"><span class="tag tag-green">自定义内容</span></td><td>状态(status) - 单选</td><td></td></tr>';
+    document.getElementById('drawerImportStats').innerHTML='<div class="zebra-row"><span class="z-lbl">总行数</span><span class="z-val">'+t.total+'</span></div><div class="zebra-row"><span class="z-lbl">成功行数</span><span class="z-val" style="color:#52c41a">'+t.success+'</span></div><div class="zebra-row"><span class="z-lbl">失败行数</span><span class="z-val" style="color:'+(t.failed>0?'#ff4d4f':'#52c41a')+'">'+t.failed+'</span></div>'+(t.failed>0?'<div class="zebra-row"><span class="z-lbl">失败原因</span><span class="z-val">唯一值冲突、必填字段为空、数据格式错误等</span></div>':'');
+    // 导入数据预览
+    var pThead=document.getElementById('drawerPreviewThead');
+    var pTbody=document.getElementById('drawerPreviewTbody');
+    pThead.innerHTML='<tr><th><span class="col-excel">导入: 姓名</span><span class="col-arrow">▼</span><span class="col-field">数据表: 姓名(name)</span></th><th><span class="col-excel">导入: 手机号</span><span class="col-arrow">▼</span><span class="col-field">数据表: 手机号(phone)</span></th><th><span class="col-excel">导入: 年龄</span><span class="col-arrow">▼</span><span class="col-field">数据表: 年龄(age)</span></th><th><span class="col-excel">导入: active(自定义)</span><span class="col-arrow">▼</span><span class="col-field">数据表: 状态(status)</span></th></tr>';
+    pTbody.innerHTML='<tr><td>张三</td><td>13800138001</td><td>28</td><td style="color:#52c41a">active</td></tr><tr><td>李四</td><td>13800138002</td><td>35</td><td style="color:#52c41a">active</td></tr><tr><td>王五</td><td>13800138003</td><td>22</td><td style="color:#52c41a">active</td></tr><tr><td>赵六</td><td>13800138004</td><td>30</td><td style="color:#52c41a">active</td></tr><tr><td>孙七</td><td>13800138005</td><td>42</td><td style="color:#52c41a">active</td></tr><tr><td>...</td><td>...</td><td>...</td><td>...</td></tr>';
+  } else {
+    document.getElementById('drawerExportFields').innerHTML='<span class="tag tag-blue">id(id)</span><span class="tag tag-blue">订单号(orderNo)</span><span class="tag tag-blue">客户(customer)</span><span class="tag tag-blue">金额(amount)</span><span class="tag tag-blue">创建时间(createdAt)</span><span class="tag tag-blue" style="background:#e6f4ff">角色(role)</span><span class="tag tag-blue" style="background:#e6f4ff">部门(dept)</span>';
+    document.getElementById('drawerExportConfig').innerHTML='<div class="zebra-row"><span class="z-lbl">表头格式</span><span class="z-val">字段名称(字段名)</span></div><div class="zebra-row"><span class="z-lbl">关联表导出</span><span class="z-val">单独Sheet</span></div><div class="zebra-row"><span class="z-lbl">导出附件</span><span class="z-val">'+t.attach+'</span></div><div class="zebra-row"><span class="z-lbl">百万行分表</span><span class="z-val">自动开启</span></div><div class="zebra-row"><span class="z-lbl">导出格式</span><span class="z-val">xlsx (固定)</span></div><div class="zebra-row"><span class="z-lbl">导出行数</span><span class="z-val" style="color:#52c41a">'+t.success+'</span></div>';
+    // 关联表导出详情
+    document.getElementById('drawerExportRelations').innerHTML=
+      '<table class="tbl mb-8" style="font-size:12px">'+
+        '<thead><tr><th>关联字段(标识)</th><th>关联类型</th><th>关联表(标识)</th><th>显示字段</th><th>导出值</th><th>导出方式</th><th>Sheet名称</th><th>数据行数</th></tr></thead>'+
+        '<tbody>'+
+          '<tr><td><strong>角色</strong>(role)</td><td><span class="tag tag-purple">多对一</span></td><td>角色(roles)</td><td>角色名(title)</td><td>显示值</td><td><span class="tag tag-blue">单独Sheet</span></td><td>角色名(title)-角色(roles)</td><td>8行</td></tr>'+
+          '<tr><td><strong>部门</strong>(dept)</td><td><span class="tag tag-purple">多对一</span></td><td>部门(departments)</td><td>部门名(name)</td><td>显示值</td><td><span class="tag tag-blue">单独Sheet</span></td><td>部门名(name)-部门(departments)</td><td>12行</td></tr>'+
+          '<tr><td><strong>创建人</strong>(createdBy)</td><td><span class="tag tag-purple">多对一</span></td><td>用户(users)</td><td>昵称(nickname)</td><td>显示值</td><td><span class="tag tag-blue">单独Sheet</span></td><td>昵称(nickname)-用户(users)</td><td>1,256行</td></tr>'+
+          '<tr><td><strong>标签</strong>(tags)</td><td><span class="tag tag-purple">多对多</span></td><td>标签(tags)</td><td>标签名(name)</td><td>显示值</td><td><span class="tag tag-blue">单独Sheet</span></td><td>标签名(name)-标签(tags)</td><td>45行</td></tr>'+
+        '</tbody>'+
+      '</table>'+
+      '<div class="alert alert-info" style="margin:0"><span>💡</span><span>共导出 4 张关联表（4个Sheet），含1张多对多关联表（通过中间表 usersTags 关联）。多对多关联表的Sheet包含中间表映射关系数据。</span></div>';
+    // 导出数据预览
+    var epThead=document.getElementById('drawerExportPreviewThead');
+    var epTbody=document.getElementById('drawerExportPreviewTbody');
+    epThead.innerHTML='<tr><th><span class="col-excel">导出: ID</span><span class="col-arrow">▼</span><span class="col-field">数据表: id(id)</span></th><th><span class="col-excel">导出: 订单号</span><span class="col-arrow">▼</span><span class="col-field">数据表: 订单号(orderNo)</span></th><th><span class="col-excel">导出: 客户</span><span class="col-arrow">▼</span><span class="col-field">数据表: 客户(customer)</span></th><th><span class="col-excel">导出: 金额</span><span class="col-arrow">▼</span><span class="col-field">数据表: 金额(amount)</span></th><th><span class="col-excel">导出: 创建时间</span><span class="col-arrow">▼</span><span class="col-field">数据表: 创建时间(createdAt)</span></th><th><span class="col-excel">导出: 角色</span><span class="col-arrow">▼</span><span class="col-field">数据表: 角色(role)</span></th></tr>';
+    epTbody.innerHTML='<tr><td>1</td><td>O001</td><td>张三</td><td>100.00</td><td>2026-07-01 10:30:00</td><td>管理员</td></tr><tr><td>2</td><td>O002</td><td>李四</td><td>200.50</td><td>2026-07-02 14:20:00</td><td>编辑</td></tr><tr><td>3</td><td>O003</td><td>王五</td><td>350.00</td><td>2026-07-03 09:15:00</td><td>member</td></tr><tr><td>4</td><td>O004</td><td>赵六</td><td>88.80</td><td>2026-07-04 16:45:00</td><td>管理员</td></tr><tr><td>5</td><td>O005</td><td>孙七</td><td>1200.00</td><td>2026-07-05 11:00:00</td><td>编辑</td></tr><tr><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td></tr>';
+  }
+    const dl=document.getElementById('drawerDownload');
+    if((t.type==='export'&&t.status==='completed')||(t.type==='import'&&t.status==='completed')){dl.style.display='block';document.getElementById('drawerFileName').textContent='📁 '+t.fileName;document.getElementById('drawerFileInfo').textContent='大小：'+t.fileSize+' | 生成时间：'+t.completed;document.getElementById('drawerSourceBtn').style.display=t.type==='import'?'inline-flex':'none';document.getElementById('drawerDownloadBtn').textContent=t.type==='export'?'⬇ 下载导出文件':'⬇ 下载导入源文件'}else{dl.style.display='none'}
+  const errC=document.getElementById('drawerErrorContent');
+  if(t.type==='import'){
+    currentDrawerErrors=generateDrawerErrors(t);
+    currentDrawerErrorLimit=10;
+    renderDrawerErrors();
+  } else {
+    document.getElementById('drawerErrCount').textContent='';
+    var exportLogHtml='<div style="padding:12px 16px;background:#f6ffed;border:1px solid #b7eb8f;border-radius:8px;display:flex;align-items:center;gap:8px"><span style="color:#52c41a;font-size:14px;font-weight:600">✅ 导出成功</span><span style="color:#52c41a;font-size:14px">'+t.success+' 行</span><button class="btn btn-default btn-sm" style="margin-left:auto" onclick="showToast(\'日志导出中...\',\'info\')">📥 导出日志</button></div>';
+    errC.innerHTML=exportLogHtml;
+  }
+    const actEl=document.getElementById('drawerActions');
+    let actions='<button class="btn btn-default" onclick="closeDrawer()">关闭</button>';
+    if(t.status==='processing'||t.status==='pending'){actions='<button class="btn btn-danger btn-sm" onclick="cancelTask('+t.id+')">⏹ 取消任务（全部回滚）</button>'+actions}
+    if(t.status==='completed'&&t.type==='export'){actions='<button class="btn btn-default btn-sm" onclick="showToast(\'重新导出任务已提交\',\'success\')">🔄 重新导出</button>'+actions}
+    actEl.innerHTML=actions;
+  document.getElementById('drawerOverlay').classList.add('open');document.getElementById('drawerLog').classList.add('open');
+}
+function closeDrawer(){stopDrawerPoll();document.getElementById('drawerOverlay').classList.remove('open');document.getElementById('drawerLog').classList.remove('open')}
+function filterLog(btn,type){btn.parentElement.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');var rows=btn.closest('#drawerErrorContent').querySelectorAll('tbody tr');rows.forEach(function(r){var isFailed=r.style.background.indexOf('fff2f0')>=0;if(type==='success'&&isFailed){r.style.display='none'}else if(type==='failed'&&!isFailed){r.style.display='none'}else{r.style.display=''}})}
+
+// ===== Permissions =====
+var selectedPermCards=new Set();
+function toggleSelectAll(label){
+  var box=document.getElementById('permSelectAllBox');
+  var cards=document.querySelectorAll('#custom-cards .perm-card');
+  var allSelected=selectedPermCards.size===cards.length;
+  if(allSelected){
+    selectedPermCards.clear();
+    box.classList.remove('checked');box.classList.remove('indeterminate');
+  }else{
+    cards.forEach(function(c){selectedPermCards.add(c.id)});
+    box.classList.add('checked');box.classList.remove('indeterminate');
+  }
+  updatePermCardSelection();
+}
+function updatePermCardSelection(){
+  var cards=document.querySelectorAll('#custom-cards .perm-card');
+  cards.forEach(function(c){
+    if(selectedPermCards.has(c.id)){c.classList.add('selected')}
+    else{c.classList.remove('selected')}
+  });
+  var total=cards.length;
+  var count=selectedPermCards.size;
+  document.getElementById('permSelectedCount').textContent='已选 '+count+' / '+total;
+  var box=document.getElementById('permSelectAllBox');
+  if(count===0){box.classList.remove('checked');box.classList.remove('indeterminate')}
+  else if(count===total){box.classList.add('checked');box.classList.remove('indeterminate')}
+  else{box.classList.remove('checked');box.classList.add('indeterminate')}
+}
+function filterPermCards(input){
+  var kw=input.value.toLowerCase();
+  document.querySelectorAll('#custom-cards .perm-card').forEach(function(c){
+    var text=(c.textContent||'').toLowerCase();
+    c.style.display=text.indexOf(kw)>=0?'':'none';
+  });
+}
+function selectTarget(el){
+  document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active'));
+  el.classList.add('active');
+  var type=el.dataset.type,name=el.dataset.name,roleId=el.dataset.roleid||'';
+  var icon=type==='user'?'👤':'🔐';
+  var tag=type==='user'?'<span class="tag tag-blue">用户</span>':'<span class="tag tag-green">角色</span>';
+  document.getElementById('permTargetTitle').innerHTML=icon+' '+name+' 的权限配置 '+tag;
+  document.getElementById('permScopeArea').style.display=type==='user'?'flex':'none';
+  var scopeLabel=document.getElementById('permScopeLabel');if(scopeLabel)scopeLabel.textContent='仅查看自己的';
+  var isAdmin=type==='role'&&(roleId==='admin'||roleId==='root');
+  document.getElementById('permAdminNotice').style.display=isAdmin?'block':'none';
+  var addBtn=document.getElementById('permAddBtn');if(addBtn)addBtn.style.display=isAdmin?'none':'inline-flex';
+  // 用户显示继承权限+自定义权限；角色只显示角色自身权限配置
+  var inheritedSection=document.getElementById('inheritedSection');
+  var customTitle=document.getElementById('customSectionTitle');
+  if(inheritedSection){inheritedSection.style.display=type==='user'?'block':'none';document.getElementById('inherited-cards').style.display=type==='user'?'block':'none'}
+  if(customTitle){customTitle.innerHTML=type==='user'?'<span class="arrow" id="custom-arrow">▼</span>✏️ 用户自定义权限（3条）':'<span class="arrow" id="custom-arrow">▼</span>✏️ 角色权限配置（3条）'}
+  // 重置子Tab到权限配置
+  document.querySelectorAll('.subtab').forEach(t=>t.classList.remove('active'));
+  var permTab=document.querySelector('.subtab[onclick*="\u0027permContent\u0027"]');
+  if(permTab)permTab.classList.add('active');
+  document.getElementById('permContent').style.display=isAdmin?'none':'block';
+  document.getElementById('logContent').style.display='none';
+  // 重置自定义权限选择
+  selectedPermCards.clear();
+  updatePermCardSelection();
+  // 操作日志筛选重置
+  resetLogFilter();
+}
+function filterSidebar(input){
+  var kw=input.value.toLowerCase();
+  document.querySelectorAll('.sidebar-item').forEach(function(item){
+    var name=(item.dataset.name||'').toLowerCase();
+    var roles=(item.dataset.roles||'').toLowerCase();
+    item.style.display=(name.indexOf(kw)>=0||roles.indexOf(kw)>=0)?'':'none';
+  });
+}
+function setPermScope(opt,val){
+  document.getElementById('permScopeLabel').textContent=val;
+  opt.closest('.sel-dropdown').classList.remove('open');
+  showToast('任务查看范围已更新为：'+val,'success');
+}
+function switchPermTab(el,contentId){
+  document.querySelectorAll('.subtab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('permContent').style.display=contentId==='permContent'?'block':'none';
+  document.getElementById('logContent').style.display=contentId==='logContent'?'block':'none';
+}
+function toggleSection(id){
+  var cards=document.getElementById(id+'-cards');
+  var arrow=document.getElementById(id+'-arrow');
+  if(cards.style.display==='none'){cards.style.display='block';arrow.textContent='▼'}
+  else{cards.style.display='none';arrow.textContent='▶'}
+}
+
+// ---- 权限编辑弹窗交互 ----
+function pickPermEditTable(opt,name){
+  document.getElementById('permEditTable').textContent=name;
+  opt.closest('.sel-dropdown').classList.remove('open');
+}
+// 导入/导出开关联动显隐配置区
+function togglePermConfig(type){
+  var toggle=document.getElementById('permToggle'+(type==='import'?'Import':'Export'));
+  var config=document.getElementById('perm'+(type==='import'?'Import':'Export')+'Config');
+  var label=document.getElementById('perm'+(type==='import'?'Import':'Export')+'Label');
+  var isOn=toggle.classList.contains('on');
+  if(isOn){toggle.classList.remove('on');config.style.display='none';label.textContent='关闭';label.style.color='#999'}
+  else{toggle.classList.add('on');config.style.display='block';label.textContent='开启';label.style.color='#52c41a'}
+}
+// 权限编辑弹窗中添加chip
+function addPermChip(type){
+  var containerId,color,bgColor,borderColor,placeholder;
+  if(type==='importMode'){containerId='permImportModes';color='#1677ff';bgColor='#e6f4ff';borderColor='#91caff';placeholder='新增(insert)'}
+  else if(type==='uniqueField'){containerId='permUniqueFields';color='#fa8c16';bgColor='#fff7e6';borderColor='#ffd591';placeholder='手机号(phone)'}
+  else if(type==='requiredField'){containerId='permRequiredFields';color='#ff4d4f';bgColor='#fff2f0';borderColor='#ffccc7';placeholder='姓名(name)'}
+  else if(type==='importField'){containerId='permImportFields';color='#1677ff';bgColor='#e6f4ff';borderColor='#91caff';placeholder='地址(address)'}
+  else if(type==='exportField'){containerId='permExportFields';color='#52c41a';bgColor='#f6ffed';borderColor='#b7eb8f';placeholder='创建时间(createdAt)'}
+  var container=document.getElementById(containerId);if(!container)return;
+  var chip=document.createElement('span');chip.className='chip';
+  chip.style.cssText='background:'+bgColor+';color:'+color+';border-color:'+borderColor;
+  chip.innerHTML=placeholder+' <span class="rmv" onclick="removePermChip(this)">✕</span>';
+  var addBtn=container.querySelector('.btn-text');
+  container.insertBefore(chip,addBtn);
+}
+// 权限编辑弹窗中移除chip
+function removePermChip(rmv){
+  var chip=rmv.parentElement;
+  var container=chip.parentElement;
+  chip.remove();
+  if(container.id==='permImportModes'){updatePermUniqueFieldsVisibility()}
+}
+function updatePermUniqueFieldsVisibility(){
+  var row=document.getElementById('permUniqueFieldsRow');
+  if(!row)return;
+  var hasUpdate=false;
+  document.querySelectorAll('#permImportModes .chip').forEach(function(c){
+    var text=c.textContent.trim().split(' ')[0];
+    if(text==='更新(update)'||text==='新增+更新(upsert)'){hasUpdate=true}
+  });
+  row.style.display=hasUpdate?'block':'none';
+}
+// 导入模式下拉渲染
+function renderPermModeDropdown(){
+  var dd=document.getElementById('permImportModeDropdown');if(!dd)return;
+  var selected=new Set();
+  document.querySelectorAll('#permImportModes .chip').forEach(function(c){
+    var text=c.textContent.trim().split(' ')[0];
+    selected.add(text);
+  });
+  var modes=[{k:'insert',l:'新增(insert)'},{k:'update',l:'更新(update)'},{k:'upsert',l:'新增+更新(upsert)'}];
+  dd.innerHTML=modes.map(function(m){
+    if(selected.has(m.l))return '<div class="sel-opt disabled" style="color:#999">'+m.l+'（已选）</div>';
+    return '<div class="sel-opt" onclick="addPermModeChip(\''+m.k+'\')">'+m.l+'</div>';
+  }).join('');
+}
+function addPermModeChip(mode){
+  var labels={insert:'新增(insert)',update:'更新(update)',upsert:'新增+更新(upsert)'};
+  var label=labels[mode]||mode;
+  var container=document.getElementById('permImportModes');
+  if(!container)return;
+  var exists=false;
+  document.querySelectorAll('#permImportModes .chip').forEach(function(c){
+    if(c.textContent.trim().split(' ')[0]===label)exists=true;
+  });
+  if(exists)return;
+  var chip=document.createElement('span');chip.className='chip';
+  chip.style.cssText='background:#e6f4ff;color:#1677ff;border-color:#91caff';
+  chip.innerHTML=label+' <span class="rmv" onclick="removePermChip(this)">✕</span>';
+  var addBtn=container.querySelector('.sel');
+  container.insertBefore(chip,addBtn);
+  document.querySelectorAll('.sel-dropdown.open').forEach(function(d){d.classList.remove('open')});
+  updatePermUniqueFieldsVisibility();
+}
+// 导出筛选条件添加
+function addPermExportFilter(){
+  var container=document.getElementById('permExportFilters');if(!container)return;
+  var row=document.createElement('div');row.className='frm-inline mb-8';
+  row.innerHTML='<div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>字段</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">状态</div><div class="sel-opt">金额</div><div class="sel-opt">创建时间</div></div></div><div class="sel"><button class="sel-btn" onclick="toggleSel(this)"><span>等于</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt">等于</div><div class="sel-opt">大于</div><div class="sel-opt">小于</div><div class="sel-opt">包含</div></div></div><input class="s-input" style="width:100px" placeholder="值"><span style="color:#ff4d4f;cursor:pointer;font-size:16px" onclick="this.parentElement.remove()">✕</span>';
+  container.appendChild(row);
+}
+// 保存权限配置
+function savePermConfig(){
+  var table=document.getElementById('permEditTable').textContent;
+  var importOn=document.getElementById('permToggleImport').classList.contains('on');
+  var exportOn=document.getElementById('permToggleExport').classList.contains('on');
+  var modes=[];document.querySelectorAll('#permImportModes .chip').forEach(function(c){modes.push(c.textContent.trim().split(' ')[0])});
+  var unique=[];document.querySelectorAll('#permUniqueFields .chip').forEach(function(c){unique.push(c.textContent.trim().split(' ')[0])});
+  var required=[];document.querySelectorAll('#permRequiredFields .chip').forEach(function(c){required.push(c.textContent.trim().split(' ')[0])});
+  var importFields=[];document.querySelectorAll('#permImportFields .chip').forEach(function(c){importFields.push(c.textContent.trim().split(' ')[0])});
+  var exportFields=[];document.querySelectorAll('#permExportFields .chip').forEach(function(c){exportFields.push(c.textContent.trim().split(' ')[0])});
+  var summary='✅ 权限已保存！'+
+    '\n数据表: '+table+
+    '\n导入: '+(importOn?'是 (模式:'+modes.join(',')+')':'否')+
+    '\n导出: '+(exportOn?'是 (字段:'+(exportFields.length||'全部')+')':'否')+
+    '\n唯一值: '+(unique.length?unique.join(','):'未配置')+
+    '\n必填: '+(required.length?required.join(','):'无');
+  closeModal('modalPermEdit');
+  showToast(summary.replace(/\n/g,'<br>'),'success');
+}
+
+function openPermEdit(title){
+  document.getElementById('permEditTitle').textContent=title||'✏️ 新增权限';
+  // 重置表单为默认状态
+  if(title.indexOf('新增')>=0){
+    document.getElementById('permEditTable').textContent='- 请选择数据表 -';
+    var impT=document.getElementById('permToggleImport');if(impT&&!impT.classList.contains('on')){impT.classList.add('on');document.getElementById('permImportConfig').style.display='block';document.getElementById('permImportLabel').textContent='开启';document.getElementById('permImportLabel').style.color='#52c41a'}
+    var expT=document.getElementById('permToggleExport');if(expT&&expT.classList.contains('on')){expT.classList.remove('on');document.getElementById('permExportConfig').style.display='none';document.getElementById('permExportLabel').textContent='关闭';document.getElementById('permExportLabel').style.color='#999'}
+  }
+  updatePermUniqueFieldsVisibility();
+  openModal('modalPermEdit');
+}
+function openDetailModal(){openModal('modalDetail')}
+function confirmDeletePerm(cardId,permName){
+  document.getElementById('deletePermName').textContent=permName;
+  var btn=document.getElementById('deletePermConfirmBtn');
+  btn.onclick=function(){
+    var card=document.getElementById('permCard-'+cardId);
+    if(card)card.remove();
+    closeModal('modalDeletePerm');
+    showToast('权限配置已删除：'+permName,'success');
+  };
+  openModal('modalDeletePerm');
+}
+function toggleLogDetail(idx){
+  var el=document.getElementById('logDetail-'+idx);
+  var btn=el.previousElementSibling.querySelector('.btn-text');
+  if(el.style.display==='none'){el.style.display='';btn.textContent='收起'}
+  else{el.style.display='none';btn.textContent='展开'}
+}
+// 操作日志类型筛选
+var logTypeFilter='全部',logTimeRange='全部';
+function filterLogByType(btn,type){
+  btn.parentElement.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  logTypeFilter=type;
+  applyLogFilters();
+}
+function filterLogByTimeRange(opt,range){
+  document.getElementById('logTimeRangeLabel').textContent=range;
+  opt.closest('.sel-dropdown').classList.remove('open');
+  logTimeRange=range;
+  applyLogFilters();
+}
+function parseLogDate(text){
+  var now=new Date();
+  var year=now.getFullYear();
+  var m=text.match(/(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
+  if(m){return new Date(year,parseInt(m[1],10)-1,parseInt(m[2],10),parseInt(m[3],10),parseInt(m[4],10))}
+  return now;
+}
+function applyLogFilters(){
+  var rows=document.querySelectorAll('#logContent tbody tr:not([id^="logDetail-"])');
+  var visibleCount=0;
+  rows.forEach(function(r){
+    var typeMatch=true;
+    if(logTypeFilter!=='全部'){
+      var tag=r.querySelector('.tag');
+      var tagText=tag?tag.textContent:'';
+      typeMatch=tagText===logTypeFilter;
+    }
+    var timeMatch=true;
+    if(logTimeRange!=='全部'){
+      var timeCell=r.querySelector('td');
+      var timeText=timeCell?timeCell.textContent.trim():'';
+      var rowDate=parseLogDate(timeText);
+      var now=new Date();
+      var days=logTimeRange==='最近7天'?7:30;
+      var cutoff=new Date(now.getTime()-days*24*60*60*1000);
+      timeMatch=rowDate>=cutoff;
+    }
+    var show=typeMatch&&timeMatch;
+    r.style.display=show?'':'none';
+    var detail=r.nextElementSibling;
+    if(detail&&detail.id&&detail.id.startsWith('logDetail-')){detail.style.display='none'}
+    if(show)visibleCount++;
+  });
+  document.getElementById('logCountLabel').textContent='共 '+visibleCount+' 条记录';
+}
+function resetLogFilter(){
+  var allBtn=document.querySelector('#logContent .filter-btn');
+  if(!allBtn)return;
+  document.querySelectorAll('#logContent .filter-btn').forEach(function(b){b.classList.remove('active')});
+  allBtn.classList.add('active');
+  logTypeFilter='全部';logTimeRange='全部';
+  document.getElementById('logTimeRangeLabel').textContent='全部';
+  document.querySelectorAll('#logContent tbody tr:not([id^="logDetail-"])').forEach(function(r){r.style.display=''});
+  document.getElementById('logCountLabel').textContent='共 5 条记录';
+}
+
+// ===== Init =====
+renderPermDropdown();renderPermSummary();renderTasks();refreshUniqueDropdown();initFieldMapping();renderModeButtons();renderExportFields();applyExportPermissionFilter();
+</script>
+</body>
+</html>
