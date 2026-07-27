@@ -205,7 +205,7 @@ body{background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 <div class="app">
 <div class="header">
   <div><h1>📊 数据管理 sjgl02</h1><div class="sub">导入导出 · 任务管理 · 表级权限控制</div></div>
-  <div class="badge">交互原型 v2.0.0</div>
+  <div class="badge">交互原型 v2.0.6</div>
 </div>
 <div class="tabs" id="tabBar">
   <button class="tab active" data-tab="import">⬇ 导入</button>
@@ -356,7 +356,7 @@ body{background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           <button class="btn btn-default btn-sm" onclick="autoMatch()">⚡ 自动匹配</button>
         </div>
       </div>
-      <div class="text-muted mb-8" style="background:#f0f5ff;padding:6px 10px;border-radius:4px;font-size:12px">💡 在「Excel列」下拉中选择字段来源。选 Excel 列名则自动映射；选「自定义内容」可输入固定值；不选则为「忽略」。每个Excel列只能选一次，已选的变灰色。关联/附件字段可在「配置」列设置空值处理、匹配不到处理和更新模式；附件字段需先在「配置」列选择压缩包内文件夹。</div>
+      <div class="text-muted mb-8" style="background:#f0f5ff;padding:6px 10px;border-radius:4px;font-size:12px">💡 在「Excel列」下拉中选择字段来源。选 Excel 列名则自动映射；选「自定义内容」可输入固定值；不选则为「忽略」（忽略时「配置」列禁用并清空已有配置）。每个Excel列只能选一次，已选的变灰色。关联/附件字段可在「配置」列设置空值处理、匹配不到处理和更新模式；附件字段需先在「配置」列选择压缩包内文件夹。</div>
       <table class="tbl" style="font-size:12px">
         <thead><tr><th style="width:220px">Excel列</th><th style="width:80px;text-align:center">映射方式</th><th style="width:30px"></th><th>数据表字段(用户-users)</th><th style="width:120px">属性标签</th><th style="width:170px">配置</th></tr></thead>
         <tbody id="imMapBody"></tbody>
@@ -574,6 +574,9 @@ body{background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 	          <div class="sel" style="width:100%"><button class="sel-btn w-full" onclick="toggleSel(this)"><span>显示值(关联表字段名称)</span><span>▼</span></button><div class="sel-dropdown"><div class="sel-opt" onclick="pickVal(this,'显示值(关联表字段名称)')">显示值(关联表字段名称) <span class="text-muted" style="font-size:11px">如: 管理员</span></div><div class="sel-opt" onclick="pickVal(this,'主键值(动态)')">主键值(动态获取PK) <span class="text-muted" style="font-size:11px">如: 1/UUID等</span></div><div class="sel-opt" onclick="pickVal(this,'显示值+主键值')">显示值+主键值 <span class="text-muted" style="font-size:11px">如: 管理员(1)</span></div></div></div>
           <div class="text-muted mt-8" style="font-size:11px">所有表的关联字段统一使用此格式导出</div>
         </div>
+      </div>
+      <div class="mt-12" style="padding-top:12px;border-top:1px solid #f0f0f0">
+        <div class="frm-inline"><span class="toggle on" onclick="toggleSwitch(this)"></span><span style="font-size:13px">📎 导出附件（各表附件文件一并打包进 tar.gz）</span></div>
       </div>
     </div>
 
@@ -1385,12 +1388,16 @@ function cfgRadio(fieldId,key,value,current,label,desc){
 function buildFolderOpts(fieldId){
   return archiveFolders.map(function(fd){return '<div class="sel-opt" onclick="pickAttachFolder(\''+fieldId+'\',\''+fd+'\')">📁 '+fd+'</div>'}).join('');
 }
-function buildConfigCell(f){
+function buildConfigCell(f,ignored){
   if(f.isSystem||(f.type!=='关联'&&f.type!=='附件'))return '<span class="text-muted">-</span>';
-  if(f.type==='关联')return '<button class="btn btn-default btn-sm" onclick="toggleFieldCfgPanel(\''+f.id+'\')">⚙️ 配置</button>';
+  if(f.type==='关联')return '<button class="btn btn-default btn-sm" '+(ignored?'disabled title="映射为忽略时不可配置"':'onclick="toggleFieldCfgPanel(\''+f.id+'\')"')+'>⚙️ 配置</button>';
   if(!attachmentArchiveUploaded)return '<span class="text-muted" style="font-size:11px">请先上传压缩包</span>';
   var cfg=getFieldCfg(f.id);
-  if(!cfg.folder)return '<div class="sel" style="display:inline-block"><button class="btn btn-primary btn-sm" onclick="toggleSel(this)">📁 选文件夹 <span>▼</span></button><div class="sel-dropdown" style="min-width:140px">'+buildFolderOpts(f.id)+'</div></div>';
+  if(!cfg.folder){
+    if(ignored)return '<button class="btn btn-primary btn-sm" disabled title="映射为忽略时不可配置">📁 选文件夹</button>';
+    return '<div class="sel" style="display:inline-block"><button class="btn btn-primary btn-sm" onclick="toggleSel(this)">📁 选文件夹 <span>▼</span></button><div class="sel-dropdown" style="min-width:140px">'+buildFolderOpts(f.id)+'</div></div>';
+  }
+  if(ignored)return '<button class="btn btn-default btn-sm" disabled>📁 '+cfg.folder+'</button> <button class="btn btn-default btn-sm" disabled title="映射为忽略时不可配置">⚙️ 配置</button>';
   return '<button class="btn btn-default btn-sm" onclick="toggleFieldCfgPanel(\''+f.id+'\')" title="点击打开配置，可重新选择文件夹">📁 '+cfg.folder+'</button> <button class="btn btn-default btn-sm" onclick="toggleFieldCfgPanel(\''+f.id+'\')">⚙️ 配置</button>';
 }
 function buildCfgPanel(f){
@@ -1432,7 +1439,7 @@ function initFieldMapping(){
     const tr=document.createElement('tr');tr.setAttribute('data-field-id',f.id);
     const val=mapping[i];
     let displayVal='未选择',modeTag='<span class="tag tag-default">忽略</span>',color='#999';
-    if(val&&val!=='ignore'&&!val.startsWith('custom:')){displayVal=val;modeTag='<span class="tag tag-blue">Excel列</span>';color='#333'}
+    if(val&&val!=='ignore'&&!val.startsWith('custom:')){displayVal=val;modeTag='<span class="tag tag-blue">Excel列</span>'+(mapRates[i]?' <span class="tag tag-'+(mapRates[i]===100?'green':'orange')+'">'+mapRates[i]+'%</span>':'');color='#333'}
     else if(val&&val.startsWith('custom:')){displayVal='✏️ '+(val.split(':')[1]||'输入固定值...');modeTag='<span class="tag tag-green">固定值</span>';color='#52c41a'}
     const typeTag=f.type?'<span class="tag tag-'+(f.type==='关联'?'purple':'cyan')+' field-type-tag">'+f.type+'</span>':'';
     let attrTags='';
@@ -1440,7 +1447,7 @@ function initFieldMapping(){
     if(f.isUnique)attrTags+='<span class="tag tag-orange">唯一值</span> ';
     if(f.required)attrTags+='<span class="tag tag-red">必填</span> ';
     if(f.isSystem){attrTags+='<span class="tag tag-default">系统字段</span> ';if(val&&val!=='ignore'&&!val.startsWith('custom:')){attrTags+='<span class="tag tag-blue" style="font-size:10px">⬆ Excel优先</span> ';tr.style.background='#f0f5ff'}}
-    tr.innerHTML='<td><div class="sel" style="width:100%"><button class="sel-btn w-full" onclick="toggleSel(this);refreshMapDropdown('+i+')"><span style="color:'+color+'" id="mapVal_'+i+'">'+displayVal+'</span><span>▼</span></button><div class="sel-dropdown" id="mapDD_'+i+'"></div></div></td><td style="text-align:center" id="mapMode_'+i+'">'+modeTag+'</td><td class="text-center text-muted">-></td><td '+(f.isSystem&&val&&val!=='ignore'&&!val.startsWith('custom:')?'style="font-weight:600"':'')+'>'+(f.required?'<span class="text-danger">*</span> ':'')+f.name+'('+f.id+')<span class="text-muted" style="font-size:11px"> - '+f.fieldType+'</span> '+typeTag+'</td><td>'+attrTags+'</td><td style="white-space:nowrap">'+buildConfigCell(f)+'</td>';
+    tr.innerHTML='<td><div class="sel" style="width:100%"><button class="sel-btn w-full" onclick="toggleSel(this);refreshMapDropdown('+i+')"><span style="color:'+color+'" id="mapVal_'+i+'">'+displayVal+'</span><span>▼</span></button><div class="sel-dropdown" id="mapDD_'+i+'"></div></div></td><td style="text-align:center" id="mapMode_'+i+'">'+modeTag+'</td><td class="text-center text-muted">-></td><td '+(f.isSystem&&val&&val!=='ignore'&&!val.startsWith('custom:')?'style="font-weight:600"':'')+'>'+(f.required?'<span class="text-danger">*</span> ':'')+f.name+'('+f.id+')<span class="text-muted" style="font-size:11px"> - '+f.fieldType+'</span> '+typeTag+'</td><td>'+attrTags+'</td><td style="white-space:nowrap">'+buildConfigCell(f,!val||val==='ignore')+'</td>';
     body.appendChild(tr);
     if(openCfgFieldId===f.id&&(f.type==='关联'||f.type==='附件')){
       const cfgTr=document.createElement('tr');
@@ -1453,15 +1460,46 @@ function initFieldMapping(){
 function refreshAllDropdowns(){for(let i=0;i<allFields.length;i++)refreshMapDropdown(i)}
 function getColumnUsage(){const usedBy={};Object.entries(mapping).forEach(([k,v])=>{if(v&&!v.startsWith('custom:')&&v!=='ignore'){usedBy[v]=usedBy[v]||[];usedBy[v].push(k)}});return usedBy}
 function refreshMapDropdown(idx){const dd=document.getElementById('mapDD_'+idx);if(!dd)return;const usedBy=getColumnUsage();let html='<div class="sel-opt" style="color:#999" onclick="pickMap('+idx+',\'ignore\')">🚫 未选择（忽略）</div>';allExcelCols.forEach(col=>{const dis=usedBy[col]&&usedBy[col].length>0&&usedBy[col].indexOf(String(idx))<0;const usedByField=dis?(usedBy[col].map(function(i){return allFields[i].name}).join('、')||'其他字段'):'';html+='<div class="sel-opt '+(dis?'disabled':'')+'" '+(dis?'':'onclick="pickMap('+idx+',\''+col+'\')"')+'>'+col+(dis?'（已被 '+usedByField+' 占用）':'')+'</div>'});html+='<div class="sel-opt" onclick="pickMapCustom('+idx+')">✏️ 自定义内容</div>';dd.innerHTML=html}
-function pickMap(idx,val){if(val==='ignore'){delete mapping[idx];document.getElementById('mapVal_'+idx).textContent='未选择';document.getElementById('mapVal_'+idx).style.color='#999';document.getElementById('mapMode_'+idx).innerHTML='<span class="tag tag-default">忽略</span>'}else{mapping[idx]=val;document.getElementById('mapVal_'+idx).textContent=val;document.getElementById('mapVal_'+idx).style.color='#333';document.getElementById('mapMode_'+idx).innerHTML='<span class="tag tag-blue">Excel列</span>'}document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'));refreshAllDropdowns();updateMapCount();updateSystemFieldRow(idx);updateConflictWarnings();markImportStep1Dirty()}
+function pickMap(idx,val){if(val==='ignore'){delete mapping[idx];delete fieldConfigs[allFields[idx].id];if(openCfgFieldId===allFields[idx].id)openCfgFieldId=null}else{mapping[idx]=val}delete mapRates[idx];document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'));initFieldMapping();updateSystemFieldRow(idx);markImportStep1Dirty()}
 function updateSystemFieldRow(idx){const f=allFields[idx];if(!f||!f.isSystem)return;const val=mapping[idx];const tr=document.getElementById('mapMode_'+idx)?.closest('tr');if(!tr)return;const td4=tr.querySelectorAll('td')[3];const td5=tr.querySelectorAll('td')[4];if(val&&val!=='ignore'&&!val.startsWith('custom:')){tr.style.background='#f0f5ff';if(td4)td4.style.fontWeight='600';if(td5&&!td5.querySelector('.tag-blue')){td5.innerHTML+=' <span class="tag tag-blue" style="font-size:10px">⬆ Excel优先</span>'}}else{tr.style.background='';if(td4)td4.style.fontWeight='';if(td5){const badge=td5.querySelector('.tag-blue');if(badge&&badge.textContent.includes('Excel优先'))badge.remove()}}}
-function pickMapCustom(idx){const span=document.getElementById('mapVal_'+idx);const currentVal=(mapping[idx]&&mapping[idx].startsWith('custom:'))?(mapping[idx].split(':')[1]||''):'';span.innerHTML='<span style="display:flex;align-items:center;gap:4px"><input id="mapInput_'+idx+'" style="border:none;outline:none;flex:1;font-size:13px;font-family:inherit;color:#52c41a" placeholder="输入固定值..." value="'+currentVal+'" oninput="setCustomVal('+idx+',this.value)" onkeydown="if(event.key===\'Enter\'){confirmCustomVal('+idx+');event.preventDefault()}"><button class="btn btn-primary btn-sm" style="padding:2px 8px" onclick="confirmCustomVal('+idx+')" title="确认">✓</button></span>';mapping[idx]='custom:'+currentVal;document.getElementById('mapMode_'+idx).innerHTML='<span class="tag tag-green">固定值</span>';document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'));updateSystemFieldRow(idx);updateConflictWarnings();markImportStep1Dirty();setTimeout(()=>document.getElementById('mapInput_'+idx)?.focus(),50)}
+function pickMapCustom(idx){delete mapRates[idx];const span=document.getElementById('mapVal_'+idx);const currentVal=(mapping[idx]&&mapping[idx].startsWith('custom:'))?(mapping[idx].split(':')[1]||''):'';span.innerHTML='<span style="display:flex;align-items:center;gap:4px"><input id="mapInput_'+idx+'" style="border:none;outline:none;flex:1;font-size:13px;font-family:inherit;color:#52c41a" placeholder="输入固定值..." value="'+currentVal+'" oninput="setCustomVal('+idx+',this.value)" onkeydown="if(event.key===\'Enter\'){confirmCustomVal('+idx+');event.preventDefault()}"><button class="btn btn-primary btn-sm" style="padding:2px 8px" onclick="confirmCustomVal('+idx+')" title="确认">✓</button></span>';mapping[idx]='custom:'+currentVal;document.getElementById('mapMode_'+idx).innerHTML='<span class="tag tag-green">固定值</span>';document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'));updateSystemFieldRow(idx);updateConflictWarnings();markImportStep1Dirty();setTimeout(()=>document.getElementById('mapInput_'+idx)?.focus(),50)}
 function confirmCustomVal(idx){const input=document.getElementById('mapInput_'+idx);if(input){setCustomVal(idx,input.value);showToast('自定义内容已保存','success')}document.querySelectorAll('.sel-dropdown.open').forEach(d=>d.classList.remove('open'))}
 function setCustomVal(idx,val){mapping[idx]='custom:'+val;updateSystemFieldRow(idx);updateMapCount();updateConflictWarnings();markImportStep1Dirty()}
 function updateMapCount(){const used=Object.values(mapping).filter(v=>v&&!v.startsWith('custom:')&&v!=='ignore').length;const remaining=allExcelCols.length-used;document.getElementById('mapCountText').textContent='(共'+allExcelCols.length+'列/已用'+used+'/剩余'+remaining+')'}
 function updateConflictWarnings(){const usedBy=getColumnUsage();allFields.forEach((f,i)=>{const modeCell=document.getElementById('mapMode_'+i);if(!modeCell)return;const val=mapping[i];if(!val||val==='ignore'||val.startsWith('custom:'))return;const col=val;if(usedBy[col]&&usedBy[col].length>1){const firstIdx=usedBy[col][0];const isConflict=i!==Number(firstIdx);if(isConflict){modeCell.innerHTML='<span class="tag tag-red">冲突</span><br><span class="text-danger" style="font-size:11px">该Excel列已被 '+allFields[firstIdx].name+' 使用</span>';const tr=modeCell.closest('tr');if(tr)tr.style.background='#fff2f0'}}})}
-function autoMatch(){let idx=0;allFields.forEach((f,i)=>{if(!f.isSystem&&idx<allExcelCols.length){mapping[i]=allExcelCols[idx];idx++}});initFieldMapping();showToast('自动匹配完成（已跳过系统字段）','success');markImportStep1Dirty()}
-function clearMapping(){mapping={};initFieldMapping();showToast('已清空所有匹配','info');markImportStep1Dirty()}
+// ===== 自动匹配（三档：100% 完全相等 / 80% 包含关系 / 未匹配保持忽略） =====
+const mapRates={};
+function normCol(s){return String(s||'').trim().toLowerCase().replace(/[\s　]+/g,'').replace(/[（(]/g,'(').replace(/[）)]/g,')')}
+function matchColumnProto(title0,name0,candidates){
+  const title=normCol(title0),name=normCol(name0);
+  for(const col of candidates){
+    const nc=normCol(col);if(!nc)continue;
+    if(nc===title||nc===name)return {column:col,rate:100};
+    const b=nc.match(/\(([^)]+)\)$/);
+    if(b&&(b[1]===name||b[1]===title))return {column:col,rate:100};
+  }
+  for(const col of candidates){
+    const nc=normCol(col);if(nc.length<2)continue;
+    if((title.length>=2&&(nc.includes(title)||title.includes(nc)))||(name.length>=2&&nc.includes(name)))return {column:col,rate:80};
+  }
+  return null;
+}
+function autoMatch(){
+  const taken=new Set(Object.keys(getColumnUsage()));
+  let r100=0,r80=0,unmatched=0;
+  allFields.forEach((f,i)=>{
+    if(f.isSystem)return;
+    if(mapping[i]&&mapping[i]!=='ignore')return;
+    const hit=matchColumnProto(f.name,f.id,allExcelCols.filter(c=>!taken.has(c)));
+    if(!hit){unmatched++;return;}
+    taken.add(hit.column);mapping[i]=hit.column;mapRates[i]=hit.rate;
+    if(hit.rate===100)r100++;else r80++;
+  });
+  initFieldMapping();
+  showToast('自动匹配完成：100%×'+r100+' / 80%×'+r80+' / 未匹配×'+unmatched+'（保持忽略）','success');
+  markImportStep1Dirty();
+}
+function clearMapping(){mapping={};Object.keys(fieldConfigs).forEach(function(k){delete fieldConfigs[k]});Object.keys(mapRates).forEach(function(k){delete mapRates[k]});openCfgFieldId=null;initFieldMapping();showToast('已清空所有匹配','info');markImportStep1Dirty()}
 
 // ===== Preview modal =====
 function openPreviewModal(){openModal('modalPreview')}

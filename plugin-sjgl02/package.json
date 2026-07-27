@@ -1,0 +1,42 @@
+{
+  "name": "@my-project/plugin-sjgl02",
+  "version": "2.1.0",
+  "displayName": "数据管理 sjgl02",
+  "displayName.zh-CN": "数据管理 sjgl02",
+  "description": "企业级数据导入导出插件，支持大规模数据处理、任务管理、表级权限控制",
+  "description.zh-CN": "企业级数据导入导出插件，支持大规模数据处理、任务管理、表级权限控制",
+  "homepage": "https://github.com/fengwenkai168/nocobase-plugin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fengwenkai168/nocobase-plugin.git"
+  },
+  "license": "MIT",
+  "main": "dist/server/index.js",
+  "keywords": [
+    "nocobase",
+    "plugin",
+    "data-management",
+    "import-export"
+  ],
+  "nocobase": {
+    "defaultEnabled": false,
+    "supportedVersions": [
+      "2.x"
+    ]
+  },
+  "dependencies": {
+    "exceljs": "^4.3.0",
+    "tar-stream": "^3.1.6",
+    "xlsx": "^0.18.5"
+  },
+  "peerDependencies": {
+    "@nocobase/client": "2.x",
+    "@nocobase/client-v2": "2.x",
+    "@nocobase/server": "2.x",
+    "@nocobase/database": "2.x",
+    "@nocobase/flow-engine": "2.x",
+    "@nocobase/actions": "2.x",
+    "@nocobase/utils": "2.x",
+    "@nocobase/test": "2.x"
+  }
+}

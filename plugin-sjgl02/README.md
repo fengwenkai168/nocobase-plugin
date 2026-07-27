@@ -1,0 +1,40 @@
+# @my-project/plugin-sjgl02
+
+> **数据管理 sjgl02**：企业级数据导入导出插件，支持大规模数据处理、任务管理、表级权限控制。
+>
+> 主页：https://github.com/fengwenkai168/nocobase-plugin
+
+## 功能
+
+- **⬇ 数据导入**：xlsx/xls/csv 三步向导导入（选表传文件 → 配置映射 → 预览执行），支持新增/更新/新增+更新三种模式、唯一值匹配、字段映射（Excel列/固定值/忽略，自动匹配支持 100%/80% 名称匹配度标注）、关联/附件字段级配置（空值处理、匹配不到处理、覆盖/追加更新）、附件 tar.gz 导入（按文件夹手动绑定）、严格事务（失败整批回滚）。
+- **⬆ 数据导出**：字段级勾选导出（常规/日期/关联/附件分组），关联表独立 Sheet 或独立文件、附件打包 tar.gz、百万行自动分表、自定义筛选、全部数据表导出（admin/root）。
+- **☰ 任务管理**：导入导出异步执行，进度追踪、详情抽屉、取消回滚、错误明细与 CSV 错误报告、文件下载。
+- **✓ 权限管理**：按用户/角色配置表级权限（导入导出开关、模式、唯一值、必填、可导入/可导出字段、导出筛选），角色继承只读展示，操作日志留痕。admin/root 自动拥有全部权限。
+
+## 入口
+
+1. **插件设置页**：插件设置 → 数据管理 sjgl02（含导入/导出/任务/权限 4 个 Tab）
+2. **页面区块**：添加区块 → 其他区块 → 数据管理02-sjgl02（含导入/导出/任务 3 个 Tab）
+
+## 文档
+
+- **[docs/开发文档.md](./docs/开发文档.md)** — 开发唯一依据（功能规格、技术决策、数据模型、API、里程碑）
+- **[docs/sjgl02-prototype.html](./docs/sjgl02-prototype.html)** — 交互原型（UI/交互唯一权威来源）
+- `docs/archive/` — 历史文档归档（仅供参考）
+
+## 技术栈
+
+NocoBase 2.1.9（client-v2 / FlowEngine）· PostgreSQL 16 · DB 任务表 + app.eventQueue 进程内调度（零外部依赖）· ExcelJS 流式读写 · Ant Design v5
+
+## 快速开始
+
+```bash
+cd /workspace/nocobase1/nocobase-2.1.9
+yarn install
+yarn nocobase upgrade        # 同步插件 collections
+yarn dev                     # http://localhost:13000
+```
+
+## License
+
+MIT

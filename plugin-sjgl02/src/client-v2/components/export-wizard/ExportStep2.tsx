@@ -1,0 +1,499 @@
+import React, { useMemo } from 'react';
+import { Alert, Button, Card, Checkbox, Input, Radio, Select, Space, Switch, Tag } from 'antd';
+import { useT } from '../../locale';
+import { FieldMetaInfo } from '../../services/api';
+import { ExportWizardState, FilterCondition } from './ExportWizard';
+
+const DATE_TYPES = ['date', 'datetimeTz', 'datetimeNoTz', 'dateOnly', 'unixTimestamp'];
+const RELATION_TYPES = ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'];
+
+function dateFormatOptions(t: (s: string) => string) {
+  return [
+    { value: 'YYYY-MM-DD HH:mm:ss', label: 'YYYY-MM-DD HH:mm:ss（2026-07-09 15:30:00）' },
+    { value: 'YYYY/MM/DD HH:mm:ss', label: 'YYYY/MM/DD HH:mm:ss（2026/07/09 15:30:00）' },
+    { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD（2026-07-09）' },
+    { value: 'YYYY/MM/DD', label: 'YYYY/MM/DD（2026/07/09）' },
+    { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY（09/07/2026）' },
+    { value: 'UTC ISO 8601', label: 'UTC ISO 8601（2026-07-09T07:30:00.000Z）' },
+    { value: '时间戳(毫秒)', label: `${t('时间戳(毫秒)')}（1752058200000）` },
+    { value: '时间戳(秒)', label: `${t('时间戳(秒)')}（1752058200）` },
+  ];
+}
+function relationFormatOptions(t: (s: string) => string) {
+  return [
+    { value: 'display', label: t('显示值（如: 管理员）') },
+    { value: 'pk', label: t('主键值（如: 1/UUID）') },
+    { value: 'displayPk', label: t('显示值+主键值（如: 管理员(1)）') },
+  ];
+}
+function opOptions(t: (s: string) => string) {
+  return [
+    { value: '$eq', label: t('等于') },
+    { value: '$gt', label: t('大于') },
+    { value: '$gte', label: t('大于等于') },
+    { value: '$lt', label: t('小于') },
+    { value: '$lte', label: t('小于等于') },
+    { value: '$includes', label: t('包含') },
+  ];
+}
+
+export default function ExportStep2({
+  state,
+  patch,
+  markDirty,
+  onPrev,
+  onNext,
+}: {
+  state: ExportWizardState;
+  patch: (p: Partial<ExportWizardState>) => void;
+  markDirty: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  const t = useT();
+  const DATE_OPTS = dateFormatOptions(t);
+  const REL_OPTS = relationFormatOptions(t);
+  const OP_OPTS = opOptions(t);
+  const patchDirty = (p: Partial<ExportWizardState>) => {
+    patch(p);
+    markDirty();
+  };
+
+  const groups = useMemo(() => {
+    const fields = state.meta?.fields || [];
+    return {
+      regular: fields.filter(
+        (f) => !f.ignored && !DATE_TYPES.includes(f.type) && !RELATION_TYPES.includes(f.type) && !f.attachment,
+      ),
+      dates: fields.filter((f) => !f.ignored && DATE_TYPES.includes(f.type)),
+      relations: fields.filter((f) => !f.ignored && RELATION_TYPES.includes(f.type) && !f.attachment),
+      attachments: fields.filter((f) => !f.ignored && f.attachment),
+    };
+  }, [state.meta]);
+
+  const whitelist = state.permission?.exportFields || [];
+  const isAllowed = (name: string) => !whitelist.length || whitelist.includes(name);
+  const toggleField = (name: string, checked: boolean) => {
+    patchDirty({
+      selectedFields: checked ? [...state.selectedFields, name] : state.selectedFields.filter((f) => f !== name),
+    });
+  };
+  const totalFields = groups.regular.length + groups.dates.length + groups.relations.length + groups.attachments.length;
+
+  const fieldCheckbox = (f: FieldMetaInfo) => (
+    <Checkbox
+      key={f.name}
+      checked={state.selectedFields.includes(f.name)}
+      disabled={!isAllowed(f.name)}
+      onChange={(e) => toggleField(f.name, e.target.checked)}
+    >
+      {f.title}({f.name}){' '}
+      <span style={{ color: '#999', fontSize: 11 }}>- {f.attachment ? '附件' : f.interface || f.type}</span>
+    </Checkbox>
+  );
+
+  const addFilter = () => {
+    const first = state.meta?.fields.find((f) => !RELATION_TYPES.includes(f.type) && !f.attachment);
+    patchDirty({ filters: [...state.filters, { field: first?.name || '', op: '$eq', value: '' }] });
+  };
+
+  if (state.allTables) {
+    return (
+      <div>
+        <h4 style={{ marginBottom: 12 }}>
+          {t('目标表')}：{state.collection?.title}
+        </h4>
+        <Card size="small" style={{ marginBottom: 16, borderLeft: '3px solid #1677ff' }}>
+          <Alert
+            type="info"
+            showIcon
+            message={
+              <>
+                <strong>{t('将导出全部数据表（含系统表）')}</strong>
+                <br />
+                <span style={{ fontSize: 12, color: '#666' }}>
+                  {t('每张表导出全部字段为独立 xlsx 文件，打包为 tar.gz 下载。无需逐表配置字段和关联。')}
+                </span>
+              </>
+            }
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 12 }}>
+            <div>
+              <div style={{ marginBottom: 4, fontSize: 12, color: '#666' }}>📅 {t('日期时间导出格式（全局）')}</div>
+              <Select
+                style={{ width: '100%' }}
+                value={state.globalDateFormat}
+                onChange={(v) => patchDirty({ globalDateFormat: v })}
+                options={DATE_OPTS}
+              />
+              <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>
+                {t('所有表的日期时间字段统一使用此格式导出')}
+              </div>
+            </div>
+            <div>
+              <div style={{ marginBottom: 4, fontSize: 12, color: '#666' }}>🔗 {t('关联值导出格式（全局）')}</div>
+              <Select
+                style={{ width: '100%' }}
+                value={state.globalRelationFormat}
+                onChange={(v) => patchDirty({ globalRelationFormat: v })}
+                options={REL_OPTS}
+              />
+              <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>{t('所有表的关联字段统一使用此格式导出')}</div>
+            </div>
+          </div>
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0f0f0' }}>
+            <Space>
+              <Switch checked={state.exportAttachment} onChange={(v) => patchDirty({ exportAttachment: v })} />
+              <span style={{ fontSize: 13 }}>📎 {t('导出附件（各表附件文件一并打包进 tar.gz）')}</span>
+            </Space>
+          </div>
+        </Card>
+        <div style={{ textAlign: 'right' }}>
+          <Button onClick={onPrev}>← {t('上一步')}</Button>{' '}
+          <Button type="primary" onClick={onNext}>
+            {t('下一步')} →
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h4 style={{ marginBottom: 12 }}>
+        {t('目标表')}：{state.collection?.title}({state.collection?.name})
+      </h4>
+
+      <Card
+        size="small"
+        title={<span style={{ color: '#722ed1' }}>🔑 {t('权限切换 - 选择本次导出使用的权限配置')}</span>}
+        style={{ marginBottom: 12, borderLeft: '3px solid #722ed1' }}
+      >
+        <Select
+          style={{ width: '100%' }}
+          value={state.permission?.id ?? '__admin__'}
+          onChange={(v) => {
+            const permission = state.permissions.find((p) => (p.id ?? '__admin__') === v);
+            if (!permission) return;
+            const wl = permission.exportFields || [];
+            patchDirty({
+              permission,
+              selectedFields: wl.length ? state.selectedFields.filter((f) => wl.includes(f)) : state.selectedFields,
+            });
+          }}
+          options={state.permissions.map((p) => ({
+            value: p.id ?? '__admin__',
+            label: `${p.targetType === 'user' ? '👤' : '🔐'} ${p.targetName}（${t('可导出')}: ${
+              p.exportFields.length ? `${p.exportFields.length} ${t('个字段')}` : t('全部字段')
+            }）`,
+          }))}
+        />
+        <Alert
+          style={{ marginTop: 8 }}
+          type="info"
+          showIcon
+          message={t('选中权限后，可导出字段自动锁定。admin/root 可切换全部权限配置，普通用户只能选自己的权限。')}
+        />
+      </Card>
+
+      <Card size="small" title={`☑️ ${t('字段选择（仅显示有权限导出的字段）')}`} style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 12 }}>
+          <Checkbox
+            indeterminate={state.selectedFields.length > 0 && state.selectedFields.length < totalFields}
+            checked={state.selectedFields.length === totalFields && totalFields > 0}
+            onChange={(e) => {
+              const all = [...groups.regular, ...groups.dates, ...groups.relations, ...groups.attachments]
+                .filter((f) => isAllowed(f.name))
+                .map((f) => f.name);
+              patchDirty({ selectedFields: e.target.checked ? all : [] });
+            }}
+          >
+            {t('全选')}
+          </Checkbox>
+          <span style={{ color: '#999', marginLeft: 12, fontSize: 12 }}>
+            {t('已选')}: {state.selectedFields.length} / {totalFields}
+          </span>
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8 }}>
+          📄 {t('常规字段')} ({groups.regular.length})
+        </div>
+        <Space wrap style={{ marginBottom: 12 }}>
+          {groups.regular.map(fieldCheckbox)}
+        </Space>
+
+        {groups.dates.length > 0 && (
+          <>
+            <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, color: '#fa8c16' }}>
+              📅 {t('日期时间字段')} <span style={{ fontWeight: 400, color: '#999' }}>{t('勾选后可配置导出格式')}</span>
+            </div>
+            {groups.dates.map((f) => (
+              <div
+                key={f.name}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 6,
+                  padding: '6px 8px',
+                  background: state.selectedFields.includes(f.name) ? '#fff7e6' : '#fafafa',
+                  borderRadius: 6,
+                }}
+              >
+                {fieldCheckbox(f)}
+                {state.selectedFields.includes(f.name) && (
+                  <>
+                    <span style={{ color: '#999', fontSize: 11 }}>{t('格式')}:</span>
+                    <Select
+                      size="small"
+                      style={{ minWidth: 240 }}
+                      value={state.dateFormats[f.name] || state.globalDateFormat}
+                      onChange={(v) => patchDirty({ dateFormats: { ...state.dateFormats, [f.name]: v } })}
+                      options={DATE_OPTS}
+                    />
+                  </>
+                )}
+              </div>
+            ))}
+          </>
+        )}
+
+        {groups.relations.length > 0 && (
+          <>
+            <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, color: '#7c3aed' }}>
+              🔗 {t('关联字段')} ({groups.relations.length})
+            </div>
+            {groups.relations.map((f) => (
+              <div
+                key={f.name}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 6,
+                  padding: '6px 8px',
+                  background: state.selectedFields.includes(f.name) ? '#f0f5ff' : '#fafafa',
+                  borderRadius: 6,
+                }}
+              >
+                {fieldCheckbox(f)}
+                <span style={{ color: '#999', fontSize: 11 }}>
+                  -&gt; {t('关联表')}: {f.target}
+                  {f.multiple ? `（${t('多值')}）` : ''}
+                </span>
+                {state.selectedFields.includes(f.name) && (
+                  <>
+                    <span style={{ color: '#999', fontSize: 11 }}>{t('导出值')}:</span>
+                    <Select
+                      size="small"
+                      style={{ minWidth: 220 }}
+                      value={state.relationFormats[f.name] || state.globalRelationFormat}
+                      onChange={(v) => patchDirty({ relationFormats: { ...state.relationFormats, [f.name]: v } })}
+                      options={REL_OPTS}
+                    />
+                  </>
+                )}
+              </div>
+            ))}
+          </>
+        )}
+
+        {groups.attachments.length > 0 && (
+          <>
+            <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 8, color: '#0891b2' }}>
+              📎 {t('附件字段')} ({groups.attachments.length})
+            </div>
+            <Space wrap>{groups.attachments.map(fieldCheckbox)}</Space>
+          </>
+        )}
+      </Card>
+
+      <Card size="small" title={`📑 ${t('关联表导出模式')}`} style={{ marginBottom: 12 }}>
+        <Space style={{ marginBottom: 12 }}>
+          <Switch
+            checked={state.relationExportEnabled}
+            onChange={(v) => patchDirty({ relationExportEnabled: v, relationFields: v ? state.relationFields : [] })}
+          />
+          <span style={{ fontSize: 13, color: state.relationExportEnabled ? '#52c41a' : '#999' }}>
+            {state.relationExportEnabled ? t('导出关联表') : t('不导出关联表')}
+          </span>
+        </Space>
+        {state.relationExportEnabled ? (
+          <>
+            <div style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>
+              {t('选择需要导出关联表数据的关联字段（多选），每个选中的关联表可作为单独Sheet或单独xlsx文件导出')}
+            </div>
+            <Space wrap style={{ marginBottom: 12 }}>
+              {state.relationFields.map((name) => {
+                const f = groups.relations.find((x) => x.name === name);
+                return (
+                  <Tag
+                    key={name}
+                    color={f?.multiple ? 'purple' : 'blue'}
+                    closable
+                    onClose={() => patchDirty({ relationFields: state.relationFields.filter((x) => x !== name) })}
+                  >
+                    {f?.title}({name}) -&gt; {f?.target}
+                  </Tag>
+                );
+              })}
+              <Select
+                size="small"
+                style={{ minWidth: 200 }}
+                placeholder={t('+ 添加关联表')}
+                value={null}
+                onChange={(v) => patchDirty({ relationFields: [...state.relationFields, v] })}
+                options={groups.relations
+                  .filter((f) => !state.relationFields.includes(f.name))
+                  .map((f) => ({ value: f.name, label: `${f.title}(${f.name}) -> ${f.target}` }))}
+              />
+            </Space>
+            <Radio.Group
+              value={state.relationExportMode}
+              onChange={(e) => patchDirty({ relationExportMode: e.target.value })}
+              options={[
+                { value: 'sheet', label: t('关联表作为单独Sheet') },
+                { value: 'file', label: t('关联表作为单独xlsx文件') },
+              ]}
+            />
+            <div
+              style={{
+                fontSize: 12,
+                color: '#999',
+                background: '#f0f5ff',
+                padding: '8px 10px',
+                borderRadius: 4,
+                marginTop: 8,
+              }}
+            >
+              {t(
+                '单独Sheet: Sheet命名 -> 主表字段名称(主表字段标识)-关联表名称(关联表标识)，例: 角色(role)-角色(roles)',
+              )}
+              <br />
+              {t('单独xlsx: 各文件独立命名，多个文件打包为tar.gz下载')}
+            </div>
+          </>
+        ) : (
+          <Alert
+            type="info"
+            showIcon
+            message={
+              <>
+                <strong>{t('本次导出不包含关联表数据')}</strong>
+                {t('。主表导出仅包含当前表字段。')}
+              </>
+            }
+          />
+        )}
+      </Card>
+
+      <Card size="small" title={`🏷️ ${t('表头格式')}`} style={{ marginBottom: 12 }}>
+        <Radio.Group
+          value={state.headerType}
+          onChange={(e) => patchDirty({ headerType: e.target.value })}
+          options={[
+            { value: 'titleName', label: `${t('字段名称(字段名)')}（例: 地址(address)）` },
+            { value: 'title', label: `${t('字段名称')}（例: 地址）` },
+            { value: 'name', label: `${t('字段名')}（例: address）` },
+          ]}
+        />
+      </Card>
+
+      <Card size="small" title={`📊 ${t('数据范围')}`} style={{ marginBottom: 12 }}>
+        <Space style={{ marginBottom: 12 }}>
+          <Button
+            size="small"
+            type={state.dataRange === 'all' ? 'primary' : 'default'}
+            onClick={() => patchDirty({ dataRange: 'all' })}
+          >
+            {t('全部数据')}
+          </Button>
+          <Button
+            size="small"
+            type={state.dataRange === 'filtered' ? 'primary' : 'default'}
+            onClick={() => patchDirty({ dataRange: 'filtered' })}
+          >
+            {t('自定义条件')}
+          </Button>
+        </Space>
+        {state.dataRange === 'filtered' && (
+          <>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>{t('筛选条件（AND）')}</div>
+            {state.filters.map((filter, idx) => (
+              <Space key={idx} style={{ marginBottom: 8 }}>
+                <Select
+                  size="small"
+                  style={{ minWidth: 140 }}
+                  value={filter.field}
+                  onChange={(v) => {
+                    const next = [...state.filters];
+                    next[idx] = { ...filter, field: v };
+                    patchDirty({ filters: next });
+                  }}
+                  options={(state.meta?.fields || [])
+                    .filter((f) => !RELATION_TYPES.includes(f.type) && !f.attachment)
+                    .map((f) => ({ value: f.name, label: f.title }))}
+                />
+                <Select
+                  size="small"
+                  style={{ width: 100 }}
+                  value={filter.op}
+                  onChange={(v) => {
+                    const next = [...state.filters];
+                    next[idx] = { ...filter, op: v };
+                    patchDirty({ filters: next });
+                  }}
+                  options={OP_OPTS}
+                />
+                <Input
+                  size="small"
+                  style={{ width: 140 }}
+                  value={filter.value}
+                  onChange={(e) => {
+                    const next = [...state.filters];
+                    next[idx] = { ...filter, value: e.target.value };
+                    patchDirty({ filters: next });
+                  }}
+                />
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  onClick={() => patchDirty({ filters: state.filters.filter((_, i) => i !== idx) })}
+                >
+                  🗑
+                </Button>
+              </Space>
+            ))}
+            <div>
+              <Button size="small" type="dashed" onClick={addFilter}>
+                + {t('添加条件')}
+              </Button>
+            </div>
+          </>
+        )}
+      </Card>
+
+      <Card size="small" title={`⚙️ ${t('高级选项')}`} style={{ marginBottom: 12 }}>
+        <Space style={{ marginBottom: 8 }}>
+          <Switch checked={state.exportAttachment} onChange={(v) => patchDirty({ exportAttachment: v })} />
+          <span style={{ fontSize: 13 }}>{t('导出附件（打包为tar.gz下载）')}</span>
+        </Space>
+        <div style={{ fontSize: 12, color: '#999', marginBottom: 8 }}>
+          💡 {t('超过100万行自动分新文件（默认开启，无需设置）')}
+        </div>
+        <div>
+          <span style={{ color: '#999' }}>{t('导出格式')}：</span>
+          <strong>xlsx（固定）</strong>
+        </div>
+      </Card>
+
+      <div style={{ textAlign: 'right' }}>
+        <Button onClick={onPrev}>← {t('上一步')}</Button>{' '}
+        <Button type="primary" disabled={!state.selectedFields.length} onClick={onNext}>
+          {t('下一步')} →
+        </Button>
+      </div>
+    </div>
+  );
+}

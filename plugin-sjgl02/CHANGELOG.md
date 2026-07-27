@@ -1,0 +1,199 @@
+# 更新日志
+
+## 2.1.0（2026-07-27）
+
+- **新功能（大任务 worker_threads 子进程执行，方案 B 落地）**：对照官方 `plugin-async-task-manager` 的 `CommandTaskType` 机制，行数 ≥ 5 万的导入（提交时记录 `plannedRows`）与「全部数据表」导出任务改由 `WORKER_MODE='-'` 瞬态 NocoBase 子应用线程执行，大任务的 CPU 密集工作彻底移出主进程事件循环；小任务维持进程内执行（方案 A 让出已覆盖）。
+  - 新增命令文件 `server/commands/run-task.ts`（`sjgl02:run-task --taskId`，`.preload()` 触发完整应用加载；手动加载 DB 动态集合；命令结束显式 `process.exit` 防止线程残留卡死队列）；
+  - 新增 `WorkerTaskRunner`（spawn/取消先 IPC 优雅回滚 30s 超时强杀/异常退出兜底标记失败）；
+  - `task-queue` 增加混合调度（`shouldRunInWorker`）与 `executeAsWorker` worker 入口；
+  - worker 瞬态模式下跳过队列订阅（interval 会阻止线程退出）与残留任务恢复（避免误标主进程任务）。
+- **实测**（生产模式）：6 万行导入、20 万行导入、全表导出 worker 执行全部成功；worker 执行期间 API 延迟全部 <100ms（趋近空闲水平）；running 期取消 → IPC 优雅回滚 +「已取消」终态；连续多个 worker 任务队列不卡死；小任务进程内路径回归正常。
+- **顺带修复（官方插件 bug）**：`@nocobase/plugin-file-manager` 的 `server/commands/repair-filenames` 缺 default export，导致 `runAsCLI`（worker 链路依赖）报 `callback is not a function`，已在该插件源码补 default export 并重新构建（属官方代码，升级官方版本时注意回归）。
+
+## 2.0.9（2026-07-26）
+
+- **优化（任务执行期间系统卡顿缓解，方案 A）**：导入/导出引擎在批量行处理循环中周期性让出事件循环（`setImmediate`），任务执行期间 API 请求可正常穿插处理，不再出现长时间页面无响应：导入行循环每 200 行、附件处理每 50 条、导出行循环每 200 行、关联表写入每 500 行、附件收集每 100 条各让出一次，吞吐损耗可忽略。已知局限：.xls/.csv 为整文件一次性同步解析（库限制），解析阶段仍可能短暂卡顿，解析后的处理阶段已覆盖让出。
+
+## 2.0.8（2026-07-26）
+
+- **修复（/admin 无 /v/ 前缀访问）**：NocoBase 双运行时中，v1 运行时（/admin 路径）只加载插件 v1 入口，此前 v1 入口为空壳导致：设置页 /admin/settings/sjgl02 不存在、v2 页面（flowPage）在 v1 运行时内嵌渲染时 sjgl02 区块报 "Model class not found" 且无法添加。本次补齐 v1 入口（与官方插件双注册做法一致）：
+  - `src/client/models` 注册 `Sjgl02BlockModel`——/admin 路径下 v2 页面的 sjgl02 区块正常显示、创建区块菜单可添加；
+  - `src/client/plugin.tsx` 增加 `pluginSettingsManager.add('sjgl02')`——/admin/settings/sjgl02 可直接访问（v1 设置中心外壳），与 /v/admin/settings/sjgl02 双入口并存。
+
+## 2.0.7（2026-07-26）
+
+- **修复（任务/权限 Tab 切换误弹「当前配置未保存」）**：脏检查改为按 Tab 注册（`Record<tabKey, fn>`），仅在「离开脏向导 Tab」或「切回脏向导 Tab（旧实例将被重置）」时弹确认，任务管理/权限管理之间切换不再误弹；向导卸载时注销对应检查，同时修复闭包随 step 变化累积与 ExportWizard 闭包捕获过期 step 的问题。
+- **杂项**：package.json 增加 `homepage`/`repository`（https://github.com/fengwenkai168/nocobase-plugin），README 增加主页链接。
+
+## 2.0.6（2026-07-26）
+
+- **修复（大文件下载无反应）**：任务文件下载由「fetch + blob 整文件读入内存」改为浏览器原生直链下载（`?token=` 鉴权，服务端本已流式输出），大体积导出包（如全部数据表 tar.gz）点击后立即开始流式下载并显示系统下载进度，不再长时间无反馈或内存溢出。涉及：任务列表「下载」、任务抽屉「下载导出文件 / 下载导入源文件 / 导出错误报告」。（注：token 入 URL 为需求方确认的取舍，服务请求日志会记录 query。）
+- **新功能（导出全部数据表支持附件开关）**：「全部数据表（含系统表）」模式的配置面板新增「📎 导出附件」开关（此前仅单表模式有，服务端早已支持全表附件打包），开启后各表附件文件一并打包进 tar.gz。原型同步。
+
+## 2.0.5（2026-07-26）
+
+- **修复（1.0.x 旧版升级兼容）**：1.0.x 旧版使用蛇形表名（`sjgl02_permissions`/`sjgl02_tasks` 等 6 张），其索引名（如 `sjgl02_permissions_created_by_id`）与 2.0.x 驼峰表 sync 自动生成的索引同名（PostgreSQL 索引名 schema 内全局唯一），导致升级时报 `relation "..." already exists`。
+  - 集合定义预声明自定义索引名（`idx_sjgl02perms_*`/`idx_sjgl02plogs_*`/`idx_sjgl02tasks_*`）：利用框架 `addIndex` 按字段去重机制，抑制默认蛇形名索引生成，sync 不再与旧表索引冲突；
+  - 新增迁移 `20260725120000-drop-legacy-1x-tables`（`on='afterSync'`）：sync 完成后强制删除 6 张 1.0.x 旧表（不迁移数据），并清理 2.0.x 老库中被替换的旧命名索引；
+  - 已验证：模拟 1.0.x 残留环境 `yarn nocobase upgrade` 通过、旧表全删、新表与索引正确；二次执行幂等。
+
+## 2.0.4（2026-07-25）
+
+- **修复（生产构建兼容）**：修复阻断全仓 `yarn build` 声明构建（dts）的 6 类 TypeScript 错误——`task-queue.ts` 插件类型引用路径（`./plugin`→`../plugin`）、`api.ts` 请求助手改泛型并补全调用点类型实参、`TaskRecord` 补 `permissionConfigId`/`permissionType` 字段、TaskDrawer 映射表列 render 参数显式类型与统计数值 Number 化、`export-engine.ts` 字段配置显式 `ExportFieldConfig[]`、`import-engine.ts` `filterByTk` 选项类型断言。修复后插件带声明构建通过、全仓生产构建（`yarn build`）通过，`yarn start` 生产模式启动验证正常（无需 pino/real-require 等额外配置，二者为核心包依赖由宿主提供）。
+
+## 2.0.3（2026-07-25）
+
+- **优化（Tab 切换重置）**：切回「导入」「导出」Tab 时重挂载向导，回到步骤 1 且清空全部配置状态（与任务管理/权限管理 Tab 的刷新行为一致）；脏数据离开确认逻辑不变。
+- **优化（自动匹配改为三档名称匹配）**：
+  - 100%：归一化（去空格/忽略大小写/全半角括号）后 Excel 列名 == 字段标题或字段标识；「标题(标识)」格式列名括号内 == 字段标识亦算 100%；
+  - 80%：归一化后存在包含关系（列名包含标题/标识，或标题包含列名，长度≥2 防误配）；
+  - 未匹配：保持「忽略」由用户手动选择（取消原纯顺序兜底分配，杜绝错配）；
+  - 映射方式列新增匹配度标签（100% 绿 / 80% 橙），手动改动后消失；自动匹配后 toast 汇总各档数量。
+
+## 2.0.2（2026-07-25）
+
+- **优化（导入映射「忽略」状态的配置约束）**：字段映射为「忽略」时，「配置」列按钮/下拉禁用不可点（关联 ⚙️ 配置、附件选文件夹与配置均置灰）；行切换为「忽略」时自动收起配置面板并**清空该字段已填写的配置**（重新映射后恢复为默认值，防止隐藏配置残留生效）；「清空匹配」同步清空全部字段配置。原型 HTML 同步该交互。
+
+## 2.0.1（2026-07-22）
+
+- **新功能（导入：关联/附件字段级配置）**：
+  - 字段映射表新增「配置」列：关联字段显示「⚙️ 配置」展开行内配置面板；附件字段三态（未上传压缩包提示 / 「📁 选文件夹」/ 文件夹名+配置按钮）。
+  - 关联字段可配置：空值处理（跳过不更新/清空该字段解除关联）、匹配不到处理（该行导入失败/跳过该字段——多值任一匹配不到则整字段跳过）、更新模式（覆盖更新/追加更新，仅 update/upsert 且多值关联生效；多对一为单值直接替换）。
+  - 附件字段可配置：压缩包内文件夹（取消字段名=文件夹名自动匹配约定，改为手动选择，必选）、空值处理（保留原附件/删除附件）、匹配不到处理（该行导入失败/跳过该附件——单文件跳过）、更新模式（覆盖/追加）。
+  - 追加更新实现：update/upsert 命中已有记录时，服务端读取现有关联/附件合并去重后写入，不删除原有关联。
+  - 删除全局「多对多关联字段 - 空值处理策略」面板（空值处理下沉为字段级配置），移除 `m2mStrategy` 参数。
+  - 提交校验：已映射的附件字段未选择文件夹时，前端拦截「下一步」，服务端提交前二次校验。
+  - 附件上传接口返回压缩包顶层文件夹清单（名称+文件数）；附件模板压缩包与说明文案同步更新。
+  - 预览确认卡片「附件」显示各附件字段选中的文件夹。
+- **原型同步**：`docs/sjgl02-prototype.html` 同步上述交互；修复原型预存 bug（`updateEmptyUniqueAlert` 局部变量遮蔽全局函数）。
+- **测试**：4 轮浏览器端到端实测通过（默认严格回滚 / notFound 跳过该字段与跳过该附件 / 追加更新合并 / 覆盖更新与空值清空）。
+
+## 2.0.0（2026-07-22）— 正式版
+
+- **新功能**：Tab 切换自动刷新——切回「任务管理」「权限管理」Tab 时自动重载最新数据（组件按刷新键重挂载）；「导入」「导出」Tab 保持向导状态不受刷新影响（脏数据保护逻辑不变）。
+- 版本定版 2.0.0：M1–M7 全部里程碑 + 83 条浏览器全量测试通过后的首个正式版本。
+
+## 0.1.12（2026-07-22）
+
+- **显示优化（任务详情/列表）**：
+  - 详情抽屉「创建人」卡片改为两行显示：昵称 / 用户名；
+  - 「导出字段」「字段映射详情」「唯一值字段」统一按「字段名称（字段标识）」格式显示（自动加载 collectionMeta 解析标题，如 `编码(code)`）；
+  - 「导入模式」显示中文：新增(insert) / 更新(update) / 新增+更新(upsert)；
+  - 任务列表「创建人」列显示昵称。
+- **Bug 修复**：TaskRecord 创建人关系字段名与 API 不一致（creator → createdBy），修复列表/详情创建人长期显示 "-" 的问题。
+
+## 0.1.11（2026-07-22）
+
+- **Bug 修复**：权限管理「添加权限配置」选表时，自动隐藏当前用户/角色已配置过权限的数据表（每张表只能配置一次，避免重复配置触发唯一约束报错），并显示隐藏数量提示。
+- **新功能**：导入/导出向导的「选择数据表」下拉支持关键字搜索，可同时匹配表名称与表标识（如搜"客户"或"customers"/"devPK"均可命中）。
+- **新功能**：任务详情抽屉 KPI 区新增「数据量」卡片：完成态显示「导入/导出 N 条」（千分位），进行态显示「当前/总数」，排队态显示「-」。
+
+## 0.1.10（2026-07-22）
+
+- **修复下载未认证（EMPTY_TOKEN）**：任务列表「下载」、详情抽屉「下载导出文件/下载导入源文件/导出错误报告」、附件模板下载，由裸 `<a href>` 改为带 Authorization 头的 fetch + Blob 下载（自动还原中文文件名），修复点击下载提示"未认证"的问题。
+
+## 0.1.9（2026-07-21）
+
+- 设置页/区块顶部新增蓝色标题栏（还原原型设计）：左侧插件名与副标题「导入导出 · 任务管理 · 表级权限控制」，**右上角显示版本号徽章「数据管理-sjgl02 v<当前版本>」**（版本号取自 package.json，随版本递增自动更新）。
+
+## 0.1.8（2026-07-21）— 测试准备 + 83 条浏览器全量测试通过
+
+**测试覆盖**：《测试用例.md》83 条全部通过（Playwright 自动化）——§0 入口与通用 7、§1 导入 50（步骤一 6/步骤二 17/步骤三 4/执行结果 23）、§2 导出 15、§3 任务管理 14、§4 权限管理 13；另完成 M2/M3/附件 API 回归 42 断言无回归。50 万行导入 43s、100 万行导出 41s，性能达标。
+
+**测试中发现并修复的 15 个产品缺陷**：
+
+1. 权限管理：admin 执行导入/导出时可见全部用户/角色权限配置（ADR-019 落地，此前只查自己的）
+2. admin 模拟用户权限导入时，数据 createdBy=权限拥有者（此前为操作人）
+3. 任务/数据 createdById 为 NULL：context field 覆盖手动值，写操作统一显式传 context
+4. 权限切换后映射表不为新增字段补行
+5. 自动匹配不跳过已被占用的 Excel 列
+6. 上传失败（格式不支持）无前端提示；API 客户端对 4xx 不 reject 导致错误静默（统一 unwrap errors）
+7. 字符串型 Excel 日期序列号无法解析；非法日期（如 2026/13/45）被 JS 进位吞掉
+8. 任务抽屉数据预览：导入任务 previewRows 为对象行导致 row.map 崩溃、抽屉打不开
+9. 任务抽屉下载区：导入任务 fileName 为空导致源文件下载按钮不显示
+10. 附件模板下载按钮无 download 属性不触发下载
+11. resourcer 中间件 before:'acl' 时 ctx.auth 未就绪（统一改 after:'auth'，含 setScope 局部变量冲突修复）
+12. 字段/集合标题 {{t("...")}} 模板未清理（field-meta、importableCollections、collectionMeta、permList 统一 cleanTitle）
+13. collectionMeta 漏入 belongsTo/hasOne 的 foreignKey 属性列（ownerId 误当独立字段）
+14. sjgl02:import 缺文件存在性校验导致未捕获异常（补友好 400）
+15. i18n：补齐约 40 条中文硬编码（模式/字段类型/日期格式/操作符等），词条扩至 zh-CN/en-US 各 380+
+
+**环境/测试基建**：demo 集合群（customers/products/orders/tags/departments/devPK/usersTags 中间表）+ 测试员A/数据导入员角色 + 菜单路由角色授权（roles.desktopRoutes:set）+ 50 万行/错误数据/附件包测试文件 + Playwright E2E 套件（/tmp/opencode/e2e/，含 helpers 与 t0-t4 五节脚本）。
+
+## 0.1.7（2026-07-21）— M7 双入口与打磨
+
+- v2 页面区块：`Sjgl02BlockModel`（直接继承 BlockModel，自动落入"其他区块"分类），区块名"数据管理02-sjgl02"，渲染导入/导出/任务管理 3 Tab（复用设置页组件，`showPermissionTab=false` 隐藏权限管理）。
+- 区块实测（Playwright）：页面编辑 → 创建区块 → 其他区块 → 数据管理02-sjgl02 添加成功，3 Tab 渲染、任务管理数据加载正常、退出编辑模式后持久化展示。
+- 全量 API 回归：M2 导入（12 断言）、M2 附件（9 断言）、M3 导出（21 断言）全部通过，无回归。
+- 至此 M1–M7 全部里程碑完成：任务引擎 / 导入链路 / 导出链路 / 任务管理 / 双向导前端 / 权限管理 / 双入口。
+
+## 0.1.6（2026-07-21）— M6 权限管理
+
+- 权限 CRUD：sjgl02Permissions collection API + 写操作 ACL 守卫（仅 admin/root，resourcer 中间件 after:'auth'）。
+- 权限操作日志 hook：beforeUpdate 捕获 `_previousDataValues` 旧值快照，afterCreate/afterUpdate/afterDestroy 自动写 sjgl02PermissionLogs（before/after 全量快照 + 智能 summary：新增/修改（定位到变更字段）/移除/开关切换）。
+- 辅助接口：`permTargets`（用户+角色列表含角色摘要）、`permList`（自定义权限 + 按角色分组的继承权限，admin/root 角色特殊标记）。
+- 前端 PermManager：左侧用户/角色栏（分组+搜索）、任务查看范围切换（用户维度 self/all）、admin/root 角色"全部权限"提示面板（7 项标签+隐藏添加按钮）、继承权限只读分组+查看详情弹窗、自定义权限卡片 CRUD（删除二次确认）、权限编辑弹窗（选表/双开关/模式 chips/唯一值（upsert 联动必填）/必填/可导入/可导出字段）、操作日志 Tab（类型+时间范围筛选/详情展开前后快照）。
+- 修复：resourcer 中间件 before:'acl' 时 ctx.auth 未就绪导致 403（改 after:'auth'）；collection create body 双重包装 values；useApi 每渲染新建对象导致 useEffect 无限请求循环（useMemo 缓存）。
+- i18n 新增约 80 条（zh-CN 350 / en-US 349）。
+- 验证：API 级（CRUD+4 种日志类型快照与 summary）+ 浏览器级（新增/编辑/删除/日志 Tab/admin 角色面板/权限在 getImportPermissions 生效带白名单）全部通过。
+
+## 0.1.5（2026-07-21）— M5 导入/导出前端向导
+
+- 导入向导（3 步）：选表上传（权限过滤表清单 + 拖拽上传）、配置映射（Sheet/表头行/刷新/预览前10行、权限切换+摘要卡、导入模式锁定/切换、空白字段处理、多对多空值策略、唯一值 chips（锁定/自由/max3/空值预检警告）、字段映射表（Excel列占用置灰/自定义固定值/忽略/自动匹配/清空/计数/属性标签）、附件开关+tar.gz 上传+模板下载、系统字段规则折叠面板）、预览执行（确认卡片 + 换行表头预览表 + 确认弹窗 + 防重复提交 + 完成后重置）。
+- 导出向导（3 步）：选表（admin 可见"全部数据表"）、字段配置（常规/日期时间（逐字段格式）/关联（逐字段导出值）/附件四分组 + 全选计数 + 权限白名单置灰、关联表导出模式（chips 多选 + Sheet/独立文件）、表头格式三选、数据范围（全部/AND 条件组）、高级选项、全部表模式全局日期/关联格式）、执行确认（确认卡片 + 选中字段标签墙 + 文件名预览 + 确认弹窗）。
+- 脏数据保护：步骤二有修改时切步骤/切 Tab/关页面前弹确认（beforeunload 兜底）；提交防重复点击。
+- 服务端新增 `sjgl02:collectionMeta`（字段元数据：类型/选项/关联目标/主键）；修复 GET 接口参数合并（values 空对象遮蔽 query 参数）；field-meta 排除 belongsTo/hasOne 的 foreignKey 属性列（ownerId 不再误当独立字段）。
+- i18n：新增约 190 条中英词条（zh-CN 271 / en-US 270）。
+- 浏览器端到端实测（Playwright）：导入向导全链路（选表→拖拽上传→配置→预览→执行→任务#60 succeeded 15 行）、导出向导全链路（选表→字段配置→确认→执行→任务#61 succeeded 文件生成）全部通过。
+
+## 0.1.4（2026-07-21）— M4 任务管理
+
+- 任务接口：`stats`（状态聚合统计）、`download`（导出文件/导入源文件，流式 + RFC5987 中文文件名）、`exportErrorReport`（CSV，BOM + withoutDataWrapping）、`retry`（按 params 快照重建任务）、`getScope`/`setScope`（任务查看范围）。
+- 新增 `sjgl02UserSettings` 表（userId 唯一 + taskScope）；任务列表/详情按查看范围过滤（resourcer 中间件，非"查看全部"用户仅见自己任务；下载/错误报告同鉴权）。
+- 前端 TaskCenter（client-v2）：设置页注册（`/v/admin/settings/sjgl02`，4 Tab 容器），统计卡 6 张（点击快捷过滤）、类型/状态/关键词筛选、任务表格（进度条/操作列）、详情抽屉（KPI 网格/配置斑马纹/字段映射/导出字段/数据预览/失败明细分页加载/下载区）、进行中任务抽屉 2s 轮询、列表 5s 轮询、取消（回滚提示）/重新导出。
+- i18n：zh-CN/en-US 词条 60+（locale.ts tExpr/useT 绑定插件命名空间）。
+- 浏览器实测（Playwright）：设置菜单/统计卡/筛选/表格/抽屉/进行中轮询/列表取消/抽屉取消（57% 处取消成功）/启动恢复"服务重启中断"全部通过。
+- 环境：Alpine 容器安装 Playwright Chromium（gcompat + libatk 等依赖）用于浏览器自动化测试。
+
+## 0.1.3（2026-07-21）— M3 导出链路
+
+- 新增导出 API：`getExportPermissions`、`exportableCollections`（含 isAdmin 标记）、`export`（exportFilter 后端强制合并、字段白名单校验、全部表模式仅 admin/root）。
+- 导出引擎：游标分页查询（每批 1000）+ exceljs WorkbookWriter 流式写入，内存恒定；单文件超 100 万行自动分新文件（part-N）。
+- 字段格式化：日期 8 种格式（含时间戳/Excel 友好格式）、单选导出标签、布尔导出 是/否、多选逗号拼接、关联值三模式（显示值/主键值/显示值+主键值）、i18n 模板标题清理（{{t("...")}}）。
+- 关联表导出：单独 Sheet（同工作簿，多分文件时落独立"关联表.xlsx"）或独立 xlsx 文件；m2o 导出被引用记录（目标表标量字段），m2m/o2m 导出中间表映射对（源主键/目标主键/显示字段）；Sheet 命名 `主表字段名称(标识)-关联表名称(标识)`（31 字符截断）。
+- 附件导出：按 `attachments/<字段标识>/<标题.扩展名>` 打包 tar.gz（重名加 id 前缀）。
+- 全部数据表模式（admin/root）：遍历全部集合逐表独立 xlsx + 导出清单.json，打包 `全部数据表-时间戳.tar.gz`。
+- 文件命名：`数据表名称-数据表标识-年月日时分秒.xlsx`；多文件/含附件自动打 tar.gz；任务记录写入 filePath/fileName/fileSize。
+- API 自验 8 用例全部通过（基础格式/关联 Sheet/筛选/附件打包/全部表 90 张/表头与格式变体/权限/关联独立文件）。
+- 排障：tar-stream 3.x `pack.entry(header, cb)` 返回可写流需 source.pipe(entry)，误用 v1 API（stream 作参数）导致打包死锁。
+
+## 0.1.2（2026-07-21）— M2 导入链路
+
+- 新增导入 API（`sjgl02` 自定义资源）：`importUpload`（koaMulter 上传 Excel/附件包，返回 sheet 列表）、`previewExcel`（前 10 行预览）、`getImportPermissions`、`importableCollections`（按权限过滤可导入表）、`import`（行数/模式/白名单/唯一值校验后创建任务）、`downloadTemplate`（附件包模板）。
+- Excel 解析服务：xlsx 走 exceljs WorkbookReader 流式（带竞态重试），xls/csv 走 SheetJS；行数上限 xlsx/csv 50 万、xls 20 万（提交预检 + 引擎内兜底）。
+- 值转换服务（规则表 4.1.8 全量）：文本/整数/数字/单选（标签匹配）/多选/布尔（6 种写法）/日期（7 种格式含 Excel 序列号）/m2o/o2m/m2m（主键关联+存在性校验缓存）/系统字段 Excel 映射优先/子表与公式忽略。
+- 导入引擎：流式单事务（批量 500 bulkCreate 快路径 + 关联行 repo 逐行），insert/update/upsert，唯一值组合匹配，空值唯一值预检，手动主键校验，批次内主键查重，任何行失败整批回滚，错误明细（行号/字段/原因/原始值）入任务 result。
+- 附件导入：tar.gz 按 `attachments/<字段标识>/<文件名>` 解包，提交前校验文件存在性与扩展名黑名单（缺失即回滚），数据提交后异步建附件记录（local 存储）并关联。
+- 权限服务：用户/角色权限查询、admin/root 全权限合成、导入参数白名单断言。
+- API 自验 14 个用例全部通过（insert/错误回滚/upsert/空唯一值/update 保留原值/权限拒绝/附件正常+缺失回滚+未传包回滚）。
+
+## 0.1.1（2026-07-20）— M1 骨架与数据模型
+
+- `yarn pm create` 生成标准脚手架并与既有文档/元数据合并（src/server、src/client-v2、src/locale、入口 shim）。
+- 新增 3 张 collections：`sjgl02Tasks`（任务表）、`sjgl02Permissions`（权限配置表，含 targetType+targetId+collectionName 唯一索引）、`sjgl02PermissionLogs`（操作日志表），json 字段统一 jsonb。
+- 任务引擎定稿实现：`app.eventQueue` 进程内调度（串行并发 1）+ AbortController 取消 + 进度节流写库（500ms）；启动恢复（afterStart 将残留 pending/running 标记 failed"服务重启中断"）。
+- ACL：注册 4 个 snippet（`pm.sjgl02.import/export/tasks/permission`），M1 阶段任务接口先放开 loggedIn。
+- 自验通过：demo 任务提交→进度 15/15→succeeded；running 中取消→canceled（回滚提示）；`yarn nocobase upgrade` 同步 3 表 14 索引成功。
+- 清理旧版废弃实现遗留的 3 张孤儿表（sjgl02_tasks / sjgl02_permissions / sjgl02_table_permissions，用户授权 DROP）。
+- 已知环境事项：本仓库核心包 lib 类型产物缺失，插件构建使用 `yarn build @my-project/plugin-sjgl02 --no-dts`。
+
+## 0.1.0（2026-07-20）
+
+- 完成产品定义与技术方案定稿：基于交互原型 v2.0.0 重写《开发文档.md》，作为开发唯一依据。
+- 文档体系重构：历史文档（dev-plan / final-spec / spike-results / 技术决策记录等 10+ 份）全部归档至 `docs/archive/`。
+- 关键技术裁决：
+  - 任务队列定稿为 **DB 任务表 + app.eventQueue 进程内调度 + AbortController 取消**（无降级方案；ioredis-mock 为测试模拟库，带入生产有运行时风险，一次性否掉）；
+  - 导入行数上限 xlsx/csv ≤ 50 万行、xls ≤ 20 万行；导出不设上限、百万行自动分表；
+  - 严格模式单大事务，失败/取消整批回滚；
+  - 双入口：插件设置页（4 Tab）+ v2 页面区块（3 Tab）。
+- 声明依赖：`exceljs`、`tar-stream`（不引入 bull / ioredis-mock，零新增队列依赖，生产环境装上即用）。
