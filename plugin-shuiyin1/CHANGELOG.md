@@ -4,6 +4,45 @@
 
 ---
 
+## v0.2.12（2026-07-26）
+
+### 修复
+- 插件加载时 `enabled=false` 再开启水印后，防删除机制（2s 重建检查 + MutationObserver）不会建立：抽取 `startWatchers()`/`stopWatchers()`（幂等），`applyWatermark()` 开关切换时同步管理 watchers
+- 设置页「重置」按钮由 `form.resetFields()`（清空为 undefined）改为恢复默认值（保留记录 id），双端同步
+- 水印设置 ACL 收紧：`shuiyin1_settings` 由 `'*' loggedIn` 改为仅 `list loggedIn`（页面渲染读取保持放开），create/update/destroy 不再对普通登录用户放行（管理员角色默认全通）
+
+### 优化
+- v2 `plugin.tsx` 的 controller 保存为实例属性（与 v1 一致），cleanup 可被触发
+- 清理 locale 死 key（`Watermark text`、`Leave blank to use current user nickname`）
+- README 9.3 节等残留旧逻辑描述同步为多选来源逻辑
+
+---
+
+## v0.2.11（2026-07-25）
+
+### 修复
+- 字号设置不生效：v0.2.10 的自适应逻辑「只缩不放」，密度 5（140px 瓦片）+ 带时间文本下任何 ≥10px 字号均被缩至 ~9px。`fitFontSize` 改为 `computeTileLayout`：字号优先，文字超宽时先按比例加宽瓦片（上限 3 倍，高度随宽高比放大），仍放不下才缩小字号
+
+---
+
+## v0.2.10（2026-07-25）
+
+### 新增
+- 水印内容改为下拉多选模式：昵称 / 用户名 / 自定义内容，多选时空格分隔同行显示；新增 `textSources` 字段（json），`upgrade()` 自动迁移旧数据（旧 `text` 非空 → `['custom']`，否则 → `['nickname']`）
+- 水印文字过长自适应：超过瓦片宽度时按比例自动缩小字号（下限 6px），保证完整显示
+
+### 修复
+- v2 设置页 `useEffect` 依赖不稳定的 `t` 函数导致重复请求 `shuiyin1_settings:list`，且 re-render 时表单值被服务器旧值覆盖：改用 `useRef` 持有 `t`/`message`，依赖收敛为 `[api, form]`
+- 服务端 9 处 `console.log` 全部替换为 `this.app.log`（pino），统一日志输出
+- 删除 v2 端不会被调用的 `afterDisable()` 死代码（v2 Plugin 基类无此钩子）
+- readme 端点增加登录校验（未登录 401），README 内容改为启动时一次性缓存
+
+### 优化
+- 抽取双端共享逻辑至 `src/common/watermark-controller.ts`（约 240 行去重），v1/v2 `plugin.tsx` 各精简至 20 行左右
+- `package.json` 的 `peerDependencies` 补充 `@nocobase/flow-engine`
+
+---
+
 ## v0.2.9（2026-07-25）
 
 ### 修复

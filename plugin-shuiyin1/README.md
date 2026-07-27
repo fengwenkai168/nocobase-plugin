@@ -1,6 +1,6 @@
 # @my-project/plugin-shuiyin1
 
-> 版本：**v0.2.9** | NocoBase 2.x | 全局水印插件
+> 版本：**v0.2.12** | NocoBase 2.x | 全局水印插件
 
 为 NocoBase 后台管理系统提供全局页面水印覆盖，在页面最上层绘制半透明倾斜文字水印（Canvas 渲染），自动显示当前登录用户身份标识，具备防删除、自动重建、配置实时生效、定时刷新等完整能力。同时提供 client-v1 和 client-v2 双端实现，适配不同版本的 NocoBase UI 运行时。
 
@@ -68,7 +68,7 @@ nb plugin enable @my-project/plugin-shuiyin1
 
 ```bash
 cd packages/plugins/@my-project
-tar -czf /workspace/nocobase1/plugin-shuiyin1-0.2.9.tar.gz plugin-shuiyin1/
+tar -czf /workspace/nocobase1/plugin-shuiyin1-0.2.12.tar.gz plugin-shuiyin1/
 ```
 
 在后台 **插件管理 → 上传插件** 选择生成的 `.tar.gz` 文件上传。
@@ -90,9 +90,10 @@ tar -czf /workspace/nocobase1/plugin-shuiyin1-0.2.9.tar.gz plugin-shuiyin1/
 | 配置项 | 字段名 | 类型 | 默认值 | 范围 | 说明 |
 |--------|--------|------|--------|------|------|
 | 启用水印 | `enabled` | boolean | `true` | 开关 | 总开关：关闭后水印 DOM 移除，配置保留，重新打开后恢复 |
-| 水印文字 | `text` | string | `""` | 任意文本 | 留空则自动使用当前登录用户昵称/用户名/邮箱 |
+| 水印内容 | `textSources` | json 数组 | `["nickname"]` | 多选：nickname/username/custom | 下拉多选：昵称、用户名、自定义内容；多选时空格分隔同行显示 |
+| 自定义内容 | `text` | string | `""` | 任意文本 | 仅当水印内容勾选「自定义内容」时显示并必填 |
 | 透明度 | `opacity` | float | `0.15` | 0.01 ~ 1 | 越小越透明，建议 0.10 ~ 0.30 |
-| 字号 | `fontSize` | integer | `10` | 8 ~ 72 | 单位 px，水印文字大小 |
+| 字号 | `fontSize` | integer | `10` | 8 ~ 72 | 单位 px，字号优先：文字超宽时先加宽瓦片（上限 3 倍），仍放不下才按比例缩小（下限 6px） |
 | 排列密度 | `density` | integer | `5` | 1 ~ 5 | 1 最稀疏（400×280），5 最密集（140×90） |
 | 显示当前年月日时间 | `showTime` | boolean | `true` | 开关 | 开启后水印文字追加实时日期时间（yyyy-MM-dd HH:mm），每分钟刷新 |
 
@@ -215,7 +216,7 @@ src/index.ts (入口)
    - pointer-events: none（不拦截鼠标事件）
    - z-index: 999999（最高层级）
    - background-repeat: repeat
-4. 确定水印文字：settings.text 不为空则用 settings.text，否则用 username
+4. 确定水印文字：按 textSources 多选来源（昵称/用户名/自定义内容）取值，空格分隔同行拼接；全为空时回退到昵称/用户名/邮箱
 5. 若 showTime=true，追加当前年月日时间（yyyy-MM-dd HH:mm）
 6. 创建 Canvas（尺寸由 densityMap 决定）：
    - ctx.globalAlpha = settings.opacity
@@ -250,7 +251,8 @@ src/index.ts (入口)
 | `id` | autoIncrement（自动） | — | 主键 |
 | `createdAt` | datetime（自动） | — | 记录创建时间 |
 | `updatedAt` | datetime（自动） | — | 记录最后更新时间 |
-| `text` | string | `""` | 自定义水印文字，空字符串时使用当前用户名 |
+| `text` | string | `""` | 自定义水印内容（textSources 含 custom 时生效） |
+| `textSources` | json | `["nickname"]` | 水印内容来源多选：nickname（昵称）/ username（用户名）/ custom（自定义内容） |
 | `opacity` | float | `0.15` | 透明度，有效范围 0.01 ~ 1 |
 | `fontSize` | integer | `10` | 字号，单位 px，有效范围 8 ~ 72 |
 | `showTime` | boolean | `true` | 是否在水印中显示当前日期时间 |
@@ -471,9 +473,9 @@ window.dispatchEvent(new CustomEvent('shuiyin1:settings:changed', {
 2. 若 parsed settings 为空或为默认值，说明 API 返回异常
 3. 检查 `shuiyin1_settings` 数据库表中是否有配置记录
 
-### 9.3 水印文字显示用户名而非自定义文字
+### 9.3 水印显示昵称/用户名而非自定义文字
 
-水印文字字段（text）留空时会回退到当前登录用户名。填入任意内容即可替换。
+水印内容（textSources）未勾选「自定义内容」时按所选来源（昵称/用户名）显示。勾选「自定义内容」并填写文字保存后即可替换。
 
 ### 9.4 水印影响页面操作
 
@@ -507,6 +509,21 @@ window.dispatchEvent(new CustomEvent('shuiyin1:settings:changed', {
 ---
 
 ## 11. 更新日志
+
+### v0.2.12（2026-07-26）
+
+- **修复**：`enabled=false` 加载后再开启水印，防删除机制（重建检查 + MutationObserver）不建立；「重置」按钮改为恢复默认值；水印设置 ACL 收紧（list 保持 loggedIn，写操作仅限管理员）
+- **优化**：v2 controller 保存实例引用；清理 locale 死 key；文档过时段落同步
+
+### v0.2.11（2026-07-25）
+
+- **修复**：字号设置不生效 — v0.2.10 的自适应逻辑「只缩不放」，密度 5（140px 瓦片）+ 带时间文本下任何 ≥10px 字号均被缩至 ~9px。改为字号优先：文字超宽时先按比例加宽瓦片（上限 3 倍），仍放不下才缩小字号
+
+### v0.2.10（2026-07-25）
+
+- **新增**：水印内容下拉多选（昵称/用户名/自定义内容，空格分隔同行显示）；水印文字过长自动缩小字号自适应
+- **修复**：v2 设置页重复请求与表单覆盖问题；服务端日志统一为 pino；删除 v2 死代码；readme 端点登录校验
+- **优化**：抽取双端共享逻辑 `watermark-controller.ts`，消除 v1/v2 约 240 行重复代码
 
 ### v0.2.9（2026-07-25）
 

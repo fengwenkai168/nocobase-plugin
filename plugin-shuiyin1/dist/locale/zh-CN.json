@@ -1,0 +1,22 @@
+{
+  "Watermark Settings": "水印设置",
+  "Opacity": "透明度",
+  "Please enter opacity": "请输入透明度",
+  "Font size": "字号",
+  "Please enter font size": "请输入字号",
+  "Density": "排列密度",
+  "Please enter density": "请输入排列密度",
+  "Show current time": "显示当前年月日时间",
+  "Save": "保存",
+  "Reset": "重置",
+  "Saved successfully": "保存成功",
+  "Save failed": "保存失败",
+  "Failed to load settings": "加载设置失败",
+  "Enable watermark": "启用水印",
+  "Watermark content": "水印内容",
+  "Nickname": "昵称",
+  "Username": "用户名",
+  "Custom text": "自定义内容",
+  "Please select at least one content source": "请至少选择一项水印内容",
+  "Please enter custom text": "请输入自定义内容"
+}

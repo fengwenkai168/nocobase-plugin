@@ -1,0 +1,22 @@
+{
+  "Watermark Settings": "Watermark Settings",
+  "Opacity": "Opacity",
+  "Please enter opacity": "Please enter opacity",
+  "Font size": "Font size",
+  "Please enter font size": "Please enter font size",
+  "Density": "Density",
+  "Please enter density": "Please enter density",
+  "Show current time": "Show current time",
+  "Save": "Save",
+  "Reset": "Reset",
+  "Saved successfully": "Saved successfully",
+  "Save failed": "Save failed",
+  "Failed to load settings": "Failed to load settings",
+  "Enable watermark": "Enable watermark",
+  "Watermark content": "Watermark content",
+  "Nickname": "Nickname",
+  "Username": "Username",
+  "Custom text": "Custom text",
+  "Please select at least one content source": "Please select at least one content source",
+  "Please enter custom text": "Please enter custom text"
+}
