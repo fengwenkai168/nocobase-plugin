@@ -1,5 +1,12 @@
 # 更新日志
 
+## 2.1.1（2026-07-28）
+
+- **修复（生产 Docker 环境大数据任务卡在"排队中"）**：生产环境中 worker 子进程 spawn `@nocobase/app` 入口后，经 Gateway.run -> runAsCLI -> loadCommands 加载所有插件 commands 文件，某第三方/Pro 插件 commands 文件 `importModule` 返回非函数导致 `callback is not a function`，`loadCommands` 整体失败，`sjgl02:run-task` 命令无法注册，worker 启动即失败，任务永远卡在 PENDING。
+  - **修复 1（核心）**：新增独立 worker 入口 `worker-entry.ts`，不经过 `Gateway.run()` 和命令系统，直接 `new Application()` -> `app.load()` -> `executeAsWorker(taskId)`，彻底绕过 `loadCommands`；`worker-task-runner.ts` 的 worker 入口从 `@nocobase/app/lib/index.js` 改为插件自己的 `worker-entry.js`；
+  - **修复 2**：`executeViaWorker` 在启动 worker 前将任务状态从 PENDING 改为 RUNNING（与 `execute` 进程内路径保持一致），确保 worker 启动失败时 `ensureNotRunning` 的 filter 能正确匹配；
+  - **修复 3**：`ensureNotRunning` 与 cancel 路径的 filter 从 `{ status: RUNNING }` 改为 `{ status: [RUNNING, PENDING] }`（双保险），确保任何中间状态都能被正确清理为 FAILED/CANCELED，不再卡在"排队中"。
+
 ## 2.1.0（2026-07-27）
 
 - **新功能（大任务 worker_threads 子进程执行，方案 B 落地）**：对照官方 `plugin-async-task-manager` 的 `CommandTaskType` 机制，行数 ≥ 5 万的导入（提交时记录 `plannedRows`）与「全部数据表」导出任务改由 `WORKER_MODE='-'` 瞬态 NocoBase 子应用线程执行，大任务的 CPU 密集工作彻底移出主进程事件循环；小任务维持进程内执行（方案 A 让出已覆盖）。

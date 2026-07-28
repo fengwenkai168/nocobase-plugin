@@ -50,8 +50,7 @@ class WorkerTaskRunner {
     var _a;
     const logger = this.plugin.app.logger;
     const isDev = (((_a = process.argv[1]) == null ? void 0 : _a.endsWith(".ts")) || process.argv[1].includes("tinypool")) ?? false;
-    const appRoot = process.env.APP_PACKAGE_ROOT || "packages/core/app";
-    const workerPath = import_node_path.default.resolve(process.cwd(), appRoot, isDev ? "src/index.ts" : "lib/index.js");
+    const workerPath = isDev ? import_node_path.default.resolve(__dirname, "worker-entry.ts") : import_node_path.default.resolve(__dirname, "worker-entry.js");
     logger.info(`[sjgl02] \u4EFB\u52A1 #${taskId} \u542F\u52A8 worker \u5B50\u8FDB\u7A0B\u6267\u884C\uFF08${isDev ? "dev" : "prod"} \u6A21\u5F0F\uFF09`);
     await new Promise((resolve, reject) => {
       let settled = false;
@@ -63,7 +62,7 @@ class WorkerTaskRunner {
       };
       const worker = new import_node_worker_threads.Worker(workerPath, {
         execArgv: isDev ? ["--require", "tsx/cjs"] : [],
-        workerData: { argv: ["sjgl02:run-task", `--taskId=${taskId}`] },
+        workerData: { taskId },
         env: { ...process.env, WORKER_MODE: "-" }
       });
       const onAbort = () => {

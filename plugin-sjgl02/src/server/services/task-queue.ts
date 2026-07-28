@@ -98,7 +98,11 @@ export class TaskQueueService {
 
   async execute(taskId: number, options: { externalSignal?: AbortSignal } = {}) {
     const task = await this.repo.findOne({ filter: { id: taskId } });
-    if (!task || task.get('status') !== TASK_STATUS.PENDING) {
+    if (!task) {
+      return;
+    }
+    // worker 子进程路径（externalSignal 存在）：主进程已将状态改为 RUNNING，跳过 PENDING 检查
+    if (!options.externalSignal && task.get('status') !== TASK_STATUS.PENDING) {
       return;
     }
 
@@ -203,6 +207,10 @@ export class TaskQueueService {
     this.controllers.set(taskId, controller);
     this.processing.add(taskId);
     const startedAt = new Date();
+    // 在启动 worker 前将任务标记为 RUNNING，与 execute() 进程内路径保持一致。
+    // 这样 worker 启动失败时 ensureNotRunning 的 filter 能正确匹配，
+    // 避免任务永远卡在 PENDING（"排队中"）。
+    await this.repo.update({ filter: { id: taskId }, values: { status: TASK_STATUS.RUNNING, startedAt } });
     try {
       await new WorkerTaskRunner(this.plugin).run(taskId, controller.signal);
       // worker 正常退出：终态已由子进程写库；仍 running 属异常，兜底标记失败
@@ -212,7 +220,7 @@ export class TaskQueueService {
       if (controller.signal.aborted) {
         // 优雅取消已由子进程回滚并标记 canceled；强杀场景由这里兜底（事务随连接断开自动回滚）
         await this.repo.update({
-          filter: { id: taskId, status: TASK_STATUS.RUNNING },
+          filter: { id: taskId, status: [TASK_STATUS.RUNNING, TASK_STATUS.PENDING] },
           values: {
             status: TASK_STATUS.CANCELED,
             doneAt: new Date(),
@@ -230,9 +238,11 @@ export class TaskQueueService {
   }
 
   private async ensureNotRunning(taskId: number, startedAt: Date, message: string | null) {
+    // filter 兼容 RUNNING 和 PENDING：executeViaWorker 已在启动前标记 RUNNING，
+    // 但极端情况下（如状态写入竞态）仍可能为 PENDING，双保险确保任何中间状态都能被清理。
     if (!message) {
       await this.repo.update({
-        filter: { id: taskId, status: TASK_STATUS.RUNNING },
+        filter: { id: taskId, status: [TASK_STATUS.RUNNING, TASK_STATUS.PENDING] },
         values: {
           status: TASK_STATUS.CANCELED,
           doneAt: new Date(),
@@ -242,7 +252,7 @@ export class TaskQueueService {
       return;
     }
     await this.repo.update({
-      filter: { id: taskId, status: TASK_STATUS.RUNNING },
+      filter: { id: taskId, status: [TASK_STATUS.RUNNING, TASK_STATUS.PENDING] },
       values: {
         status: TASK_STATUS.FAILED,
         doneAt: new Date(),

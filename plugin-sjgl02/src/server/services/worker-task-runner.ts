@@ -4,17 +4,18 @@ import type Plugin from '../plugin';
 
 const CANCEL_GRACE_MS = 30_000;
 
-// 仿官方 plugin-async-task-manager 的 CommandTaskType：
-// 以 WORKER_MODE='-' 瞬态模式 spawn 完整 NocoBase 子应用线程执行 sjgl02:run-task 命令，
-// 任务在独立事件循环/DB 连接中运行，主进程不被 CPU 密集工作阻塞。
+// spawn 独立 worker 线程执行大任务，不经过 Gateway.run() 和命令系统，彻底绕过 loadCommands
+// （避免其他插件 commands 文件导出异常导致 callback is not a function）。
+// worker 入口为插件自己的 worker-entry.ts，直接初始化 Application 并执行任务。
 export class WorkerTaskRunner {
   constructor(private plugin: Plugin) {}
 
   async run(taskId: number, signal: AbortSignal): Promise<void> {
     const logger = this.plugin.app.logger;
     const isDev = (process.argv[1]?.endsWith('.ts') || process.argv[1].includes('tinypool')) ?? false;
-    const appRoot = process.env.APP_PACKAGE_ROOT || 'packages/core/app';
-    const workerPath = path.resolve(process.cwd(), appRoot, isDev ? 'src/index.ts' : 'lib/index.js');
+    const workerPath = isDev
+      ? path.resolve(__dirname, 'worker-entry.ts')
+      : path.resolve(__dirname, 'worker-entry.js');
     logger.info(`[sjgl02] 任务 #${taskId} 启动 worker 子进程执行（${isDev ? 'dev' : 'prod'} 模式）`);
 
     await new Promise<void>((resolve, reject) => {
@@ -28,7 +29,7 @@ export class WorkerTaskRunner {
 
       const worker = new Worker(workerPath, {
         execArgv: isDev ? ['--require', 'tsx/cjs'] : [],
-        workerData: { argv: ['sjgl02:run-task', `--taskId=${taskId}`] },
+        workerData: { taskId },
         env: { ...process.env, WORKER_MODE: '-' },
       });
 

@@ -110,7 +110,10 @@ class TaskQueueService {
   }
   async execute(taskId, options = {}) {
     const task = await this.repo.findOne({ filter: { id: taskId } });
-    if (!task || task.get("status") !== TASK_STATUS.PENDING) {
+    if (!task) {
+      return;
+    }
+    if (!options.externalSignal && task.get("status") !== TASK_STATUS.PENDING) {
       return;
     }
     if (!options.externalSignal && this.shouldRunInWorker(task)) {
@@ -208,6 +211,7 @@ class TaskQueueService {
     this.controllers.set(taskId, controller);
     this.processing.add(taskId);
     const startedAt = /* @__PURE__ */ new Date();
+    await this.repo.update({ filter: { id: taskId }, values: { status: TASK_STATUS.RUNNING, startedAt } });
     try {
       await new import_worker_task_runner.WorkerTaskRunner(this.plugin).run(taskId, controller.signal);
       await this.ensureNotRunning(taskId, startedAt, controller.signal.aborted ? null : "\u6267\u884C\u8FDB\u7A0B\u5DF2\u9000\u51FA\u4F46\u672A\u5199\u5165\u7EC8\u6001");
@@ -215,7 +219,7 @@ class TaskQueueService {
       const message = error instanceof Error ? error.message : String(error);
       if (controller.signal.aborted) {
         await this.repo.update({
-          filter: { id: taskId, status: TASK_STATUS.RUNNING },
+          filter: { id: taskId, status: [TASK_STATUS.RUNNING, TASK_STATUS.PENDING] },
           values: {
             status: TASK_STATUS.CANCELED,
             doneAt: /* @__PURE__ */ new Date(),
@@ -234,7 +238,7 @@ class TaskQueueService {
   async ensureNotRunning(taskId, startedAt, message) {
     if (!message) {
       await this.repo.update({
-        filter: { id: taskId, status: TASK_STATUS.RUNNING },
+        filter: { id: taskId, status: [TASK_STATUS.RUNNING, TASK_STATUS.PENDING] },
         values: {
           status: TASK_STATUS.CANCELED,
           doneAt: /* @__PURE__ */ new Date(),
@@ -244,7 +248,7 @@ class TaskQueueService {
       return;
     }
     await this.repo.update({
-      filter: { id: taskId, status: TASK_STATUS.RUNNING },
+      filter: { id: taskId, status: [TASK_STATUS.RUNNING, TASK_STATUS.PENDING] },
       values: {
         status: TASK_STATUS.FAILED,
         doneAt: /* @__PURE__ */ new Date(),
