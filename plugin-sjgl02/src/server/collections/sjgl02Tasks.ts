@@ -31,6 +31,7 @@ export default defineCollection({
     { type: 'string', name: 'errorReportPath' },
     { type: 'integer', name: 'permissionConfigId' },
     { type: 'string', name: 'permissionType' },
+    { type: 'string', name: 'permissionLabel' },
     { type: 'text', name: 'message' },
     { type: 'date', name: 'startedAt' },
     { type: 'date', name: 'doneAt' },

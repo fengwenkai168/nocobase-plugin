@@ -141,7 +141,9 @@ class ExportEngine {
   getPkName(collectionName) {
     const collection = this.db.getCollection(collectionName);
     if (!collection) throw new Error(`\u6570\u636E\u8868 ${collectionName} \u4E0D\u5B58\u5728`);
-    return collection.options.filterTargetKey || collection.model.primaryKeyAttribute || "id";
+    const targetKey = collection.options.filterTargetKey;
+    const key = Array.isArray(targetKey) ? targetKey[0] : targetKey;
+    return key || collection.model.primaryKeyAttribute || "id";
   }
   buildColumns(collectionName, params) {
     const configs = params.allTables ? (0, import_field_meta.listExportableFields)(this.db, collectionName).map((m) => ({ field: m.name })) : params.fields || [];

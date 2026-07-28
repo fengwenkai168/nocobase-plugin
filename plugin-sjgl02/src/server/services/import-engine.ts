@@ -21,6 +21,7 @@ import {
   attachmentExists,
   createAttachmentRecord,
   extractAttachmentArchive,
+  getStorageInfo,
   isAllowedAttachment,
 } from './attachment';
 import { buildFieldMeta } from './field-meta';
@@ -73,7 +74,7 @@ export class ImportFailedError extends Error {
   }
 }
 
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 2000;
 const RELATION_TYPES = ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'];
 
 interface PendingAttachment {
@@ -236,13 +237,21 @@ export class ImportEngine {
           successRows += 1;
         } else {
           await flushInserts();
-          const existing = prepared.uniqueFilter
-            ? await repo.findOne({
+          // 批量预加载优化：用 existCache 缓存唯一值查询结果，避免重复唯一值重复查库
+          let existing: { get: (key: string) => unknown } | null = null;
+          if (prepared.uniqueFilter) {
+            const uniqueKey = JSON.stringify(prepared.uniqueFilter);
+            if (convertCtx.existsCache.has(`__unique__${uniqueKey}`)) {
+              existing = convertCtx.existsCache.get(`__unique__${uniqueKey}`) as { get: (key: string) => unknown } | null;
+            } else {
+              existing = await repo.findOne({
                 filter: prepared.uniqueFilter,
                 appends: appendFields.length ? appendFields.map((f) => f.field) : undefined,
                 transaction,
-              })
-            : null;
+              }) as { get: (key: string) => unknown } | null;
+              convertCtx.existsCache.set(`__unique__${uniqueKey}`, existing);
+            }
+          }
           if (existing) {
             if (appendFields.length) {
               await this.mergeAppendRelations(existing, prepared.values, appendFields, metas);
@@ -399,9 +408,13 @@ export class ImportEngine {
             const userId = Number(raw);
             if (!Number.isInteger(userId))
               throw new ImportRowError({ row: rowNumber, field: item.field, reason: '用户ID格式错误', raw });
-            const exists = await this.db.getRepository('users').findOne({ filter: { id: userId }, fields: ['id'] });
-            if (!exists)
-              throw new ImportRowError({ row: rowNumber, field: item.field, reason: '填的用户ID在系统中不存在', raw });
+            const cacheKey = `users:${userId}`;
+            if (!convertCtx.existsCache.has(cacheKey)) {
+              const exists = await this.db.getRepository('users').findOne({ filter: { id: userId }, fields: ['id'] });
+              convertCtx.existsCache.set(cacheKey, !!exists);
+            }
+            if (!convertCtx.existsCache.get(cacheKey))
+              throw new ImportRowError({ row: rowNumber, field: item.field, reason: '填写的用户ID在系统中不存在', raw });
             out[item.field] = userId;
           }
         }
@@ -484,6 +497,7 @@ export class ImportEngine {
   ): Promise<Record<string, unknown>> {
     if (!pending.length || !index) return { uploaded: 0 };
     const repo = this.db.getRepository(params.collectionName);
+    const storageInfo = await getStorageInfo(this.db);
     let uploaded = 0;
     let processed = 0;
     const warnings: string[] = [];
@@ -495,7 +509,7 @@ export class ImportEngine {
         const recordIds: unknown[] = [];
         for (const fileName of item.fileNames) {
           const filePath = path.join(index.dir, item.folder, fileName);
-          const record = await createAttachmentRecord(this.db, filePath, fileName);
+          const record = await createAttachmentRecord(this.db, filePath, fileName, storageInfo);
           recordIds.push(record.id);
         }
         let finalIds = recordIds;

@@ -56,6 +56,7 @@ export function registerExportActions(plugin: Plugin) {
       let exportFilter: unknown = null;
       let permissionConfigId: number | undefined;
       let permissionType: string | undefined;
+      let permissionLabel: string | undefined;
 
       if (allTables) {
         const roleNames = await permissionService.getUserRoleNames(userId);
@@ -89,6 +90,9 @@ export function registerExportActions(plugin: Plugin) {
         exportFilter = config.exportFilter;
         permissionConfigId = config.id ?? undefined;
         permissionType = config.targetType;
+        permissionLabel = config.targetName
+          ? `${config.targetType === 'user' ? '👤' : '👥'} ${config.targetName}`
+          : undefined;
       }
 
       const collectionName = allTables ? '__all__' : String(values.collectionName);
@@ -115,6 +119,7 @@ export function registerExportActions(plugin: Plugin) {
         collectionTitle,
         permissionConfigId,
         permissionType,
+        permissionLabel,
       });
       ctx.body = { taskId: task.get('id') };
       await next();

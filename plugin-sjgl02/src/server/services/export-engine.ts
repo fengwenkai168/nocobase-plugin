@@ -161,7 +161,10 @@ export class ExportEngine {
   private getPkName(collectionName: string): string {
     const collection = this.db.getCollection(collectionName);
     if (!collection) throw new Error(`数据表 ${collectionName} 不存在`);
-    return (collection.options.filterTargetKey as string) || collection.model.primaryKeyAttribute || 'id';
+    const targetKey = collection.options.filterTargetKey;
+    // 处理 filterTargetKey 为数组（复合主键）的情况，取第一个字段作为游标
+    const key = Array.isArray(targetKey) ? targetKey[0] : targetKey;
+    return (key as string) || collection.model.primaryKeyAttribute || 'id';
   }
 
   private buildColumns(collectionName: string, params: ExportTaskParams): ColumnDef[] {

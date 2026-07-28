@@ -1,10 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, App, Button, Card, Collapse, Modal, Radio, Select, Space, Switch, Table, Tag, Upload } from 'antd';
+import { Alert, App, Button, Card, Collapse, Modal, Radio, Select, Space, Spin, Switch, Table, Tag, Upload } from 'antd';
 import { useT } from '../../locale';
 import { modeLabel } from './modeLabels';
 import { ImportMappingItem, UploadResult, useApi } from '../../services/api';
 import { ImportWizardState } from './ImportWizard';
 import MappingTable, { buildInitMapping, useImportableFields } from './MappingTable';
+
+export function fieldLabel(name: string, fieldList: Array<{ name: string; title: string }>): string {
+  const f = fieldList.find((x) => x.name === name);
+  return f ? `${f.title}(${f.name})` : name;
+}
 
 export default function ImportStep2({
   state,
@@ -70,7 +75,7 @@ export default function ImportStep2({
     }
     const missing = attachItems.filter((m) => !m.config?.folder);
     if (missing.length) {
-      message.error(`${t('请先在「配置」列为附件字段选择文件夹')}：${missing.map((m) => m.field).join('、')}`);
+      message.error(`${t('请先在「配置」列为附件字段选择文件夹')}：${missing.map((m) => fieldLabel(m.field, fields)).join('、')}`);
       return false;
     }
     return true;
@@ -103,7 +108,7 @@ export default function ImportStep2({
             <>
               {state.permission.uniqueFields.map((f) => (
                 <Tag key={f} color="orange">
-                  {f}
+                  {fieldLabel(f, fields)}
                 </Tag>
               ))}
               <Tag>🔒 {t('由权限锁定')}</Tag>
@@ -117,7 +122,7 @@ export default function ImportStep2({
           {state.permission.requiredFields.length ? (
             state.permission.requiredFields.map((f) => (
               <Tag key={f} color="red">
-                {f}
+                {fieldLabel(f, fields)}
               </Tag>
             ))
           ) : (
@@ -130,7 +135,7 @@ export default function ImportStep2({
             <>
               {state.permission.importFields.map((f) => (
                 <Tag key={f} color="blue">
-                  {f}
+                  {fieldLabel(f, fields)}
                 </Tag>
               ))}
               <span style={{ color: '#999', fontSize: 11 }}>
@@ -182,15 +187,36 @@ export default function ImportStep2({
           />
           <Button
             size="small"
+            loading={state.previewLoading}
+            disabled={state.previewLoading}
             onClick={() => state.upload && reloadPreview(state.upload, state.sheetName, state.headerRow)}
           >
             🔄 {t('刷新')}
           </Button>
-          <Button size="small" onClick={() => setPreviewModal(true)}>
+          <Button size="small" onClick={() => setPreviewModal(true)} disabled={!state.preview && !state.previewLoading}>
             👁 {t('预览前10行')}
           </Button>
         </Space>
       </Card>
+      {state.previewLoading && (
+        <div style={{ padding: '8px 12px', color: '#1677ff', fontSize: 12 }}>
+          <Spin size="small" /> {t('正在加载预览数据...')}
+        </div>
+      )}
+      {state.previewError && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginTop: 8 }}
+          message={t('预览加载失败')}
+          description={state.previewError}
+          action={
+            <Button size="small" onClick={() => state.upload && reloadPreview(state.upload, state.sheetName, state.headerRow)}>
+              {t('重试')}
+            </Button>
+          }
+        />
+      )}
 
       <Card
         size="small"
@@ -293,7 +319,7 @@ export default function ImportStep2({
                 closable={!uniqueLocked}
                 onClose={() => patchDirty({ uniqueFields: state.uniqueFields.filter((x) => x !== f) })}
               >
-                {f}
+                {fieldLabel(f, fields)}
               </Tag>
             ))}
             {!uniqueLocked && state.uniqueFields.length < 3 && (

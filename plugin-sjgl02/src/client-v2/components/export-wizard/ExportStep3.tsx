@@ -101,7 +101,10 @@ export default function ExportStep3({
 
       {!state.allTables && (
         <Card size="small" title={`🏷️ ${t('选中字段')}`} style={{ marginBottom: 12 }}>
-          {state.selectedFields.map((f) => <Tag key={f} color="blue">{f}</Tag>)}
+          {state.selectedFields.map((f) => {
+            const meta = state.meta?.fields.find((x) => x.name === f);
+            return <Tag key={f} color="blue">{meta ? `${meta.title}(${f})` : f}</Tag>;
+          })}
         </Card>
       )}
 

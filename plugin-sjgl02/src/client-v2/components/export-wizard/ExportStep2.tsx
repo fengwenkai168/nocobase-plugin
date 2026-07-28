@@ -61,15 +61,20 @@ export default function ExportStep2({
 
   const groups = useMemo(() => {
     const fields = state.meta?.fields || [];
+    const wl = state.permission?.exportFields || [];
+    // 白名单非空时按权限配置的字段顺序排列，否则按 meta.fields 原始顺序
+    const orderedFields = wl.length
+      ? wl.map((name) => fields.find((f) => f.name === name)).filter(Boolean) as typeof fields
+      : fields;
     return {
-      regular: fields.filter(
+      regular: orderedFields.filter(
         (f) => !f.ignored && !DATE_TYPES.includes(f.type) && !RELATION_TYPES.includes(f.type) && !f.attachment,
       ),
-      dates: fields.filter((f) => !f.ignored && DATE_TYPES.includes(f.type)),
-      relations: fields.filter((f) => !f.ignored && RELATION_TYPES.includes(f.type) && !f.attachment),
-      attachments: fields.filter((f) => !f.ignored && f.attachment),
+      dates: orderedFields.filter((f) => !f.ignored && DATE_TYPES.includes(f.type)),
+      relations: orderedFields.filter((f) => !f.ignored && RELATION_TYPES.includes(f.type) && !f.attachment),
+      attachments: orderedFields.filter((f) => !f.ignored && f.attachment),
     };
-  }, [state.meta]);
+  }, [state.meta, state.permission]);
 
   const whitelist = state.permission?.exportFields || [];
   const isAllowed = (name: string) => !whitelist.length || whitelist.includes(name);

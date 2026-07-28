@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Avatar, Input, Tabs } from 'antd';
+import { Avatar, Collapse, Input } from 'antd';
 import { useT } from '../../locale';
 import { useApi } from '../../services/api';
 
@@ -54,30 +54,47 @@ export default function TargetSidebar({
     color: active ? '#1677ff' : undefined,
   });
 
+  const filteredUsers = users.filter((u) => match(u.name) || match(u.roles.map((r) => r.name).join(',')));
+  const filteredRoles = roles.filter((r) => match(cleanTitle(r.title)) || match(r.name));
+  const hasMatch = !!keyword;
+  const activeKeys = hasMatch ? ['users', 'roles'] : ['users', 'roles'];
+
   return (
     <div style={{ width: 240, flexShrink: 0, border: '1px solid #e8e8e8', borderRadius: 8, padding: 8, maxHeight: 640, overflowY: 'auto' }}>
       <div style={{ fontSize: 13, fontWeight: 600, padding: '8px 8px 12px' }}>👥 {t('用户/角色')}</div>
       <Input.Search size="small" placeholder={t('搜索...')} style={{ marginBottom: 8 }} onSearch={setKeyword} onChange={(e) => setKeyword(e.target.value)} allowClear />
-      <div style={{ fontSize: 11, color: '#999', padding: '8px 8px 4px', fontWeight: 600 }}>👤 {t('用户')} ({users.length})</div>
-      {users.filter((u) => match(u.name) || match(u.roles.map((r) => r.name).join(','))).map((u) => {
-        const roleTitles = u.roles.map((r) => cleanTitle(r.title || r.name)).join('·');
-        return (
-          <div key={u.id} style={itemStyle(selected?.type === 'user' && selected.id === String(u.id))} onClick={() => onSelect({ type: 'user', id: String(u.id), name: u.name, roleNames: u.roles.map((r) => r.name), roleTitles })}>
-            <Avatar size={28} style={{ background: '#1677ff', fontSize: 12, flexShrink: 0 }}>{u.name[0]}</Avatar>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13 }}>{u.name}</div>
-              <div style={{ fontSize: 11, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{roleTitles || '-'}</div>
-            </div>
-          </div>
-        );
-      })}
-      <div style={{ fontSize: 11, color: '#999', padding: '8px 8px 4px', fontWeight: 600 }}>🔐 {t('角色')} ({roles.length})</div>
-      {roles.filter((r) => match(cleanTitle(r.title)) || match(r.name)).map((r) => (
-        <div key={r.name} style={itemStyle(selected?.type === 'role' && selected.id === r.name)} onClick={() => onSelect({ type: 'role', id: r.name, name: `${cleanTitle(r.title)}(${r.name})` })}>
-          <Avatar size={28} style={{ background: '#52c41a', fontSize: 12, flexShrink: 0 }}>R</Avatar>
-          <div style={{ fontSize: 13 }}>{cleanTitle(r.title)}({r.name})</div>
-        </div>
-      ))}
+      <Collapse
+        ghost
+        defaultActiveKey={activeKeys}
+        items={[
+          {
+            key: 'users',
+            label: <span style={{ fontSize: 11, color: '#999', fontWeight: 600 }}>👤 {t('用户')} ({filteredUsers.length})</span>,
+            children: filteredUsers.map((u) => {
+              const roleTitles = u.roles.map((r) => cleanTitle(r.title || r.name)).join('·');
+              return (
+                <div key={u.id} style={itemStyle(selected?.type === 'user' && selected.id === String(u.id))} onClick={() => onSelect({ type: 'user', id: String(u.id), name: u.name, roleNames: u.roles.map((r) => r.name), roleTitles })}>
+                  <Avatar size={28} style={{ background: '#1677ff', fontSize: 12, flexShrink: 0 }}>{u.name[0]}</Avatar>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13 }}>{u.name}</div>
+                    <div style={{ fontSize: 11, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{roleTitles || '-'}</div>
+                  </div>
+                </div>
+              );
+            }),
+          },
+          {
+            key: 'roles',
+            label: <span style={{ fontSize: 11, color: '#999', fontWeight: 600 }}>🔐 {t('角色')} ({filteredRoles.length})</span>,
+            children: filteredRoles.map((r) => (
+              <div key={r.name} style={itemStyle(selected?.type === 'role' && selected.id === r.name)} onClick={() => onSelect({ type: 'role', id: r.name, name: `${cleanTitle(r.title)}(${r.name})` })}>
+                <Avatar size={28} style={{ background: '#52c41a', fontSize: 12, flexShrink: 0 }}>R</Avatar>
+                <div style={{ fontSize: 13 }}>{cleanTitle(r.title)}({r.name})</div>
+              </div>
+            )),
+          },
+        ]}
+      />
     </div>
   );
 }

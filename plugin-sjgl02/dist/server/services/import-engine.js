@@ -58,7 +58,7 @@ class ImportFailedError extends Error {
     this.details = details;
   }
 }
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 2e3;
 const RELATION_TYPES = ["belongsTo", "hasOne", "hasMany", "belongsToMany"];
 class ImportEngine {
   constructor(plugin) {
@@ -189,11 +189,20 @@ class ImportEngine {
           successRows += 1;
         } else {
           await flushInserts();
-          const existing = prepared.uniqueFilter ? await repo.findOne({
-            filter: prepared.uniqueFilter,
-            appends: appendFields.length ? appendFields.map((f) => f.field) : void 0,
-            transaction
-          }) : null;
+          let existing = null;
+          if (prepared.uniqueFilter) {
+            const uniqueKey = JSON.stringify(prepared.uniqueFilter);
+            if (convertCtx.existsCache.has(`__unique__${uniqueKey}`)) {
+              existing = convertCtx.existsCache.get(`__unique__${uniqueKey}`);
+            } else {
+              existing = await repo.findOne({
+                filter: prepared.uniqueFilter,
+                appends: appendFields.length ? appendFields.map((f) => f.field) : void 0,
+                transaction
+              });
+              convertCtx.existsCache.set(`__unique__${uniqueKey}`, existing);
+            }
+          }
           if (existing) {
             if (appendFields.length) {
               await this.mergeAppendRelations(existing, prepared.values, appendFields, metas);
@@ -324,9 +333,13 @@ class ImportEngine {
             const userId = Number(raw);
             if (!Number.isInteger(userId))
               throw new ImportRowError({ row: rowNumber, field: item.field, reason: "\u7528\u6237ID\u683C\u5F0F\u9519\u8BEF", raw });
-            const exists = await this.db.getRepository("users").findOne({ filter: { id: userId }, fields: ["id"] });
-            if (!exists)
-              throw new ImportRowError({ row: rowNumber, field: item.field, reason: "\u586B\u7684\u7528\u6237ID\u5728\u7CFB\u7EDF\u4E2D\u4E0D\u5B58\u5728", raw });
+            const cacheKey = `users:${userId}`;
+            if (!convertCtx.existsCache.has(cacheKey)) {
+              const exists = await this.db.getRepository("users").findOne({ filter: { id: userId }, fields: ["id"] });
+              convertCtx.existsCache.set(cacheKey, !!exists);
+            }
+            if (!convertCtx.existsCache.get(cacheKey))
+              throw new ImportRowError({ row: rowNumber, field: item.field, reason: "\u586B\u5199\u7684\u7528\u6237ID\u5728\u7CFB\u7EDF\u4E2D\u4E0D\u5B58\u5728", raw });
             out[item.field] = userId;
           }
         }
@@ -392,6 +405,7 @@ class ImportEngine {
   async processAttachments(ctx, pending, index, params, pkName) {
     if (!pending.length || !index) return { uploaded: 0 };
     const repo = this.db.getRepository(params.collectionName);
+    const storageInfo = await (0, import_attachment.getStorageInfo)(this.db);
     let uploaded = 0;
     let processed = 0;
     const warnings = [];
@@ -403,7 +417,7 @@ class ImportEngine {
         const recordIds = [];
         for (const fileName of item.fileNames) {
           const filePath = import_node_path.default.join(index.dir, item.folder, fileName);
-          const record = await (0, import_attachment.createAttachmentRecord)(this.db, filePath, fileName);
+          const record = await (0, import_attachment.createAttachmentRecord)(this.db, filePath, fileName, storageInfo);
           recordIds.push(record.id);
         }
         let finalIds = recordIds;

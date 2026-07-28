@@ -61,6 +61,7 @@ var sjgl02Tasks_default = (0, import_database.defineCollection)({
     { type: "string", name: "errorReportPath" },
     { type: "integer", name: "permissionConfigId" },
     { type: "string", name: "permissionType" },
+    { type: "string", name: "permissionLabel" },
     { type: "text", name: "message" },
     { type: "date", name: "startedAt" },
     { type: "date", name: "doneAt" },

@@ -3,6 +3,7 @@ import { App, Button, Input, Select, Table, Tag } from 'antd';
 import { useT } from '../../locale';
 import { CollectionMeta, FieldMetaInfo, ImportMappingItem, PermConfigInfo } from '../../services/api';
 import FieldConfigPanel, { defaultFieldConfig, isRelationField } from './FieldConfigPanel';
+import { fieldLabel } from './ImportStep2';
 
 const SYSTEM_FIELDS = ['createdAt', 'updatedAt', 'createdById', 'updatedById'];
 
@@ -14,11 +15,17 @@ export function useImportableFields(meta?: CollectionMeta, permission?: PermConf
   return useMemo(() => {
     if (!meta) return [];
     const whitelist = permission?.importFields || [];
-    return meta.fields.filter((f) => {
+    const filtered = meta.fields.filter((f) => {
       if (f.ignored) return false;
       if (whitelist.length && !whitelist.includes(f.name)) return false;
       return true;
     });
+    // 白名单非空时按权限配置的字段顺序排列，否则按 meta.fields 原始顺序
+    if (whitelist.length) {
+      const fieldMap = new Map(filtered.map((f) => [f.name, f]));
+      return whitelist.map((name) => fieldMap.get(name)).filter(Boolean) as FieldMetaInfo[];
+    }
+    return filtered;
   }, [meta, permission]);
 }
 
@@ -323,7 +330,7 @@ export default function MappingTable({
                     value: h,
                     label:
                       usedColumns.has(h) && usedColumns.get(h) !== item.field
-                        ? `${h}（已被 ${usedColumns.get(h)} 占用）`
+                        ? `${h}（已被 ${fieldLabel(usedColumns.get(h)!, fields)} 占用）`
                         : h,
                     disabled: usedColumns.has(h) && usedColumns.get(h) !== item.field,
                   })),
@@ -373,7 +380,7 @@ export default function MappingTable({
             title: meta ? `${t('数据表字段')}(${meta.collectionTitle}-${meta.collectionName})` : t('数据表字段'),
             render: (_: unknown, item: ImportMappingItem) => {
               const f = fields.find((x) => x.name === item.field);
-              if (!f) return item.field;
+              if (!f) return fieldLabel(item.field, fields);
               return (
                 <span>
                   {requiredFields.includes(f.name) && <span style={{ color: '#ff4d4f' }}>* </span>}
@@ -390,7 +397,7 @@ export default function MappingTable({
               if (!f) return null;
               return (
                 <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {meta?.pk.name === f.name && <Tag color="gold">主键:{f.name}</Tag>}
+                  {meta?.pk.name === f.name && <Tag color="gold">主键:{f.title}({f.name})</Tag>}
                   {uniqueFields.includes(f.name) && <Tag color="orange">唯一值</Tag>}
                   {requiredFields.includes(f.name) && <Tag color="red">必填</Tag>}
                   {SYSTEM_FIELDS.includes(f.name) && (

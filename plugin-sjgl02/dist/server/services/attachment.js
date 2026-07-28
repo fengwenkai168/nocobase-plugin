@@ -39,6 +39,7 @@ __export(attachment_exports, {
   attachmentExists: () => attachmentExists,
   createAttachmentRecord: () => createAttachmentRecord,
   extractAttachmentArchive: () => extractAttachmentArchive,
+  getStorageInfo: () => getStorageInfo,
   isAllowedAttachment: () => isAllowedAttachment,
   listArchiveFolders: () => listArchiveFolders
 });
@@ -130,7 +131,7 @@ const BLOCKED_EXTS = [".exe", ".bat", ".sh", ".com", ".msi", ".dll"];
 function isAllowedAttachment(fileName) {
   return !BLOCKED_EXTS.includes(import_node_path.default.extname(fileName).toLowerCase());
 }
-async function createAttachmentRecord(db, filePath, fileName) {
+async function getStorageInfo(db) {
   var _a;
   const storagesRepo = db.getRepository("storages");
   let storage = await storagesRepo.findOne({ filter: { default: true } });
@@ -146,6 +147,10 @@ async function createAttachmentRecord(db, filePath, fileName) {
   }
   const storagePath = String(storageJson.path || "").replace(/^\/|\/$/g, "");
   const documentRoot = ((_a = storageJson.options) == null ? void 0 : _a.documentRoot) ? import_node_path.default.resolve(String(storageJson.options.documentRoot)) : (0, import_utils.storagePathJoin)("uploads");
+  return { storagePath, documentRoot, storageId: storageJson.id };
+}
+async function createAttachmentRecord(db, filePath, fileName, storageInfo) {
+  const { storagePath, documentRoot, storageId } = storageInfo || await getStorageInfo(db);
   const targetDir = import_node_path.default.join(documentRoot, storagePath);
   await import_promises.default.mkdir(targetDir, { recursive: true });
   const stat = await import_promises.default.stat(filePath);
@@ -161,7 +166,7 @@ async function createAttachmentRecord(db, filePath, fileName) {
       path: storagePath,
       size: stat.size,
       mimetype: MIME_MAP[extname.toLowerCase()] || "application/octet-stream",
-      storageId: storageJson.id
+      storageId
     }
   });
   return record.toJSON();
@@ -171,6 +176,7 @@ async function createAttachmentRecord(db, filePath, fileName) {
   attachmentExists,
   createAttachmentRecord,
   extractAttachmentArchive,
+  getStorageInfo,
   isAllowedAttachment,
   listArchiveFolders
 });

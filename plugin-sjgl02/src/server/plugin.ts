@@ -71,7 +71,7 @@ export class PluginSjgl02Server extends Plugin {
           'sjgl02Tasks:retry',
         ],
       ],
-      ['pm.sjgl02.permission', ['sjgl02Permissions:*', 'sjgl02PermissionLogs:list']],
+      ['pm.sjgl02.permission', ['sjgl02Permissions:*', 'sjgl02PermissionLogs:list', 'sjgl02:permListByCollection']],
     ];
     for (const [name, actions] of snippets) {
       this.app.acl.registerSnippet({ name, actions });

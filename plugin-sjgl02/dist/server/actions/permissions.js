@@ -85,7 +85,7 @@ function registerPermissionLogHooks(plugin) {
     }
   };
   db.on("sjgl02Permissions.afterCreate", async (model, options) => {
-    var _a, _b;
+    var _a, _b, _c;
     const values = model.toJSON();
     await writeLog(
       {
@@ -100,11 +100,11 @@ function registerPermissionLogHooks(plugin) {
         afterValue: values,
         summary: `\u65B0\u589E\u6743\u9650:${summarize(values)}`
       },
-      (_b = (_a = options == null ? void 0 : options.context) == null ? void 0 : _a.state) == null ? void 0 : _b.currentUserId
+      (_c = (_b = (_a = options == null ? void 0 : options.context) == null ? void 0 : _a.state) == null ? void 0 : _b.currentUser) == null ? void 0 : _c.id
     );
   });
   db.on("sjgl02Permissions.afterUpdate", async (model, options) => {
-    var _a, _b;
+    var _a, _b, _c;
     const after = model.toJSON();
     const before = beforeSnapshots.get(after.id) || after;
     beforeSnapshots.delete(after.id);
@@ -122,11 +122,11 @@ function registerPermissionLogHooks(plugin) {
         afterValue: after,
         summary: diffSummary(before, after)
       },
-      (_b = (_a = options == null ? void 0 : options.context) == null ? void 0 : _a.state) == null ? void 0 : _b.currentUserId
+      (_c = (_b = (_a = options == null ? void 0 : options.context) == null ? void 0 : _a.state) == null ? void 0 : _b.currentUser) == null ? void 0 : _c.id
     );
   });
   db.on("sjgl02Permissions.afterDestroy", async (model, options) => {
-    var _a, _b;
+    var _a, _b, _c;
     const values = model.toJSON();
     await writeLog(
       {
@@ -141,7 +141,7 @@ function registerPermissionLogHooks(plugin) {
         afterValue: null,
         summary: `\u79FB\u9664\u6743\u9650:${summarize(values)}`
       },
-      (_b = (_a = options == null ? void 0 : options.context) == null ? void 0 : _a.state) == null ? void 0 : _b.currentUserId
+      (_c = (_b = (_a = options == null ? void 0 : options.context) == null ? void 0 : _a.state) == null ? void 0 : _b.currentUser) == null ? void 0 : _c.id
     );
   });
 }
@@ -208,6 +208,35 @@ function registerPermissionActions(plugin) {
         result.inherited = groups;
       }
       ctx.body = result;
+      await next();
+    },
+    "permListByCollection": async (ctx, next) => {
+      const params = { ...ctx.action.params || {}, ...ctx.action.params.values || {} };
+      const { collectionName } = params;
+      if (!collectionName) {
+        ctx.throw(400, "\u7F3A\u5C11\u53C2\u6570 collectionName");
+      }
+      const repo = plugin.db.getRepository("sjgl02Permissions");
+      const records = await repo.find({
+        filter: { collectionName },
+        sort: ["targetType", "targetId", "id"]
+      });
+      const list = records.map((m) => {
+        const json = m.toJSON();
+        return {
+          id: json.id,
+          targetType: json.targetType,
+          targetId: json.targetId,
+          targetName: json.targetName,
+          collectionName: json.collectionName,
+          collectionTitle: json.collectionTitle,
+          canImport: json.canImport,
+          canExport: json.canExport,
+          importFields: json.importFields || [],
+          exportFields: json.exportFields || []
+        };
+      });
+      ctx.body = { list };
       await next();
     }
   };

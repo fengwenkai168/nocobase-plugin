@@ -29,6 +29,8 @@ export interface ImportWizardState {
   attachment?: UploadResult;
   meta?: CollectionMeta;
   preview?: PreviewResult;
+  previewLoading?: boolean;
+  previewError?: string | null;
   dirty: boolean;
 }
 
@@ -42,6 +44,8 @@ export const initialImportState: ImportWizardState = {
   mapping: [],
   attachmentEnabled: false,
   dirty: false,
+  previewLoading: false,
+  previewError: null,
 };
 
 export default function ImportWizard({
@@ -105,14 +109,20 @@ export default function ImportWizard({
 
   const loadPreview = useCallback(
     async (upload: UploadResult, sheetName: string, headerRow: number) => {
-      const preview = await api.previewExcel({
-        filePath: upload.filePath,
-        fileKind: upload.fileKind!,
-        sheetName,
-        headerRow,
-      });
-      patch({ preview });
-      return preview;
+      patch({ previewLoading: true, previewError: null });
+      try {
+        const preview = await api.previewExcel({
+          filePath: upload.filePath,
+          fileKind: upload.fileKind!,
+          sheetName,
+          headerRow,
+        });
+        patch({ preview, previewLoading: false });
+        return preview;
+      } catch (error) {
+        patch({ previewLoading: false, previewError: String(error) });
+        throw error;
+      }
     },
     [api, patch],
   );
@@ -128,9 +138,10 @@ export default function ImportWizard({
     const permission = perms.permissions[0];
     const mode = permission?.importModes?.[permission.importModes.length - 1] || 'insert';
     const uniqueFields = permission?.uniqueFields?.length ? [...permission.uniqueFields] : [];
-    patch({ meta, permissions: perms.permissions, permission, mode, uniqueFields, sheetName, headerRow: 1 });
-    await loadPreview(upload, sheetName, 1);
+    patch({ meta, permissions: perms.permissions, permission, mode, uniqueFields, sheetName, headerRow: 1, preview: undefined, previewLoading: false, previewError: null });
     setStep(1);
+    // 后台异步预览，不阻塞进入步骤2
+    loadPreview(upload, sheetName, 1).catch(() => {});
   }, [api, loadPreview, patch]);
 
   return (

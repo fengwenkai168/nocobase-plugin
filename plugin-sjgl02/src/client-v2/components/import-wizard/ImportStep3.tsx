@@ -4,6 +4,7 @@ import { useT } from '../../locale';
 import { useApi } from '../../services/api';
 import { ImportWizardState } from './ImportWizard';
 import { modeLabel } from './modeLabels';
+import { fieldLabel } from './ImportStep2';
 
 export default function ImportStep3({
   state,
@@ -62,7 +63,7 @@ export default function ImportStep3({
     [t('导入的Sheet'), state.sheetName],
     [t('表头行'), `第${state.headerRow}行`],
     [t('导入模式'), modeLabel(t, state.mode)],
-    [t('唯一值'), state.uniqueFields.length ? state.uniqueFields.join(', ') : t('无')],
+    [t('唯一值'), state.uniqueFields.length ? state.uniqueFields.map((f) => fieldLabel(f, state.meta?.fields || [])).join(', ') : t('无')],
     [t('附件'), attachSummary],
     [t('空白值处理'), state.blankStrategy === 'clear' ? t('按Excel更新（清空）') : t('不更新（保留原值）')],
     [t('事务模式'), t('严格模式（失败全部回滚）')],

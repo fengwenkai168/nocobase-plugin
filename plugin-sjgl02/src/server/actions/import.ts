@@ -221,8 +221,8 @@ export function registerImportActions(plugin: Plugin) {
       }
 
       const collection = plugin.db.getCollection(String(values.collectionName));
-      // ADR-019：选用户权限执行时，数据 createdBy=该用户；选角色权限时为操作人；任务 createdBy 恒为操作人
-      const operatorUserId = config.targetType === 'user' && config.id !== null ? Number(config.targetId) : userId;
+      // 数据 createdBy/updatedBy 恒为实际操作人（权限用户仅控制字段/模式权限，不影响数据归属）
+      const operatorUserId = userId;
       const taskParams: ImportTaskParams = {
         filePath: String(values.filePath),
         fileName: String(values.fileName),
@@ -247,6 +247,7 @@ export function registerImportActions(plugin: Plugin) {
         filePath: String(values.filePath),
         permissionConfigId: config.id ?? undefined,
         permissionType: config.targetType,
+        permissionLabel: config.targetName ? `${config.targetType === 'user' ? '👤' : '👥'} ${config.targetName}` : undefined,
       });
       ctx.body = { taskId: task.get('id'), rowCount };
       await next();

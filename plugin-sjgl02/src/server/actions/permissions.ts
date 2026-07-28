@@ -79,7 +79,7 @@ export function registerPermissionLogHooks(plugin: Plugin) {
         afterValue: values,
         summary: `新增权限:${summarize(values)}`,
       },
-      (options?.context as { state?: { currentUserId?: number } })?.state?.currentUserId,
+      (options?.context as { state?: { currentUser?: { id?: number } } })?.state?.currentUser?.id,
     );
   });
 
@@ -101,7 +101,7 @@ export function registerPermissionLogHooks(plugin: Plugin) {
         afterValue: after,
         summary: diffSummary(before, after),
       },
-      (options?.context as { state?: { currentUserId?: number } })?.state?.currentUserId,
+      (options?.context as { state?: { currentUser?: { id?: number } } })?.state?.currentUser?.id,
     );
   });
 
@@ -120,7 +120,7 @@ export function registerPermissionLogHooks(plugin: Plugin) {
         afterValue: null,
         summary: `移除权限:${summarize(values)}`,
       },
-      (options?.context as { state?: { currentUserId?: number } })?.state?.currentUserId,
+      (options?.context as { state?: { currentUser?: { id?: number } } })?.state?.currentUser?.id,
     );
   });
 }
@@ -195,6 +195,36 @@ export function registerPermissionActions(plugin: Plugin) {
         result.inherited = groups;
       }
       ctx.body = result;
+      await next();
+    },
+
+    'permListByCollection': async (ctx, next) => {
+      const params = { ...(ctx.action.params || {}), ...(ctx.action.params.values || {}) };
+      const { collectionName } = params as { collectionName: string };
+      if (!collectionName) {
+        ctx.throw(400, '缺少参数 collectionName');
+      }
+      const repo = plugin.db.getRepository('sjgl02Permissions');
+      const records = await repo.find({
+        filter: { collectionName },
+        sort: ['targetType', 'targetId', 'id'],
+      });
+      const list = records.map((m) => {
+        const json = m.toJSON();
+        return {
+          id: json.id,
+          targetType: json.targetType,
+          targetId: json.targetId,
+          targetName: json.targetName,
+          collectionName: json.collectionName,
+          collectionTitle: json.collectionTitle,
+          canImport: json.canImport,
+          canExport: json.canExport,
+          importFields: json.importFields || [],
+          exportFields: json.exportFields || [],
+        };
+      });
+      ctx.body = { list };
       await next();
     },
   };

@@ -33,6 +33,7 @@ interface SubmitOptions {
   fileSize?: number;
   permissionConfigId?: number;
   permissionType?: string;
+  permissionLabel?: string;
 }
 
 export class TaskQueueService {

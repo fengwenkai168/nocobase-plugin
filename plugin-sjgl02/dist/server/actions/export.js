@@ -79,6 +79,7 @@ function registerExportActions(plugin) {
       let exportFilter = null;
       let permissionConfigId;
       let permissionType;
+      let permissionLabel;
       if (allTables) {
         const roleNames = await permissionService.getUserRoleNames(userId);
         if (!permissionService.isAdmin(roleNames)) {
@@ -109,6 +110,7 @@ function registerExportActions(plugin) {
         exportFilter = config.exportFilter;
         permissionConfigId = config.id ?? void 0;
         permissionType = config.targetType;
+        permissionLabel = config.targetName ? `${config.targetType === "user" ? "\u{1F464}" : "\u{1F465}"} ${config.targetName}` : void 0;
       }
       const collectionName = allTables ? "__all__" : String(values.collectionName);
       const collection = allTables ? null : plugin.db.getCollection(collectionName);
@@ -132,7 +134,8 @@ function registerExportActions(plugin) {
         collectionName,
         collectionTitle,
         permissionConfigId,
-        permissionType
+        permissionType,
+        permissionLabel
       });
       ctx.body = { taskId: task.get("id") };
       await next();

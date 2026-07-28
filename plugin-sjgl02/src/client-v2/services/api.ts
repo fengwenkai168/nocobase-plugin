@@ -27,6 +27,7 @@ export interface TaskRecord {
   createdBy?: { id: number; nickname?: string; username?: string };
   permissionConfigId?: number;
   permissionType?: string;
+  permissionLabel?: string;
 }
 
 export interface TaskStats {
@@ -308,6 +309,24 @@ export function useApi() {
         }>('sjgl02:permList', { targetType, targetId });
       },
 
+      async permListByCollection(
+        collectionName: string,
+      ): Promise<{
+        list: Array<{
+          id: number;
+          targetType: 'user' | 'role';
+          targetId: string;
+          targetName: string;
+          collectionName: string;
+          canImport: boolean;
+          canExport: boolean;
+          importFields: string[];
+          exportFields: string[];
+        }>;
+      }> {
+        return get('sjgl02:permListByCollection', { collectionName });
+      },
+
       async createPermission(values: Record<string, unknown>) {
         return post('sjgl02Permissions:create', values);
       },
@@ -339,6 +358,7 @@ export function useApi() {
             pageSize: params.pageSize || 50,
             sort: '-id',
             filter: and.length ? { $and: and } : {},
+            appends: ['createdBy'],
           },
         });
         return { data: (res.data?.data || []) as PermLogRecord[], meta: res.data?.meta || { count: 0 } };
@@ -387,4 +407,5 @@ export interface PermLogRecord {
   summary?: string;
   createdAt?: string;
   createdById?: number;
+  createdBy?: { id: number; nickname?: string; username?: string };
 }

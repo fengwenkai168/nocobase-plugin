@@ -98,11 +98,11 @@ export function isAllowedAttachment(fileName: string): boolean {
   return !BLOCKED_EXTS.includes(path.extname(fileName).toLowerCase());
 }
 
-export async function createAttachmentRecord(
-  db: Database,
-  filePath: string,
-  fileName: string,
-): Promise<Record<string, unknown>> {
+export async function getStorageInfo(db: Database): Promise<{
+  storagePath: string;
+  documentRoot: string;
+  storageId: unknown;
+}> {
   const storagesRepo = db.getRepository('storages');
   let storage = await storagesRepo.findOne({ filter: { default: true } });
   if (!storage) {
@@ -119,6 +119,16 @@ export async function createAttachmentRecord(
   const documentRoot = (storageJson.options as Record<string, unknown>)?.documentRoot
     ? path.resolve(String((storageJson.options as Record<string, unknown>).documentRoot))
     : storagePathJoin('uploads');
+  return { storagePath, documentRoot, storageId: storageJson.id };
+}
+
+export async function createAttachmentRecord(
+  db: Database,
+  filePath: string,
+  fileName: string,
+  storageInfo?: { storagePath: string; documentRoot: string; storageId: unknown },
+): Promise<Record<string, unknown>> {
+  const { storagePath, documentRoot, storageId } = storageInfo || await getStorageInfo(db);
   const targetDir = path.join(documentRoot, storagePath);
   await fsp.mkdir(targetDir, { recursive: true });
   const stat = await fsp.stat(filePath);
@@ -134,7 +144,7 @@ export async function createAttachmentRecord(
       path: storagePath,
       size: stat.size,
       mimetype: MIME_MAP[extname.toLowerCase()] || 'application/octet-stream',
-      storageId: storageJson.id,
+      storageId,
     },
   });
   return record.toJSON() as Record<string, unknown>;

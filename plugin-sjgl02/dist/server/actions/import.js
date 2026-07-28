@@ -238,7 +238,7 @@ function registerImportActions(plugin) {
         }
       }
       const collection = plugin.db.getCollection(String(values.collectionName));
-      const operatorUserId = config.targetType === "user" && config.id !== null ? Number(config.targetId) : userId;
+      const operatorUserId = userId;
       const taskParams = {
         filePath: String(values.filePath),
         fileName: String(values.fileName),
@@ -262,7 +262,8 @@ function registerImportActions(plugin) {
         fileName: String(values.fileName),
         filePath: String(values.filePath),
         permissionConfigId: config.id ?? void 0,
-        permissionType: config.targetType
+        permissionType: config.targetType,
+        permissionLabel: config.targetName ? `${config.targetType === "user" ? "\u{1F464}" : "\u{1F465}"} ${config.targetName}` : void 0
       });
       ctx.body = { taskId: task.get("id"), rowCount };
       await next();

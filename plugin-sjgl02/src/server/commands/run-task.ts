@@ -2,7 +2,7 @@ import type { Application } from '@nocobase/server';
 import { TaskQueueService } from '../services/task-queue';
 import { ImportEngine, ImportTaskParams } from '../services/import-engine';
 import { ExportEngine, ExportTaskParams } from '../services/export-engine';
-import PluginSjgl02Server from '../plugin';
+import type PluginSjgl02Server from '../plugin';
 
 // worker 子进程执行入口：WORKER_MODE='-' 瞬态模式下由 Gateway 经 runAsCLI 调用。
 // 注意：runAsCLI 不执行插件 load()，这里在命令内自装配任务队列与引擎（引擎仅依赖 plugin.db）。
@@ -17,7 +17,7 @@ export default function runTaskCommand(app: Application) {
       try {
         // 瞬态应用不触发 beforeStart，DB 动态集合（collections 表记录）需手动加载，否则引擎找不到表
         await app.db.getRepository('collections').load({});
-        const loaded = app.pm.get(PluginSjgl02Server) as PluginSjgl02Server;
+        const loaded = app.pm.get('@my-project/plugin-sjgl02') as PluginSjgl02Server;
         if (loaded?.taskQueue) {
           await loaded.taskQueue.executeAsWorker(taskId);
         } else {
