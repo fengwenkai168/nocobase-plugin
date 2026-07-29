@@ -75,6 +75,7 @@ export class ImportFailedError extends Error {
 }
 
 const BATCH_SIZE = 2000;
+const PRELOAD_CHUNK = 2000;
 const RELATION_TYPES = ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'];
 
 interface PendingAttachment {
@@ -157,8 +158,10 @@ export class ImportEngine {
 
     const errors: RowError[] = [];
     const previewRows: Array<Record<string, unknown>> = [];
+    const performanceLog: string[] = [];
     let totalRows = 0;
     let successRows = 0;
+    let batchIdx = 0;
     const pkSeen = new Set<unknown>();
     const pkMapping = effectiveMapping.find((m) => m.field === pk.name);
     const pkIsManual = !pk.auto;
@@ -184,6 +187,7 @@ export class ImportEngine {
     const pendingAttachments: PendingAttachment[] = [];
     try {
       let insertBuffer: Array<Record<string, unknown>> = [];
+      const upsertChunk: PreparedRow[] = [];
       const flushInserts = async () => {
         if (!insertBuffer.length) return;
         await collection.model.bulkCreate(insertBuffer, { transaction, context: writeContext } as never);
@@ -236,38 +240,17 @@ export class ImportEngine {
           }
           successRows += 1;
         } else {
-          await flushInserts();
-          // 批量预加载优化：用 existCache 缓存唯一值查询结果，避免重复唯一值重复查库
-          let existing: { get: (key: string) => unknown } | null = null;
-          if (prepared.uniqueFilter) {
-            const uniqueKey = JSON.stringify(prepared.uniqueFilter);
-            if (convertCtx.existsCache.has(`__unique__${uniqueKey}`)) {
-              existing = convertCtx.existsCache.get(`__unique__${uniqueKey}`) as { get: (key: string) => unknown } | null;
-            } else {
-              existing = await repo.findOne({
-                filter: prepared.uniqueFilter,
-                appends: appendFields.length ? appendFields.map((f) => f.field) : undefined,
-                transaction,
-              }) as { get: (key: string) => unknown } | null;
-              convertCtx.existsCache.set(`__unique__${uniqueKey}`, existing);
-            }
+          // upsert/update 模式：收集到 chunk，满后批量预加载
+          upsertChunk.push(prepared);
+          if (upsertChunk.length >= PRELOAD_CHUNK) {
+            batchIdx++;
+            await this.processUpsertChunk(upsertChunk, {
+              repo, pk, appendFields, metas, transaction, writeContext,
+              pendingAttachments, params, ctx, convertCtx, performanceLog, batchIdx,
+            });
+            successRows += upsertChunk.length;
+            upsertChunk.length = 0;
           }
-          if (existing) {
-            if (appendFields.length) {
-              await this.mergeAppendRelations(existing, prepared.values, appendFields, metas);
-            }
-            await repo.update({
-              filter: prepared.uniqueFilter!,
-              values: prepared.values,
-              transaction,
-              context: writeContext,
-            } as never);
-            for (const att of prepared.attachments) pendingAttachments.push({ rowPk: existing.get(pk.name), ...att });
-          } else if (params.mode === 'upsert') {
-            const created = await repo.create({ values: prepared.values, transaction, context: writeContext } as never);
-            for (const att of prepared.attachments) pendingAttachments.push({ rowPk: created.get(pk.name), ...att });
-          }
-          successRows += 1;
         }
 
         if (totalRows % BATCH_SIZE === 0) {
@@ -276,6 +259,16 @@ export class ImportEngine {
         }
       }
       await flushInserts();
+      // 处理 upsert/update 剩余的 chunk
+      if (upsertChunk.length) {
+        batchIdx++;
+        await this.processUpsertChunk(upsertChunk, {
+          repo, pk, appendFields, metas, transaction, writeContext,
+          pendingAttachments, params, ctx, convertCtx, performanceLog, batchIdx,
+        });
+        successRows += upsertChunk.length;
+        upsertChunk.length = 0;
+      }
       await transaction.commit();
       await ctx.updateStats({ totalRows, successRows });
       await ctx.updateProgress(totalRows, totalRows);
@@ -288,6 +281,7 @@ export class ImportEngine {
         errorRows: 0,
         errors: [],
         previewRows,
+        performanceLog,
         attachments: attachmentResult,
       };
     } catch (error) {
@@ -460,6 +454,86 @@ export class ImportEngine {
       uniqueFilter: params.mode === 'insert' ? null : uniqueFilter,
       attachments,
     };
+  }
+
+  private async processUpsertChunk(
+    chunk: PreparedRow[],
+    opts: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      repo: any;
+      pk: { name: string; type: string; auto: boolean };
+      appendFields: ImportMappingItem[];
+      metas: Map<string, FieldMeta>;
+      transaction: Transaction;
+      writeContext: unknown;
+      pendingAttachments: PendingAttachment[];
+      params: ImportTaskParams;
+      ctx: TaskHandlerContext;
+      convertCtx: ConvertContext;
+      performanceLog: string[];
+      batchIdx: number;
+    },
+  ): Promise<void> {
+    const { repo, pk, appendFields, metas, transaction, writeContext, pendingAttachments, params, performanceLog, batchIdx } = opts;
+    const appendFieldNames = appendFields.length ? appendFields.map((f) => f.field) : undefined;
+    const batchStart = Date.now();
+
+    // 1. 批量预加载：用第一个唯一值字段做 WHERE IN，一次查询拉取已存在的记录
+    const uniqueField = params.uniqueFields[0];
+    const uniqueValues = chunk
+      .filter((r) => r.uniqueFilter && !isBlank(r.uniqueFilter[uniqueField]))
+      .map((r) => r.uniqueFilter![uniqueField]);
+    const dedupedValues = [...new Set(uniqueValues.map((v) => String(v)))];
+
+    const existMap = new Map<string, { get: (key: string) => unknown }>();
+    const preloadStart = Date.now();
+    if (dedupedValues.length) {
+      const existing = await repo.find({
+        filter: { [uniqueField]: { $in: dedupedValues } },
+        appends: appendFieldNames,
+        transaction,
+      });
+      for (const record of existing) {
+        const key = params.uniqueFields.map((f) => String(record.get(f))).join('\0');
+        existMap.set(key, record as { get: (key: string) => unknown });
+      }
+    }
+    const preloadMs = Date.now() - preloadStart;
+
+    // 2. 逐行处理：从 existMap 中查找，命中则 update，未命中且 upsert 则 create
+    const writeStart = Date.now();
+    let updateCount = 0;
+    let createCount = 0;
+    for (const prepared of chunk) {
+      opts.ctx.throwIfAborted();
+      const key = prepared.uniqueFilter
+        ? params.uniqueFields.map((f) => String(prepared.uniqueFilter[f])).join('\0')
+        : '';
+      const existing = existMap.get(key) ?? null;
+
+      if (existing) {
+        if (appendFields.length) {
+          await this.mergeAppendRelations(existing, prepared.values, appendFields, metas);
+        }
+        await repo.update({
+          filter: prepared.uniqueFilter!,
+          values: prepared.values,
+          transaction,
+          context: writeContext,
+        } as never);
+        for (const att of prepared.attachments) pendingAttachments.push({ rowPk: existing.get(pk.name), ...att });
+        updateCount++;
+      } else if (params.mode === 'upsert') {
+        const created = await repo.create({ values: prepared.values, transaction, context: writeContext } as never);
+        for (const att of prepared.attachments) pendingAttachments.push({ rowPk: created.get(pk.name), ...att });
+        createCount++;
+      }
+    }
+    const writeMs = Date.now() - writeStart;
+    const batchMs = Date.now() - batchStart;
+    performanceLog.push(
+      `批次 ${batchIdx}: ${chunk.length}行 | 预加载 ${preloadMs}ms (命中${existMap.size}/${dedupedValues.length}) | 写入 ${writeMs}ms (更新${updateCount}/新增${createCount}) | 总计 ${batchMs}ms`,
+    );
   }
 
   private async mergeAppendRelations(

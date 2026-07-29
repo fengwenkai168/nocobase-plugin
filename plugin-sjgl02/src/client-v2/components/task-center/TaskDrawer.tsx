@@ -75,6 +75,7 @@ export default function TaskDrawer({
   const result = (task?.result || {}) as Record<string, unknown>;
   const errors = (result.errors || []) as TaskError[];
   const previewRows = (result.previewRows || []) as unknown[][];
+  const performanceLog = (result.performanceLog || []) as string[];
   const headers = (result.headers || []) as string[];
   const mapping = (params.mapping || []) as Array<{
     field: string;
@@ -318,11 +319,11 @@ export default function TaskDrawer({
                         pagination={false}
                         scroll={{ x: true }}
                         dataSource={previewRows.map((row) => {
-                          const arr = Array.isArray(row) ? row : [];
+                          const obj = row as Record<string, unknown>;
                           return Object.fromEntries(
                             effectiveMapping.map((m, i) => [
                               `c${i}`,
-                              m.source === 'custom' ? m.value || '' : arr[m.columnIndex ?? -1] ?? '',
+                              m.source === 'custom' ? m.value || '' : obj[m.field] ?? '',
                             ]),
                           );
                         })}
@@ -368,6 +369,17 @@ export default function TaskDrawer({
                     />
                   );
                 })(),
+              }] : []),
+              ...(performanceLog.length > 0 ? [{
+                key: 'perf',
+                label: <span style={{ fontWeight: 600 }}>⏱ {t('性能日志')}</span>,
+                children: (
+                  <div style={{ background: '#f0f5ff', borderRadius: 6, padding: 12, fontSize: 12, fontFamily: 'monospace', lineHeight: 1.8 }}>
+                    {performanceLog.map((line, i) => (
+                      <div key={i} style={{ color: i % 2 === 0 ? '#333' : '#666' }}>{line}</div>
+                    ))}
+                  </div>
+                ),
               }] : []),
               {
                 key: 'logs',

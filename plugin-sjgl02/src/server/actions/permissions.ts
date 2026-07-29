@@ -56,9 +56,9 @@ export function registerPermissionLogHooks(plugin: Plugin) {
     beforeSnapshots.set(json.id ?? model, { ...previous });
   });
 
-  const writeLog = async (entry: Record<string, unknown>, operatorId?: number) => {
+  const writeLog = async (entry: Record<string, unknown>, context?: unknown) => {
     try {
-      await logsRepo().create({ values: { ...entry, createdById: operatorId } });
+      await logsRepo().create({ values: entry, context: context as never });
     } catch (error) {
       plugin.app.logger.error('[sjgl02] 权限日志写入失败', error);
     }
@@ -79,7 +79,7 @@ export function registerPermissionLogHooks(plugin: Plugin) {
         afterValue: values,
         summary: `新增权限:${summarize(values)}`,
       },
-      (options?.context as { state?: { currentUser?: { id?: number } } })?.state?.currentUser?.id,
+      options?.context,
     );
   });
 
@@ -101,7 +101,7 @@ export function registerPermissionLogHooks(plugin: Plugin) {
         afterValue: after,
         summary: diffSummary(before, after),
       },
-      (options?.context as { state?: { currentUser?: { id?: number } } })?.state?.currentUser?.id,
+      options?.context,
     );
   });
 
@@ -120,7 +120,7 @@ export function registerPermissionLogHooks(plugin: Plugin) {
         afterValue: null,
         summary: `移除权限:${summarize(values)}`,
       },
-      (options?.context as { state?: { currentUser?: { id?: number } } })?.state?.currentUser?.id,
+      options?.context,
     );
   });
 }

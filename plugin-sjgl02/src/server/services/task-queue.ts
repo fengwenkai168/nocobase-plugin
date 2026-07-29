@@ -3,7 +3,7 @@ import { WorkerTaskRunner } from './worker-task-runner';
 
 export const TASK_CHANNEL = 'sjgl02:task';
 // 行数达到该阈值的任务改由 worker 子进程执行（避免大任务阻塞主进程事件循环）
-const WORKER_MIN_ROWS = 50_000;
+const WORKER_MIN_ROWS = 10_000;
 export const TASK_STATUS = {
   PENDING: 'pending',
   RUNNING: 'running',

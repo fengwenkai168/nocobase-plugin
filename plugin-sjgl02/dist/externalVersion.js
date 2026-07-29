@@ -17,7 +17,7 @@ module.exports = {
   "@nocobase/utils": "2.1.9",
   "@nocobase/database": "2.1.9",
   "sequelize": "6.35.2",
-  "@ant-design/icons": "5.6.1",
   "@dnd-kit/core": "6.1.0",
-  "@dnd-kit/sortable": "7.0.2"
+  "@dnd-kit/sortable": "7.0.2",
+  "@ant-design/icons": "5.6.1"
 };

@@ -59,6 +59,7 @@ class ImportFailedError extends Error {
   }
 }
 const BATCH_SIZE = 2e3;
+const PRELOAD_CHUNK = 2e3;
 const RELATION_TYPES = ["belongsTo", "hasOne", "hasMany", "belongsToMany"];
 class ImportEngine {
   constructor(plugin) {
@@ -118,8 +119,10 @@ class ImportEngine {
     };
     const errors = [];
     const previewRows = [];
+    const performanceLog = [];
     let totalRows = 0;
     let successRows = 0;
+    let batchIdx = 0;
     const pkSeen = /* @__PURE__ */ new Set();
     const pkMapping = effectiveMapping.find((m) => m.field === pk.name);
     const pkIsManual = !pk.auto;
@@ -140,6 +143,7 @@ class ImportEngine {
     const pendingAttachments = [];
     try {
       let insertBuffer = [];
+      const upsertChunk = [];
       const flushInserts = async () => {
         if (!insertBuffer.length) return;
         await collection.model.bulkCreate(insertBuffer, { transaction, context: writeContext });
@@ -188,37 +192,26 @@ class ImportEngine {
           }
           successRows += 1;
         } else {
-          await flushInserts();
-          let existing = null;
-          if (prepared.uniqueFilter) {
-            const uniqueKey = JSON.stringify(prepared.uniqueFilter);
-            if (convertCtx.existsCache.has(`__unique__${uniqueKey}`)) {
-              existing = convertCtx.existsCache.get(`__unique__${uniqueKey}`);
-            } else {
-              existing = await repo.findOne({
-                filter: prepared.uniqueFilter,
-                appends: appendFields.length ? appendFields.map((f) => f.field) : void 0,
-                transaction
-              });
-              convertCtx.existsCache.set(`__unique__${uniqueKey}`, existing);
-            }
-          }
-          if (existing) {
-            if (appendFields.length) {
-              await this.mergeAppendRelations(existing, prepared.values, appendFields, metas);
-            }
-            await repo.update({
-              filter: prepared.uniqueFilter,
-              values: prepared.values,
+          upsertChunk.push(prepared);
+          if (upsertChunk.length >= PRELOAD_CHUNK) {
+            batchIdx++;
+            await this.processUpsertChunk(upsertChunk, {
+              repo,
+              pk,
+              appendFields,
+              metas,
               transaction,
-              context: writeContext
+              writeContext,
+              pendingAttachments,
+              params,
+              ctx,
+              convertCtx,
+              performanceLog,
+              batchIdx
             });
-            for (const att of prepared.attachments) pendingAttachments.push({ rowPk: existing.get(pk.name), ...att });
-          } else if (params.mode === "upsert") {
-            const created = await repo.create({ values: prepared.values, transaction, context: writeContext });
-            for (const att of prepared.attachments) pendingAttachments.push({ rowPk: created.get(pk.name), ...att });
+            successRows += upsertChunk.length;
+            upsertChunk.length = 0;
           }
-          successRows += 1;
         }
         if (totalRows % BATCH_SIZE === 0) {
           await ctx.updateProgress(totalRows);
@@ -226,6 +219,25 @@ class ImportEngine {
         }
       }
       await flushInserts();
+      if (upsertChunk.length) {
+        batchIdx++;
+        await this.processUpsertChunk(upsertChunk, {
+          repo,
+          pk,
+          appendFields,
+          metas,
+          transaction,
+          writeContext,
+          pendingAttachments,
+          params,
+          ctx,
+          convertCtx,
+          performanceLog,
+          batchIdx
+        });
+        successRows += upsertChunk.length;
+        upsertChunk.length = 0;
+      }
       await transaction.commit();
       await ctx.updateStats({ totalRows, successRows });
       await ctx.updateProgress(totalRows, totalRows);
@@ -236,6 +248,7 @@ class ImportEngine {
         errorRows: 0,
         errors: [],
         previewRows,
+        performanceLog,
         attachments: attachmentResult
       };
     } catch (error) {
@@ -381,6 +394,58 @@ class ImportEngine {
       uniqueFilter: params.mode === "insert" ? null : uniqueFilter,
       attachments
     };
+  }
+  async processUpsertChunk(chunk, opts) {
+    const { repo, pk, appendFields, metas, transaction, writeContext, pendingAttachments, params, performanceLog, batchIdx } = opts;
+    const appendFieldNames = appendFields.length ? appendFields.map((f) => f.field) : void 0;
+    const batchStart = Date.now();
+    const uniqueField = params.uniqueFields[0];
+    const uniqueValues = chunk.filter((r) => r.uniqueFilter && !(0, import_value_converter.isBlank)(r.uniqueFilter[uniqueField])).map((r) => r.uniqueFilter[uniqueField]);
+    const dedupedValues = [...new Set(uniqueValues.map((v) => String(v)))];
+    const existMap = /* @__PURE__ */ new Map();
+    const preloadStart = Date.now();
+    if (dedupedValues.length) {
+      const existing = await repo.find({
+        filter: { [uniqueField]: { $in: dedupedValues } },
+        appends: appendFieldNames,
+        transaction
+      });
+      for (const record of existing) {
+        const key = params.uniqueFields.map((f) => String(record.get(f))).join("\0");
+        existMap.set(key, record);
+      }
+    }
+    const preloadMs = Date.now() - preloadStart;
+    const writeStart = Date.now();
+    let updateCount = 0;
+    let createCount = 0;
+    for (const prepared of chunk) {
+      opts.ctx.throwIfAborted();
+      const key = prepared.uniqueFilter ? params.uniqueFields.map((f) => String(prepared.uniqueFilter[f])).join("\0") : "";
+      const existing = existMap.get(key) ?? null;
+      if (existing) {
+        if (appendFields.length) {
+          await this.mergeAppendRelations(existing, prepared.values, appendFields, metas);
+        }
+        await repo.update({
+          filter: prepared.uniqueFilter,
+          values: prepared.values,
+          transaction,
+          context: writeContext
+        });
+        for (const att of prepared.attachments) pendingAttachments.push({ rowPk: existing.get(pk.name), ...att });
+        updateCount++;
+      } else if (params.mode === "upsert") {
+        const created = await repo.create({ values: prepared.values, transaction, context: writeContext });
+        for (const att of prepared.attachments) pendingAttachments.push({ rowPk: created.get(pk.name), ...att });
+        createCount++;
+      }
+    }
+    const writeMs = Date.now() - writeStart;
+    const batchMs = Date.now() - batchStart;
+    performanceLog.push(
+      `\u6279\u6B21 ${batchIdx}: ${chunk.length}\u884C | \u9884\u52A0\u8F7D ${preloadMs}ms (\u547D\u4E2D${existMap.size}/${dedupedValues.length}) | \u5199\u5165 ${writeMs}ms (\u66F4\u65B0${updateCount}/\u65B0\u589E${createCount}) | \u603B\u8BA1 ${batchMs}ms`
+    );
   }
   async mergeAppendRelations(existing, values, appendFields, metas) {
     const record = existing;

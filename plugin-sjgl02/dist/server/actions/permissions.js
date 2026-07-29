@@ -77,15 +77,14 @@ function registerPermissionLogHooks(plugin) {
     const previous = model._previousDataValues || (typeof model.previous === "function" ? model.previous() : json);
     beforeSnapshots.set(json.id ?? model, { ...previous });
   });
-  const writeLog = async (entry, operatorId) => {
+  const writeLog = async (entry, context) => {
     try {
-      await logsRepo().create({ values: { ...entry, createdById: operatorId } });
+      await logsRepo().create({ values: entry, context });
     } catch (error) {
       plugin.app.logger.error("[sjgl02] \u6743\u9650\u65E5\u5FD7\u5199\u5165\u5931\u8D25", error);
     }
   };
   db.on("sjgl02Permissions.afterCreate", async (model, options) => {
-    var _a, _b, _c;
     const values = model.toJSON();
     await writeLog(
       {
@@ -100,11 +99,10 @@ function registerPermissionLogHooks(plugin) {
         afterValue: values,
         summary: `\u65B0\u589E\u6743\u9650:${summarize(values)}`
       },
-      (_c = (_b = (_a = options == null ? void 0 : options.context) == null ? void 0 : _a.state) == null ? void 0 : _b.currentUser) == null ? void 0 : _c.id
+      options == null ? void 0 : options.context
     );
   });
   db.on("sjgl02Permissions.afterUpdate", async (model, options) => {
-    var _a, _b, _c;
     const after = model.toJSON();
     const before = beforeSnapshots.get(after.id) || after;
     beforeSnapshots.delete(after.id);
@@ -122,11 +120,10 @@ function registerPermissionLogHooks(plugin) {
         afterValue: after,
         summary: diffSummary(before, after)
       },
-      (_c = (_b = (_a = options == null ? void 0 : options.context) == null ? void 0 : _a.state) == null ? void 0 : _b.currentUser) == null ? void 0 : _c.id
+      options == null ? void 0 : options.context
     );
   });
   db.on("sjgl02Permissions.afterDestroy", async (model, options) => {
-    var _a, _b, _c;
     const values = model.toJSON();
     await writeLog(
       {
@@ -141,7 +138,7 @@ function registerPermissionLogHooks(plugin) {
         afterValue: null,
         summary: `\u79FB\u9664\u6743\u9650:${summarize(values)}`
       },
-      (_c = (_b = (_a = options == null ? void 0 : options.context) == null ? void 0 : _a.state) == null ? void 0 : _b.currentUser) == null ? void 0 : _c.id
+      options == null ? void 0 : options.context
     );
   });
 }

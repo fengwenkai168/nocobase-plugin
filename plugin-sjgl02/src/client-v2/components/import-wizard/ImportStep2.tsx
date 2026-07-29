@@ -84,70 +84,75 @@ export default function ImportStep2({
   const uniqueCandidates = useMemo(() => fields.filter((f) => !f.attachment && !f.multiple), [fields]);
 
   const permissionSummary = state.permission && (
-    <Card size="small" style={{ background: '#f9f5ff', borderColor: '#e8d5f5', marginTop: 12 }}>
-      <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
-        <div>
-          <strong style={{ color: '#722ed1' }}>📋 {t('类型')}：</strong>
-          <Tag color={state.permission.targetType === 'user' ? 'blue' : 'green'}>
-            {state.permission.targetType === 'user' ? t('用户') : t('角色')}
-          </Tag>
-          <strong>{state.permission.targetName}</strong>
-        </div>
-        <div>
-          <strong style={{ color: '#722ed1' }}>⬇ {t('导入模式')}：</strong>
-          {state.permission.importModes.map((m) => (
-            <Tag key={m} color="blue">
-              {modeLabel(t, m)}
-            </Tag>
-          ))}
-          {state.permission.importModes.length <= 1 && <Tag>🔒 {t('只读（权限限定唯一模式）')}</Tag>}
-        </div>
-        <div>
-          <strong style={{ color: '#722ed1' }}>🔑 {t('唯一值')}：</strong>
-          {state.permission.uniqueFields.length ? (
-            <>
-              {state.permission.uniqueFields.map((f) => (
-                <Tag key={f} color="orange">
-                  {fieldLabel(f, fields)}
-                </Tag>
-              ))}
-              <Tag>🔒 {t('由权限锁定')}</Tag>
-            </>
-          ) : (
-            <Tag color="green">✏️ {t('自由选择')}</Tag>
-          )}
-        </div>
-        <div>
-          <strong style={{ color: '#722ed1' }}>❗ {t('必填字段')}：</strong>
-          {state.permission.requiredFields.length ? (
-            state.permission.requiredFields.map((f) => (
-              <Tag key={f} color="red">
-                {fieldLabel(f, fields)}
+    <Collapse
+      size="small"
+      style={{ background: '#f9f5ff', borderColor: '#e8d5f5', marginTop: 12 }}
+      items={[{
+        key: '1',
+        label: (
+          <span style={{ fontSize: 12 }}>
+            {state.permission.targetType === 'user' ? '👤' : '🔐'} {state.permission.targetName}
+            {'（'}{t('模式')}: {state.permission.importModes.map((m) => modeLabel(t, m)).join('/')}{'）'}
+          </span>
+        ),
+        children: (
+          <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
+            <div>
+              <strong style={{ color: '#722ed1' }}>📋 {t('类型')}：</strong>
+              <Tag color={state.permission.targetType === 'user' ? 'blue' : 'green'}>
+                {state.permission.targetType === 'user' ? t('用户') : t('角色')}
               </Tag>
-            ))
-          ) : (
-            <span style={{ color: '#999' }}>{t('无')}</span>
-          )}
-        </div>
-        <div>
-          <strong style={{ color: '#722ed1' }}>✅ {t('可导入字段')}：</strong>
-          {state.permission.importFields.length ? (
-            <>
-              {state.permission.importFields.map((f) => (
-                <Tag key={f} color="blue">
-                  {fieldLabel(f, fields)}
-                </Tag>
+              <strong>{state.permission.targetName}</strong>
+            </div>
+            <div>
+              <strong style={{ color: '#722ed1' }}>⬇ {t('导入模式')}：</strong>
+              {state.permission.importModes.map((m) => (
+                <Tag key={m} color="blue">{modeLabel(t, m)}</Tag>
               ))}
-              <span style={{ color: '#999', fontSize: 11 }}>
-                （{t('共{{count}}个字段', { count: state.permission!.importFields.length })}）
-              </span>
-            </>
-          ) : (
-            <Tag color="green">{t('全部字段')}</Tag>
-          )}
-        </div>
-      </div>
-    </Card>
+              {state.permission.importModes.length <= 1 && <Tag>🔒 {t('只读（权限限定唯一模式）')}</Tag>}
+            </div>
+            <div>
+              <strong style={{ color: '#722ed1' }}>🔑 {t('唯一值')}：</strong>
+              {state.permission.uniqueFields.length ? (
+                <>
+                  {state.permission.uniqueFields.map((f) => (
+                    <Tag key={f} color="orange">{fieldLabel(f, fields)}</Tag>
+                  ))}
+                  <Tag>🔒 {t('由权限锁定')}</Tag>
+                </>
+              ) : (
+                <Tag color="green">✏️ {t('自由选择')}</Tag>
+              )}
+            </div>
+            <div>
+              <strong style={{ color: '#722ed1' }}>❗ {t('必填字段')}：</strong>
+              {state.permission.requiredFields.length ? (
+                state.permission.requiredFields.map((f) => (
+                  <Tag key={f} color="red">{fieldLabel(f, fields)}</Tag>
+                ))
+              ) : (
+                <span style={{ color: '#999' }}>{t('无')}</span>
+              )}
+            </div>
+            <div>
+              <strong style={{ color: '#722ed1' }}>✅ {t('可导入字段')}：</strong>
+              {state.permission.importFields.length ? (
+                <>
+                  {state.permission.importFields.map((f) => (
+                    <Tag key={f} color="blue">{fieldLabel(f, fields)}</Tag>
+                  ))}
+                  <span style={{ color: '#999', fontSize: 11 }}>
+                    （{t('共{{count}}个字段', { count: state.permission!.importFields.length })}）
+                  </span>
+                </>
+              ) : (
+                <Tag color="green">{t('全部字段允许（未限制）')}</Tag>
+              )}
+            </div>
+          </div>
+        ),
+      }]}
+    />
   );
 
   return (

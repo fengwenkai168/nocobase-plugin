@@ -43,7 +43,7 @@ __export(task_queue_exports, {
 module.exports = __toCommonJS(task_queue_exports);
 var import_worker_task_runner = require("./worker-task-runner");
 const TASK_CHANNEL = "sjgl02:task";
-const WORKER_MIN_ROWS = 5e4;
+const WORKER_MIN_ROWS = 1e4;
 const TASK_STATUS = {
   PENDING: "pending",
   RUNNING: "running",
