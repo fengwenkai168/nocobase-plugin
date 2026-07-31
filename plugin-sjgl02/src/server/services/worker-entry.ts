@@ -21,6 +21,7 @@ async function main() {
   });
 
   await app.load();
+  // @ts-ignore collections repository 的 load 为运行时挂载方法，类型定义缺失（同 core db-sync 做法）
   await app.db.getRepository('collections').load({});
 
   // 优先通过字符串名称查找插件实例（不依赖构造函数引用一致性）；

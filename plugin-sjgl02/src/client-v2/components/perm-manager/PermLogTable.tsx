@@ -66,15 +66,26 @@ export default function PermLogTable({ targetType, targetId }: { targetType: 'us
 
   const formatValue = (value: Record<string, unknown> | null | undefined, collectionName: string): string => {
     if (!value) return '无（新建）';
-    const keys = ['canImport', 'canExport', 'importModes', 'uniqueFields', 'requiredFields', 'importFields', 'exportFields', 'exportFilter'];
-    return keys.map((k) => {
-      const v = value[k];
-      if (FIELD_ARRAY_KEYS.includes(k) && Array.isArray(v)) {
-        const labeled = (v as string[]).map((name) => labelOf(collectionName, name));
-        return `${k}=[${labeled.join(',')}]`;
-      }
-      return `${k}=${JSON.stringify(v ?? null)}`;
-    }).join(', ');
+    const keys = [
+      'canImport',
+      'canExport',
+      'importModes',
+      'uniqueFields',
+      'requiredFields',
+      'importFields',
+      'exportFields',
+      'exportFilter',
+    ];
+    return keys
+      .map((k) => {
+        const v = value[k];
+        if (FIELD_ARRAY_KEYS.includes(k) && Array.isArray(v)) {
+          const labeled = (v as string[]).map((name) => labelOf(collectionName, name));
+          return `${k}=[${labeled.join(',')}]`;
+        }
+        return `${k}=${JSON.stringify(v ?? null)}`;
+      })
+      .join(', ');
   };
 
   const filtered = logs.filter((log) => {
@@ -88,7 +99,12 @@ export default function PermLogTable({ targetType, targetId }: { targetType: 'us
       <Space style={{ marginBottom: 12 }} wrap>
         <span style={{ color: '#999' }}>{t('操作类型')}：</span>
         {['all', 'create', 'update', 'delete', 'toggle'].map((a) => (
-          <Button key={a} size="small" type={actionFilter === a ? 'primary' : 'default'} onClick={() => setActionFilter(a)}>
+          <Button
+            key={a}
+            size="small"
+            type={actionFilter === a ? 'primary' : 'default'}
+            onClick={() => setActionFilter(a)}
+          >
             {a === 'all' ? t('全部') : t(ACTION_LABELS[a])}
           </Button>
         ))}
@@ -104,7 +120,9 @@ export default function PermLogTable({ targetType, targetId }: { targetType: 'us
             { value: '30d', label: t('最近30天') },
           ]}
         />
-        <span style={{ color: '#999', marginLeft: 'auto' }}>{t('共 {{count}} 条记录', { count: filtered.length })}</span>
+        <span style={{ color: '#999', marginLeft: 'auto' }}>
+          {t('共 {{count}} 条记录', { count: filtered.length })}
+        </span>
       </Space>
       <Table
         rowKey="id"
@@ -122,16 +140,45 @@ export default function PermLogTable({ targetType, targetId }: { targetType: 'us
           expandedRowRender: (record) => (
             <div style={{ background: '#fffbe6', padding: 12, fontSize: 12 }}>
               <strong>{t('变更详情')}：</strong>
-              <div style={{ color: '#999', marginTop: 4 }}>{t('操作前')}：{formatValue(record.beforeValue, record.collectionName)}</div>
-              <div style={{ color: '#52c41a', marginTop: 4 }}>{t('操作后')}：{record.afterValue ? formatValue(record.afterValue, record.collectionName) : <span style={{ color: '#ff4d4f' }}>{t('已删除')}</span>}</div>
+              <div style={{ color: '#999', marginTop: 4 }}>
+                {t('操作前')}：{formatValue(record.beforeValue, record.collectionName)}
+              </div>
+              <div style={{ color: '#52c41a', marginTop: 4 }}>
+                {t('操作后')}：
+                {record.afterValue ? (
+                  formatValue(record.afterValue, record.collectionName)
+                ) : (
+                  <span style={{ color: '#ff4d4f' }}>{t('已删除')}</span>
+                )}
+              </div>
             </div>
           ),
         }}
         columns={[
-          { title: t('时间'), dataIndex: 'createdAt', width: 150, render: (v: string) => (v ? new Date(v).toLocaleString() : '-') },
-          { title: t('操作人'), width: 90, render: (_: unknown, r: PermLogRecord) => r.createdBy?.nickname || r.createdBy?.username || r.createdById || '-' },
-          { title: t('操作'), dataIndex: 'action', width: 80, render: (v: string) => <Tag color={ACTION_COLORS[v]}>{t(ACTION_LABELS[v] || v)}</Tag> },
-          { title: t('目标'), width: 130, render: (_: unknown, r: PermLogRecord) => `${r.targetName || r.targetId}(${r.targetType === 'user' ? t('用户') : t('角色')})` },
+          {
+            title: t('时间'),
+            dataIndex: 'createdAt',
+            width: 150,
+            render: (v: string) => (v ? new Date(v).toLocaleString() : '-'),
+          },
+          {
+            title: t('操作人'),
+            width: 90,
+            render: (_: unknown, r: PermLogRecord) =>
+              r.createdBy?.nickname || r.createdBy?.username || r.createdById || '-',
+          },
+          {
+            title: t('操作'),
+            dataIndex: 'action',
+            width: 80,
+            render: (v: string) => <Tag color={ACTION_COLORS[v]}>{t(ACTION_LABELS[v] || v)}</Tag>,
+          },
+          {
+            title: t('目标'),
+            width: 130,
+            render: (_: unknown, r: PermLogRecord) =>
+              `${r.targetName || r.targetId}(${r.targetType === 'user' ? t('用户') : t('角色')})`,
+          },
           { title: t('数据表'), dataIndex: 'collectionName', width: 110, render: (v: string) => <strong>{v}</strong> },
           { title: t('变更概要'), dataIndex: 'summary' },
         ]}

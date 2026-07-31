@@ -1,9 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Card, Empty, Input, Progress, Space, Table, Tag, App } from 'antd';
+import { Button, Card, DatePicker, Empty, Input, Progress, Space, Table, Tag, App } from 'antd';
 import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
   CheckCircleFilled,
+  CheckCircleOutlined,
   ClockCircleFilled,
+  ClockCircleOutlined,
   CloseCircleFilled,
+  CloseCircleOutlined,
   FileOutlined,
   StopOutlined,
   SyncOutlined,
@@ -39,6 +44,7 @@ export default function TaskCenter() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [keyword, setKeyword] = useState('');
+  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
   const [drawerTaskId, setDrawerTaskId] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
@@ -47,7 +53,7 @@ export default function TaskCenter() {
     try {
       const [statsData, listData] = await Promise.all([
         api.getStats(),
-        api.listTasks({ page, pageSize: 20, type: typeFilter, status: statusFilter, keyword }),
+        api.listTasks({ page, pageSize: 20, type: typeFilter, status: statusFilter, keyword, dateRange }),
       ]);
       setStats(statsData);
       setTasks(listData.data);
@@ -57,15 +63,16 @@ export default function TaskCenter() {
     } finally {
       setLoading(false);
     }
-  }, [api, page, typeFilter, statusFilter, keyword, message]);
+  }, [api, page, typeFilter, statusFilter, keyword, dateRange, message]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   useEffect(() => {
+    if (stats.running === 0 && stats.pending === 0) return;
     pollRef.current = setInterval(() => {
-      if (stats.running > 0 || stats.pending > 0) refresh();
+      refresh();
     }, 5000);
     return () => clearInterval(pollRef.current);
   }, [stats.running, stats.pending, refresh]);
@@ -85,7 +92,7 @@ export default function TaskCenter() {
     { key: 'canceled', label: t('Canceled'), value: stats.canceled, color: '#999', icon: <StopOutlined /> },
   ];
 
-  const filterButton = (value: string, current: string, setter: (v: string) => void, label: string) => (
+  const filterButton = (value: string, current: string, setter: (v: string) => void, label: React.ReactNode) => (
     <Button
       key={value}
       size="small"
@@ -107,9 +114,13 @@ export default function TaskCenter() {
       width: 90,
       render: (type: string) =>
         type === 'import' ? (
-          <Tag color="blue">⬇ {t('Import')}</Tag>
+          <Tag color="blue">
+            <ArrowDownOutlined /> {t('Import')}
+          </Tag>
         ) : type === 'export' ? (
-          <Tag color="green">⬆ {t('Export')}</Tag>
+          <Tag color="green">
+            <ArrowUpOutlined /> {t('Export')}
+          </Tag>
         ) : (
           <Tag>{type}</Tag>
         ),
@@ -202,36 +213,95 @@ export default function TaskCenter() {
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        {statCards.map((card) => (
-          <Card
-            key={card.key}
-            size="small"
-            style={{ flex: 1, cursor: 'pointer', textAlign: 'center' }}
-            onClick={() => {
-              setStatusFilter(card.key);
-              setPage(1);
-            }}
-          >
-            <div style={{ fontSize: 18, color: card.color }}>{card.icon}</div>
-            <div style={{ fontSize: 12, color: '#8c8c8c' }}>{card.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 600, color: card.color }}>{card.value}</div>
-          </Card>
-        ))}
+        {statCards.map((card) => {
+          const active = statusFilter === card.key;
+          return (
+            <Card
+              key={card.key}
+              size="small"
+              style={{
+                flex: 1,
+                cursor: 'pointer',
+                textAlign: 'center',
+                borderColor: active ? card.color : undefined,
+                borderWidth: active ? 2 : 1,
+                background: active ? `${card.color}0f` : undefined,
+              }}
+              onClick={() => {
+                setStatusFilter(card.key);
+                setPage(1);
+              }}
+            >
+              <div style={{ fontSize: 18, color: card.color }}>{card.icon}</div>
+              <div style={{ fontSize: 12, color: '#8c8c8c' }}>{card.label}</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: card.color }}>{card.value}</div>
+            </Card>
+          );
+        })}
       </div>
 
       <Space style={{ marginBottom: 16 }} wrap>
         <Space.Compact>
           {filterButton('all', typeFilter, setTypeFilter, t('All'))}
-          {filterButton('import', typeFilter, setTypeFilter, `⬇ ${t('Import')}`)}
-          {filterButton('export', typeFilter, setTypeFilter, `⬆ ${t('Export')}`)}
+          {filterButton(
+            'import',
+            typeFilter,
+            setTypeFilter,
+            <>
+              <ArrowDownOutlined /> {t('Import')}
+            </>,
+          )}
+          {filterButton(
+            'export',
+            typeFilter,
+            setTypeFilter,
+            <>
+              <ArrowUpOutlined /> {t('Export')}
+            </>,
+          )}
         </Space.Compact>
         <Space.Compact>
           {filterButton('all', statusFilter, setStatusFilter, t('All'))}
-          {filterButton('pending', statusFilter, setStatusFilter, `⏳ ${t('Pending')}`)}
-          {filterButton('running', statusFilter, setStatusFilter, `🔄 ${t('Running')}`)}
-          {filterButton('succeeded', statusFilter, setStatusFilter, `✅ ${t('Succeeded')}`)}
-          {filterButton('failed', statusFilter, setStatusFilter, `❌ ${t('Failed')}`)}
-          {filterButton('canceled', statusFilter, setStatusFilter, `🚫 ${t('Canceled')}`)}
+          {filterButton(
+            'pending',
+            statusFilter,
+            setStatusFilter,
+            <>
+              <ClockCircleOutlined /> {t('Pending')}
+            </>,
+          )}
+          {filterButton(
+            'running',
+            statusFilter,
+            setStatusFilter,
+            <>
+              <SyncOutlined /> {t('Running')}
+            </>,
+          )}
+          {filterButton(
+            'succeeded',
+            statusFilter,
+            setStatusFilter,
+            <>
+              <CheckCircleOutlined /> {t('Succeeded')}
+            </>,
+          )}
+          {filterButton(
+            'failed',
+            statusFilter,
+            setStatusFilter,
+            <>
+              <CloseCircleOutlined /> {t('Failed')}
+            </>,
+          )}
+          {filterButton(
+            'canceled',
+            statusFilter,
+            setStatusFilter,
+            <>
+              <StopOutlined /> {t('Canceled')}
+            </>,
+          )}
         </Space.Compact>
         <Input.Search
           allowClear
@@ -239,6 +309,18 @@ export default function TaskCenter() {
           style={{ width: 220 }}
           onSearch={(v) => {
             setKeyword(v);
+            setPage(1);
+          }}
+        />
+        <DatePicker.RangePicker
+          size="small"
+          style={{ width: 240 }}
+          onChange={(_dates, dateStrings) => {
+            setDateRange(
+              dateStrings && dateStrings[0] && dateStrings[1]
+                ? [`${dateStrings[0]} 00:00:00`, `${dateStrings[1]} 23:59:59`]
+                : null,
+            );
             setPage(1);
           }}
         />

@@ -14,10 +14,10 @@ module.exports = {
   "@nocobase/client-v2": "2.1.9",
   "@nocobase/server": "2.1.9",
   "antd": "5.24.2",
+  "@ant-design/icons": "5.6.1",
   "@nocobase/utils": "2.1.9",
   "@nocobase/database": "2.1.9",
   "sequelize": "6.35.2",
   "@dnd-kit/core": "6.1.0",
-  "@dnd-kit/sortable": "7.0.2",
-  "@ant-design/icons": "5.6.1"
+  "@dnd-kit/sortable": "7.0.2"
 };

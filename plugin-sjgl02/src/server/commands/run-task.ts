@@ -16,6 +16,7 @@ export default function runTaskCommand(app: Application) {
       let code = 0;
       try {
         // 瞬态应用不触发 beforeStart，DB 动态集合（collections 表记录）需手动加载，否则引擎找不到表
+        // @ts-ignore collections repository 的 load 为运行时挂载方法，类型定义缺失（同 core db-sync 做法）
         await app.db.getRepository('collections').load({});
         const loaded = app.pm.get('@my-project/plugin-sjgl02') as PluginSjgl02Server;
         if (loaded?.taskQueue) {

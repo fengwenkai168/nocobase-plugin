@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, App, Button, Modal, Select, Space, Tabs, Tag } from 'antd';
+import { CheckOutlined, DeleteOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useT } from '../../locale';
 import { PermRecord, useApi } from '../../services/api';
 import TargetSidebar, { PermTarget } from './TargetSidebar';
@@ -15,7 +16,9 @@ export default function PermManager() {
   const { message } = App.useApp();
   const [target, setTarget] = useState<PermTarget | undefined>();
   const [own, setOwn] = useState<PermRecord[]>([]);
-  const [inherited, setInherited] = useState<Array<{ roleName: string; roleTitle: string; items: PermRecord[]; isAdmin: boolean }>>([]);
+  const [inherited, setInherited] = useState<
+    Array<{ roleName: string; roleTitle: string; items: PermRecord[]; isAdmin: boolean }>
+  >([]);
   const [subTab, setSubTab] = useState('perm');
   const [editRecord, setEditRecord] = useState<PermRecord | null | undefined>(undefined);
   const [scope, setScope] = useState<'self' | 'all'>('self');
@@ -41,10 +44,18 @@ export default function PermManager() {
 
   const onDelete = (record: PermRecord) => {
     Modal.confirm({
-      title: `🗑 ${t('确认删除')}`,
+      title: (
+        <span>
+          <DeleteOutlined /> {t('确认删除')}
+        </span>
+      ),
       content: (
         <>
-          {t('确认删除')} <strong>{record.collectionTitle || record.collectionName}({record.collectionName})</strong> {t('的权限配置？')}
+          {t('确认删除')}{' '}
+          <strong>
+            {record.collectionTitle || record.collectionName}({record.collectionName})
+          </strong>{' '}
+          {t('的权限配置？')}
           <br />
           <span style={{ color: '#999' }}>{t('此操作不可撤销。')}</span>
         </>
@@ -74,7 +85,9 @@ export default function PermManager() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <span style={{ fontSize: 15, fontWeight: 600 }}>
             {target?.type === 'user' ? '👤' : '🔐'} {target?.name} {t('的权限配置')}{' '}
-            <Tag color={target?.type === 'user' ? 'blue' : 'green'}>{target?.type === 'user' ? t('用户') : t('角色')}</Tag>
+            <Tag color={target?.type === 'user' ? 'blue' : 'green'}>
+              {target?.type === 'user' ? t('用户') : t('角色')}
+            </Tag>
           </span>
           <Space>
             {target?.type === 'user' && (
@@ -105,7 +118,14 @@ export default function PermManager() {
           onChange={setSubTab}
           items={[
             { key: 'perm', label: `✓ ${t('权限配置')}` },
-            { key: 'logs', label: `📋 ${t('操作日志')}` },
+            {
+              key: 'logs',
+              label: (
+                <span>
+                  <FileTextOutlined /> {t('操作日志')}
+                </span>
+              ),
+            },
           ]}
         />
 
@@ -118,16 +138,32 @@ export default function PermManager() {
               description={
                 <>
                   <div style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
-                    {t('admin/root 角色自动拥有所有数据表的导入、导出、全部模式、全部字段权限，包括系统表导出权限。不可修改、不可删除。')}
+                    {t(
+                      'admin/root 角色自动拥有所有数据表的导入、导出、全部模式、全部字段权限，包括系统表导出权限。不可修改、不可删除。',
+                    )}
                   </div>
                   <Space size={8} wrap>
-                    <Tag color="blue">✅ {t('导入')}: {t('全部数据表')}</Tag>
-                    <Tag color="green">✅ {t('导出')}: {t('全部数据表（含系统表）')}</Tag>
-                    <Tag color="orange">✅ {t('模式')}: {t('新增/更新/新增+更新')}</Tag>
-                    <Tag color="cyan">✅ {t('可导入')}: {t('全部字段')}</Tag>
-                    <Tag color="purple">✅ {t('可导出')}: {t('全部字段')}</Tag>
-                    <Tag color="red">✅ {t('任务管理')}: {t('查看全部')}</Tag>
-                    <Tag>✅ {t('权限管理')}</Tag>
+                    <Tag color="blue">
+                      <CheckOutlined /> {t('导入')}: {t('全部数据表')}
+                    </Tag>
+                    <Tag color="green">
+                      <CheckOutlined /> {t('导出')}: {t('全部数据表（含系统表）')}
+                    </Tag>
+                    <Tag color="orange">
+                      <CheckOutlined /> {t('模式')}: {t('新增/更新/新增+更新')}
+                    </Tag>
+                    <Tag color="cyan">
+                      <CheckOutlined /> {t('可导入')}: {t('全部字段')}
+                    </Tag>
+                    <Tag color="purple">
+                      <CheckOutlined /> {t('可导出')}: {t('全部字段')}
+                    </Tag>
+                    <Tag color="red">
+                      <CheckOutlined /> {t('任务管理')}: {t('查看全部')}
+                    </Tag>
+                    <Tag>
+                      <CheckOutlined /> {t('权限管理')}
+                    </Tag>
                   </Space>
                 </>
               }

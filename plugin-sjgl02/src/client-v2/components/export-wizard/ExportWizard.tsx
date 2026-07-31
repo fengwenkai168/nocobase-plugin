@@ -125,11 +125,15 @@ export default function ExportWizard({
     const permission = perms.permissions[0];
     const whitelist = permission?.exportFields || [];
     const selectable = meta.fields.filter((f) => !f.ignored && (!whitelist.length || whitelist.includes(f.name)));
+    // 白名单非空时按权限配置的字段顺序初始化（与步骤2 分组渲染顺序一致），否则按 meta 原始顺序
+    const selectedFields = whitelist.length
+      ? whitelist.filter((name) => selectable.some((f) => f.name === name))
+      : selectable.map((f) => f.name);
     patch({
       meta,
       permissions: perms.permissions,
       permission,
-      selectedFields: selectable.map((f) => f.name),
+      selectedFields,
     });
     setStep(1);
   }, [api, patch]);

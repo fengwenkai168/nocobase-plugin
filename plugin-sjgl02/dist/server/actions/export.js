@@ -40,7 +40,7 @@ function registerExportActions(plugin) {
     return engine.run(ctx, params);
   });
   return {
-    "getExportPermissions": async (ctx, next) => {
+    getExportPermissions: async (ctx, next) => {
       const userId = (0, import_utils.currentUserId)(ctx);
       const __p = { ...ctx.action.params || {}, ...ctx.action.params.values || {} };
       const { collectionName } = __p;
@@ -48,7 +48,16 @@ function registerExportActions(plugin) {
       ctx.body = { permissions };
       await next();
     },
-    "exportableCollections": async (ctx, next) => {
+    listExportSchemes: async (ctx, next) => {
+      const __p = { ...ctx.action.params || {}, ...ctx.action.params.values || {} };
+      const { collectionName } = __p;
+      if (!collectionName) {
+        ctx.throw(400, "\u7F3A\u5C11\u53C2\u6570 collectionName");
+      }
+      ctx.body = { schemes: await permissionService.listExportSchemes(String(collectionName)) };
+      await next();
+    },
+    exportableCollections: async (ctx, next) => {
       const userId = (0, import_utils.currentUserId)(ctx);
       const roleNames = await permissionService.getUserRoleNames(userId);
       const isAdmin = permissionService.isAdmin(roleNames);
@@ -72,7 +81,7 @@ function registerExportActions(plugin) {
       ctx.body = { collections, isAdmin };
       await next();
     },
-    "export": async (ctx, next) => {
+    export: async (ctx, next) => {
       const values = ctx.action.params.values || {};
       const userId = (0, import_utils.currentUserId)(ctx);
       const allTables = !!values.allTables;

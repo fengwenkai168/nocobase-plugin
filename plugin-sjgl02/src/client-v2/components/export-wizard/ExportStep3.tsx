@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { App, Button, Card, Modal, Tag } from 'antd';
+import { FolderOutlined, PlayCircleOutlined, TagsOutlined, WarningOutlined } from '@ant-design/icons';
 import { useT } from '../../locale';
 import { useApi } from '../../services/api';
 import { ExportWizardState } from './ExportWizard';
@@ -7,7 +8,9 @@ import { ExportWizardState } from './ExportWizard';
 function ts(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(
+    d.getSeconds(),
+  )}`;
 }
 
 export default function ExportStep3({
@@ -37,7 +40,11 @@ export default function ExportStep3({
     try {
       const filter =
         state.dataRange === 'filtered' && state.filters.length
-          ? { $and: state.filters.filter((f) => f.field && f.value !== '').map((f) => ({ [f.field]: { [f.op]: f.value } })) }
+          ? {
+              $and: state.filters
+                .filter((f) => f.field && f.value !== '')
+                .map((f) => ({ [f.field]: { [f.op]: f.value } })),
+            }
           : undefined;
       await api.submitExport({
         collectionName: state.allTables ? undefined : state.collection?.name,
@@ -68,11 +75,30 @@ export default function ExportStep3({
   };
 
   const singleCards: Array<[string, React.ReactNode]> = [
-    [t('选择字段数'), <strong style={{ fontSize: 18, color: '#1677ff' }}>{state.selectedFields.length}</strong>],
+    [
+      t('选择字段数'),
+      <strong key="count" style={{ fontSize: 18, color: '#1677ff' }}>
+        {state.selectedFields.length}
+      </strong>,
+    ],
     [t('导出数据表'), `${state.collection?.title}(${state.collection?.name})`],
     [t('数据范围'), state.dataRange === 'all' ? t('全部数据') : `${t('自定义条件')}（${state.filters.length}）`],
-    [t('表头格式'), state.headerType === 'titleName' ? t('字段名称(字段名)') : state.headerType === 'title' ? t('字段名称') : t('字段名')],
-    [t('关联表导出'), state.relationExportEnabled ? (state.relationExportMode === 'sheet' ? t('单独Sheet') : t('单独xlsx文件')) : t('不导出')],
+    [
+      t('表头格式'),
+      state.headerType === 'titleName'
+        ? t('字段名称(字段名)')
+        : state.headerType === 'title'
+          ? t('字段名称')
+          : t('字段名'),
+    ],
+    [
+      t('关联表导出'),
+      state.relationExportEnabled
+        ? state.relationExportMode === 'sheet'
+          ? t('单独Sheet')
+          : t('单独xlsx文件')
+        : t('不导出'),
+    ],
     [t('导出附件'), state.exportAttachment ? t('是 (tar.gz)') : t('否')],
     [t('百万行分文件'), t('自动开启')],
     [t('导出格式'), 'xlsx (固定)'],
@@ -89,8 +115,17 @@ export default function ExportStep3({
 
   return (
     <div>
-      <h4 style={{ marginBottom: 16 }}>{t('执行导出')} - {state.collection?.title}</h4>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 10, marginBottom: 16 }}>
+      <h4 style={{ marginBottom: 16 }}>
+        {t('执行导出')} - {state.collection?.title}
+      </h4>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))',
+          gap: 10,
+          marginBottom: 16,
+        }}
+      >
         {(state.allTables ? allCards : singleCards).map(([label, value]) => (
           <Card key={label} size="small">
             <div style={{ fontSize: 11, color: '#999' }}>{label}</div>
@@ -100,16 +135,28 @@ export default function ExportStep3({
       </div>
 
       {!state.allTables && (
-        <Card size="small" title={`🏷️ ${t('选中字段')}`} style={{ marginBottom: 12 }}>
+        <Card
+          size="small"
+          title={
+            <span>
+              <TagsOutlined /> {t('选中字段')}
+            </span>
+          }
+          style={{ marginBottom: 12 }}
+        >
           {state.selectedFields.map((f) => {
             const meta = state.meta?.fields.find((x) => x.name === f);
-            return <Tag key={f} color="blue">{meta ? `${meta.title}(${f})` : f}</Tag>;
+            return (
+              <Tag key={f} color="blue">
+                {meta ? `${meta.title}(${f})` : f}
+              </Tag>
+            );
           })}
         </Card>
       )}
 
       <div style={{ padding: '8px 12px', background: '#f0f5ff', borderRadius: 6, fontSize: 13, marginBottom: 16 }}>
-        📁 {t('导出文件名')}：<strong>{fileName}</strong>
+        <FolderOutlined /> {t('导出文件名')}：<strong>{fileName}</strong>
         {!state.allTables && (
           <>
             <br />
@@ -121,12 +168,16 @@ export default function ExportStep3({
       <div style={{ textAlign: 'right' }}>
         <Button onClick={onPrev}>← {t('上一步')}</Button>{' '}
         <Button type="primary" loading={submitting} disabled={submitting} onClick={() => setConfirmOpen(true)}>
-          ▶ {t('执行导出')}
+          <PlayCircleOutlined /> {t('执行导出')}
         </Button>
       </div>
 
       <Modal
-        title={`⚠️ ${t('确认导出')}`}
+        title={
+          <span>
+            <WarningOutlined /> {t('确认导出')}
+          </span>
+        }
         open={confirmOpen}
         onCancel={() => setConfirmOpen(false)}
         onOk={submit}

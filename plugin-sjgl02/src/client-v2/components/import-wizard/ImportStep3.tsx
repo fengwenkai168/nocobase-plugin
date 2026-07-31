@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { App, Button, Card, Modal, Table, Tag } from 'antd';
+import { EyeOutlined, PlayCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import { useT } from '../../locale';
 import { useApi } from '../../services/api';
 import { ImportWizardState } from './ImportWizard';
@@ -63,7 +64,12 @@ export default function ImportStep3({
     [t('导入的Sheet'), state.sheetName],
     [t('表头行'), `第${state.headerRow}行`],
     [t('导入模式'), modeLabel(t, state.mode)],
-    [t('唯一值'), state.uniqueFields.length ? state.uniqueFields.map((f) => fieldLabel(f, state.meta?.fields || [])).join(', ') : t('无')],
+    [
+      t('唯一值'),
+      state.uniqueFields.length
+        ? state.uniqueFields.map((f) => fieldLabel(f, state.meta?.fields || [])).join(', ')
+        : t('无'),
+    ],
     [t('附件'), attachSummary],
     [t('空白值处理'), state.blankStrategy === 'clear' ? t('按Excel更新（清空）') : t('不更新（保留原值）')],
     [t('事务模式'), t('严格模式（失败全部回滚）')],
@@ -116,7 +122,9 @@ export default function ImportStep3({
         ))}
       </div>
 
-      <h5 style={{ marginBottom: 8 }}>👁️ {t('预览数据（前10行）')}</h5>
+      <h5 style={{ marginBottom: 8 }}>
+        <EyeOutlined /> {t('预览数据（前10行）')}
+      </h5>
       <Table
         rowKey={(_r, i) => String(i)}
         size="small"
@@ -149,12 +157,16 @@ export default function ImportStep3({
       <div style={{ textAlign: 'right', marginTop: 16 }}>
         <Button onClick={onPrev}>← {t('上一步')}</Button>{' '}
         <Button type="primary" loading={submitting} disabled={submitting} onClick={() => setConfirmOpen(true)}>
-          ▶ {t('执行导入')}
+          <PlayCircleOutlined /> {t('执行导入')}
         </Button>
       </div>
 
       <Modal
-        title={`⚠️ ${t('确认导入')}`}
+        title={
+          <span>
+            <WarningOutlined /> {t('确认导入')}
+          </span>
+        }
         open={confirmOpen}
         onCancel={() => setConfirmOpen(false)}
         onOk={submit}
@@ -172,7 +184,32 @@ export default function ImportStep3({
             {state.collection?.title}({state.collection?.name})
           </strong>
           <br />
+          {t('导入的Sheet')}：<strong>{state.sheetName}</strong>（{t('表头行')}：
+          {t('第{{row}}行', { row: state.headerRow })}）
+          <br />
           {t('导入模式')}：<strong>{modeLabel(t, state.mode)}</strong>
+          <br />
+          {isUpMode && (
+            <>
+              {t('唯一值字段')}：
+              <strong>
+                {state.uniqueFields.length
+                  ? state.uniqueFields.map((f) => fieldLabel(f, state.meta?.fields || [])).join('、')
+                  : t('无')}
+              </strong>
+              <br />
+            </>
+          )}
+          {t('有效映射列')}：
+          <strong>
+            {effectiveMapping.length} {t('个字段')}
+          </strong>
+          {state.attachment && (
+            <>
+              <br />
+              {t('附件')}：<strong>{attachSummary}</strong>
+            </>
+          )}
           <br />
           {isUpMode && (
             <>

@@ -135,7 +135,14 @@ export function useApi() {
       post,
       get,
 
-      async listTasks(params: { page?: number; pageSize?: number; type?: string; status?: string; keyword?: string }) {
+      async listTasks(params: {
+        page?: number;
+        pageSize?: number;
+        type?: string;
+        status?: string;
+        keyword?: string;
+        dateRange?: [string, string] | null;
+      }) {
         const filter: Record<string, unknown> = {};
         const and: unknown[] = [];
         if (params.type && params.type !== 'all') and.push({ type: params.type });
@@ -148,6 +155,9 @@ export function useApi() {
               { title: { $includes: params.keyword } },
             ],
           });
+        }
+        if (params.dateRange && params.dateRange.length === 2) {
+          and.push({ createdAt: { $gte: params.dateRange[0], $lte: params.dateRange[1] } });
         }
         if (and.length) filter.$and = and;
         const res = await api.request({
@@ -257,6 +267,18 @@ export function useApi() {
         );
       },
 
+      async listExportSchemes(collectionName: string): Promise<{
+        schemes: Array<{
+          id: number;
+          targetType: 'user' | 'role';
+          targetId: string;
+          targetName: string;
+          exportFields: string[];
+        }>;
+      }> {
+        return get('sjgl02:listExportSchemes', { collectionName });
+      },
+
       async uploadFile(file: File, kind: 'excel' | 'attachment'): Promise<UploadResult> {
         const formData = new FormData();
         formData.append('kind', kind);
@@ -309,9 +331,7 @@ export function useApi() {
         }>('sjgl02:permList', { targetType, targetId });
       },
 
-      async permListByCollection(
-        collectionName: string,
-      ): Promise<{
+      async permListByCollection(collectionName: string): Promise<{
         list: Array<{
           id: number;
           targetType: 'user' | 'role';

@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Modal, Tabs, Tag } from 'antd';
+import { ArrowDownOutlined, ArrowUpOutlined, BarChartOutlined } from '@ant-design/icons';
 import { useT } from '../locale';
 import TaskCenter from '../components/task-center/TaskCenter';
 import ImportWizard from '../components/import-wizard/ImportWizard';
@@ -47,12 +48,20 @@ export default function SettingsPage({ showPermissionTab = true }: { showPermiss
   const items = [
     {
       key: 'import',
-      label: `⬇ ${t('Import')}`,
+      label: (
+        <>
+          <ArrowDownOutlined /> {t('Import')}
+        </>
+      ),
       children: <ImportWizard key={`import-${refreshKeys.import}`} registerDirtyCheck={registerDirtyCheck} />,
     },
     {
       key: 'export',
-      label: `⬆ ${t('Export')}`,
+      label: (
+        <>
+          <ArrowUpOutlined /> {t('Export')}
+        </>
+      ),
       children: <ExportWizard key={`export-${refreshKeys.export}`} registerDirtyCheck={registerDirtyCheck} />,
     },
     { key: 'tasks', label: `☰ ${t('Task Management')}`, children: <TaskCenter key={`tasks-${refreshKeys.tasks}`} /> },
@@ -82,7 +91,9 @@ export default function SettingsPage({ showPermissionTab = true }: { showPermiss
         }}
       >
         <div>
-          <div style={{ fontSize: 18, fontWeight: 600 }}>📊 {t('Data Management sjgl02')}</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>
+            <BarChartOutlined /> {t('Data Management sjgl02')}
+          </div>
           <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{t('导入导出 · 任务管理 · 表级权限控制')}</div>
         </div>
         <Tag

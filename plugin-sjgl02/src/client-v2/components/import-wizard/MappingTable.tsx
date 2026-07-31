@@ -1,5 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { App, Button, Input, Select, Table, Tag } from 'antd';
+import {
+  ArrowUpOutlined,
+  BulbOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  FolderOutlined,
+  SettingOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
 import { useT } from '../../locale';
 import { CollectionMeta, FieldMetaInfo, ImportMappingItem, PermConfigInfo } from '../../services/api';
 import FieldConfigPanel, { defaultFieldConfig, isRelationField } from './FieldConfigPanel';
@@ -142,8 +151,6 @@ export default function MappingTable({
     onChange(mapping.map((m) => ({ field: m.field, source: 'ignore' as const })));
   };
 
-  const used = mapping.filter((m) => m.source === 'excel').length;
-
   const findField = (name: string) => fields.find((x) => x.name === name);
 
   const togglePanel = (field: string) => setExpandedField((prev) => (prev === field ? null : field));
@@ -155,7 +162,7 @@ export default function MappingTable({
     if (isRelationField(f)) {
       return (
         <Button size="small" disabled={ignored} onClick={() => togglePanel(f.name)}>
-          ⚙️ {t('配置')}
+          <SettingOutlined /> {t('配置')}
         </Button>
       );
     }
@@ -167,14 +174,21 @@ export default function MappingTable({
           <Select
             size="small"
             style={{ minWidth: 130 }}
-            placeholder={`📁 ${t('选文件夹')}`}
+            placeholder={`${t('选文件夹')}`}
             value={undefined}
             disabled={ignored}
             onChange={(v) => {
               setItem(f.name, { config: { ...defaultFieldConfig(), ...item.config, folder: v } });
               setExpandedField(f.name);
             }}
-            options={attachmentFolders.map((fd) => ({ value: fd.name, label: `📁 ${fd.name}（${fd.fileCount}）` }))}
+            options={attachmentFolders.map((fd) => ({
+              value: fd.name,
+              label: (
+                <span>
+                  <FolderOutlined /> {fd.name}（{fd.fileCount}）
+                </span>
+              ),
+            }))}
           />
         );
       }
@@ -186,7 +200,7 @@ export default function MappingTable({
             onClick={() => togglePanel(f.name)}
             title={t('从压缩包中选择，可重新选择其他文件夹')}
           >
-            📁 {folder}
+            <FolderOutlined /> {folder}
           </Button>{' '}
           <Button size="small" disabled={ignored} onClick={() => togglePanel(f.name)}>
             ⚙️ {t('配置')}
@@ -227,18 +241,10 @@ export default function MappingTable({
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <strong>
-          📊 {t('字段映射')}{' '}
-          <span style={{ fontWeight: 400, fontSize: 12, color: '#999' }}>
-            (
-            {t('共{{total}}列/已用{{used}}/剩余{{left}}', { total: headers.length, used, left: headers.length - used })}
-            )
-          </span>
-        </strong>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <span>
           <Button size="small" onClick={clearAll}>
-            🗑 {t('清空匹配')}
+            <DeleteOutlined /> {t('清空匹配')}
           </Button>{' '}
           <Button size="small" onClick={autoMatch}>
             ⚡ {t('自动匹配')}
@@ -255,7 +261,7 @@ export default function MappingTable({
           marginBottom: 8,
         }}
       >
-        💡{' '}
+        <BulbOutlined />{' '}
         {t(
           '关联/附件字段可在「配置」列设置空值处理、匹配不到处理和更新模式；附件字段需先在「配置」列选择压缩包内文件夹',
         )}
@@ -325,7 +331,14 @@ export default function MappingTable({
                   }
                 }}
                 options={[
-                  { value: '__ignore__', label: `🚫 ${t('未选择（忽略）')}` },
+                  {
+                    value: '__ignore__',
+                    label: (
+                      <span>
+                        <StopOutlined /> {t('未选择（忽略）')}
+                      </span>
+                    ),
+                  },
                   ...headers.map((h) => ({
                     value: h,
                     label:
@@ -334,7 +347,14 @@ export default function MappingTable({
                         : h,
                     disabled: usedColumns.has(h) && usedColumns.get(h) !== item.field,
                   })),
-                  { value: '__custom__', label: `✏️ ${t('自定义内容')}` },
+                  {
+                    value: '__custom__',
+                    label: (
+                      <span>
+                        <EditOutlined /> {t('自定义内容')}
+                      </span>
+                    ),
+                  },
                 ]}
               />
             ),
@@ -397,13 +417,21 @@ export default function MappingTable({
               if (!f) return null;
               return (
                 <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {meta?.pk.name === f.name && <Tag color="gold">主键:{f.title}({f.name})</Tag>}
+                  {meta?.pk.name === f.name && (
+                    <Tag color="gold">
+                      主键:{f.title}({f.name})
+                    </Tag>
+                  )}
                   {uniqueFields.includes(f.name) && <Tag color="orange">唯一值</Tag>}
                   {requiredFields.includes(f.name) && <Tag color="red">必填</Tag>}
                   {SYSTEM_FIELDS.includes(f.name) && (
                     <>
                       <Tag>系统字段</Tag>
-                      {item.source === 'excel' && <Tag color="blue">⬆ Excel优先</Tag>}
+                      {item.source === 'excel' && (
+                        <Tag color="blue">
+                          <ArrowUpOutlined /> {t('Excel优先')}
+                        </Tag>
+                      )}
                     </>
                   )}
                 </span>

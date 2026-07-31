@@ -13,7 +13,7 @@ export function registerExportActions(plugin: Plugin) {
   });
 
   return {
-    'getExportPermissions': async (ctx, next) => {
+    getExportPermissions: async (ctx, next) => {
       const userId = currentUserId(ctx);
       const __p = { ...(ctx.action.params || {}), ...(ctx.action.params.values || {}) };
       const { collectionName } = __p;
@@ -22,7 +22,17 @@ export function registerExportActions(plugin: Plugin) {
       await next();
     },
 
-    'exportableCollections': async (ctx, next) => {
+    listExportSchemes: async (ctx, next) => {
+      const __p = { ...(ctx.action.params || {}), ...(ctx.action.params.values || {}) };
+      const { collectionName } = __p;
+      if (!collectionName) {
+        ctx.throw(400, '缺少参数 collectionName');
+      }
+      ctx.body = { schemes: await permissionService.listExportSchemes(String(collectionName)) };
+      await next();
+    },
+
+    exportableCollections: async (ctx, next) => {
       const userId = currentUserId(ctx);
       const roleNames = await permissionService.getUserRoleNames(userId);
       const isAdmin = permissionService.isAdmin(roleNames);
@@ -49,7 +59,7 @@ export function registerExportActions(plugin: Plugin) {
       await next();
     },
 
-    'export': async (ctx, next) => {
+    export: async (ctx, next) => {
       const values = (ctx.action.params.values || {}) as Record<string, unknown>;
       const userId = currentUserId(ctx);
       const allTables = !!values.allTables;

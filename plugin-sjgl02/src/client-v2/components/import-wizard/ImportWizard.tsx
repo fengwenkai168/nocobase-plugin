@@ -138,7 +138,18 @@ export default function ImportWizard({
     const permission = perms.permissions[0];
     const mode = permission?.importModes?.[permission.importModes.length - 1] || 'insert';
     const uniqueFields = permission?.uniqueFields?.length ? [...permission.uniqueFields] : [];
-    patch({ meta, permissions: perms.permissions, permission, mode, uniqueFields, sheetName, headerRow: 1, preview: undefined, previewLoading: false, previewError: null });
+    patch({
+      meta,
+      permissions: perms.permissions,
+      permission,
+      mode,
+      uniqueFields,
+      sheetName,
+      headerRow: 1,
+      preview: undefined,
+      previewLoading: false,
+      previewError: null,
+    });
     setStep(1);
     // 后台异步预览，不阻塞进入步骤2
     loadPreview(upload, sheetName, 1).catch(() => {});

@@ -99,6 +99,21 @@ class PermissionService {
     }
     return this.listConfiguredPermissions(userId, roleNames, collectionName, "export");
   }
+  // 供「复用方案排序」使用：返回指定表所有可导出的方案及其字段顺序（仅字段名排序，无数据），任何登录用户可查
+  async listExportSchemes(collectionName) {
+    const models = await this.repo.find({
+      filter: { canExport: true, collectionName },
+      sort: ["sort", "id"],
+      fields: ["id", "targetType", "targetId", "targetName", "exportFields"]
+    });
+    return models.map((m) => ({
+      id: m.get("id"),
+      targetType: m.get("targetType"),
+      targetId: String(m.get("targetId") ?? ""),
+      targetName: String(m.get("targetName") ?? ""),
+      exportFields: Array.isArray(m.get("exportFields")) ? m.get("exportFields") : []
+    }));
+  }
   async listConfiguredPermissions(userId, roleNames, collectionName, kind) {
     const flagField = kind === "import" ? "canImport" : "canExport";
     const filter = {

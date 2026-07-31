@@ -1,5 +1,32 @@
 # 更新日志
 
+## 2.2.8（2026-07-31）
+
+- **修复（导入/导出步骤1 数据表下拉搜索失效）**：C1 图标统一后 `label` 变为 ReactNode，`optionFilterProp="label"` 无法匹配导致搜不到。改为自定义 `filterOption`（按数据表 title/name 纯文本匹配），图标保留。
+- **优化（导出步骤2 默认排序）**：进入步骤2 时已选字段按当前权限配置的 `exportFields` 顺序初始化（白名单非空时），与权限管理里拖拽好的排序一致；未配置白名单时按数据表原始顺序。
+- **优化（权限「新增权限」分步展示）**：新增模式下未选择数据表时仅显示「选择数据表 + 允许导入/允许导出开关」，选中数据表后按开关状态展开导入/导出详细配置区；编辑模式保持全展开。
+- **优化（导入步骤2 界面）**：
+  - 颜色统一：权限切换卡/唯一值卡标题及权限摘要 5 个字段标题由紫/橙改为中性深灰 `#333`，摘要背景改白底，视觉更清爽；
+  - 权限说明（含"此表您拥有的权限配置"）合并到卡片顶部一条 Alert，位于下拉框之前；
+  - 空值唯一值预检说明并入唯一值字段说明行（位于"唯一值字段由权限配置锁定"之后）；
+  - 唯一值字段下拉支持关键字搜索（字段名称/字段名均可匹配）；
+  - 字段映射区块改为可折叠（Collapse，默认展开），统计信息（共X列/已用Y/剩余Z）移到折叠标题。
+- **代码结构（500 行规范）**：PermEditModal（797→428 行）拆分出 `PermEditWidgets`（ChipsSelect/SortableFieldList/FieldBlock）、`PermCopyFromConfigModal`。
+- **构建修复**：顺带修复 PermEditModal 既有 `promise/catch-or-return` 3 处。
+
+## 2.2.7（2026-07-31）
+
+- **修复（导出步骤2字段排序真正生效）**：此前拖拽/上下移/序号修改只改 `state.selectedFields`，但界面列表用 `groupFields.filter(...)` 推导，始终按数据表原始顺序渲染，导致操作"看起来没生效"、且界面顺序与实际导出列顺序不一致。已改为按 `selectedFields` 顺序取列表，拖拽/上下移/序号即时生效并与导出列顺序一致。
+- **新功能（复用其他方案的字段排序）**：导出步骤2新增「复用其他方案排序」按钮 + 弹窗（新后端接口 `sjgl02:listExportSchemes`，所有登录用户可查看该表全部导出方案）。选择任一方案仅复用其字段顺序重排当前已勾选字段（不改变勾选集合、无权限字段不参与、方案外字段保持原相对顺序排在末尾），提交导出仍按自己的权限白名单校验。
+- **优化（任务中心轮询）**：无 pending/running 任务时不再启动 5 秒轮询 interval，避免空转请求。
+- **优化（任务中心统计卡片选中态）**：点击状态统计卡片过滤后，卡片高亮（主题色边框+浅底）显示当前选中状态。
+- **优化（任务中心日期范围过滤）**：工具栏新增日期范围选择器（RangePicker），按任务创建时间过滤，与类型/状态/关键词过滤叠加。
+- **优化（失败原因聚合 Top10）**：任务详情失败明细上方新增按「字段+原因」聚合的 Top10 统计 Tag（按失败数降序，高频标红）。
+- **优化（导入确认弹窗增强）**：确认弹窗补充唯一值字段、附件概要、有效映射列数、Sheet 名与表头行。
+- **优化（界面图标统一）**：全部 client-v2 界面功能类 emoji 替换为 `@ant-design/icons` 图标（保留 👤/🔐 权限语义标识与状态圆点），视觉更统一、支持主题色。
+- **代码结构（500 行规范）**：ExportStep2 / ImportStep2 / TaskDrawer 拆分出 12 个子组件与共享工具（`export-options`、`SortableExportRow`、`ExportFilterSection`、`ExportRelationSection`、`ExportAllTablesSection`、`ImportPermissionSummary`、`ImportAttachmentCard`、`ImportSystemFieldsCard`、`TaskPreviewTable`、`TaskErrorLogs` 等），全部文件 ≤500 行。
+- **构建修复**：`run-task.ts` / `worker-entry.ts` 的 `collections repository .load()` 类型错误（NocoBase 类型定义缺失）按 core `db-sync.ts` 一致做法加 `@ts-ignore`，解除 buildDeclaration 失败。
+
 ## 2.2.6（2026-07-31）
 
 - **优化（写入性能 50 倍提升）**：快速路径的 `model.update` WHERE 条件从复合唯一值（`订单号+商品编码`，无索引时全表扫描 16 万行，155ms/行）改用主键 ID（`WHERE id = ?`，走主键索引，3ms/行）。1.9 万行 upsert 预计从 54 分钟降至约 1 分钟。使用 `collection.model.primaryKeyAttribute` 动态获取主键字段名，不依赖硬编码 `id`。

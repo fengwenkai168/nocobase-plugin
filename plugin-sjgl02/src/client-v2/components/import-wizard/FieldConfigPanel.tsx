@@ -1,5 +1,6 @@
 import React from 'react';
 import { Radio, Select } from 'antd';
+import { BulbOutlined, FolderOutlined, LinkOutlined, PaperClipOutlined } from '@ant-design/icons';
 import { useT } from '../../locale';
 import { FieldMetaInfo, ImportFieldConfig } from '../../services/api';
 
@@ -55,7 +56,8 @@ export default function FieldConfigPanel({
       }}
     >
       <div style={{ fontWeight: 600, fontSize: 13, color, marginBottom: 10 }}>
-        {isAttach ? '📎' : '🔗'} {isAttach ? t('附件字段配置') : t('关联字段配置')} - {field.title}({field.name}){' '}
+        {isAttach ? <PaperClipOutlined /> : <LinkOutlined />} {isAttach ? t('附件字段配置') : t('关联字段配置')} -{' '}
+        {field.title}({field.name}){' '}
         <span style={{ color: '#999', fontWeight: 400, fontSize: 11 }}>
           {field.type}
           {field.target ? ` → ${field.target}` : ''}
@@ -65,7 +67,7 @@ export default function FieldConfigPanel({
       {isAttach && (
         <div style={row}>
           <span style={labelStyle}>
-            📁 {t('附件文件夹')} <span style={{ color: '#ff4d4f' }}>*</span>{' '}
+            <FolderOutlined /> {t('附件文件夹')} <span style={{ color: '#ff4d4f' }}>*</span>{' '}
             <span style={{ color: '#999', fontWeight: 400 }}>（{t('从压缩包中选择，可重新选择其他文件夹')}）</span>
           </span>
           <Select
@@ -74,7 +76,14 @@ export default function FieldConfigPanel({
             placeholder={`- ${t('选文件夹')} -`}
             value={config.folder}
             onChange={(v) => set({ folder: v })}
-            options={folders.map((f) => ({ value: f.name, label: `📁 ${f.name}（${f.fileCount}）` }))}
+            options={folders.map((f) => ({
+              value: f.name,
+              label: (
+                <span>
+                  <FolderOutlined /> {f.name}（{f.fileCount}）
+                </span>
+              ),
+            }))}
           />
         </div>
       )}
@@ -139,12 +148,12 @@ export default function FieldConfigPanel({
 
       {isM2o && isUpMode && (
         <div style={{ fontSize: 11, color: '#999', marginBottom: 8 }}>
-          💡 {t('多对一为单值关联，更新时直接替换，无追加模式')}
+          <BulbOutlined /> {t('多对一为单值关联，更新时直接替换，无追加模式')}
         </div>
       )}
 
       <div style={{ fontSize: 11, color: '#999' }}>
-        💡{' '}
+        <BulbOutlined />{' '}
         {isAttach
           ? t('Excel 中填写文件名（如 photo.jpg），系统从选中的文件夹查找匹配；多个附件逗号分隔')
           : t('Excel 中填写目标表主键值（多对多逗号分隔，如 1,2,3）')}

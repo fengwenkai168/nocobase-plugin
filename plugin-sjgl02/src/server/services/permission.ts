@@ -91,6 +91,24 @@ export class PermissionService {
     return this.listConfiguredPermissions(userId, roleNames, collectionName, 'export');
   }
 
+  // 供「复用方案排序」使用：返回指定表所有可导出的方案及其字段顺序（仅字段名排序，无数据），任何登录用户可查
+  async listExportSchemes(
+    collectionName: string,
+  ): Promise<Array<{ id: number; targetType: string; targetId: string; targetName: string; exportFields: string[] }>> {
+    const models = await this.repo.find({
+      filter: { canExport: true, collectionName },
+      sort: ['sort', 'id'],
+      fields: ['id', 'targetType', 'targetId', 'targetName', 'exportFields'],
+    });
+    return models.map((m) => ({
+      id: m.get('id') as number,
+      targetType: m.get('targetType') as string,
+      targetId: String(m.get('targetId') ?? ''),
+      targetName: String(m.get('targetName') ?? ''),
+      exportFields: Array.isArray(m.get('exportFields')) ? (m.get('exportFields') as string[]) : [],
+    }));
+  }
+
   private async listConfiguredPermissions(
     userId: number,
     roleNames: string[],
@@ -112,7 +130,10 @@ export class PermissionService {
     return models.map((m) => this.toConfig(m.toJSON() as Record<string, unknown>));
   }
 
-  private async listAllPermissions(collectionName: string | undefined, kind: 'import' | 'export'): Promise<PermConfig[]> {
+  private async listAllPermissions(
+    collectionName: string | undefined,
+    kind: 'import' | 'export',
+  ): Promise<PermConfig[]> {
     const flagField = kind === 'import' ? 'canImport' : 'canExport';
     const filter: Record<string, unknown> = { [flagField]: true };
     if (collectionName) {

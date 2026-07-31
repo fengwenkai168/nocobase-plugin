@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { App, Button, Card, Col, Row, Select, Upload } from 'antd';
-import { InboxOutlined } from '@ant-design/icons';
+import {
+  BarChartOutlined,
+  BulbOutlined,
+  CheckCircleFilled,
+  FileTextOutlined,
+  FolderOutlined,
+  InboxOutlined,
+  UploadOutlined,
+} from '@ant-design/icons';
 import { useT } from '../../locale';
 import { CollectionOption, useApi } from '../../services/api';
 import { ImportWizardState } from './ImportWizard';
@@ -21,35 +29,71 @@ export default function ImportStep1({
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    api.getImportableCollections().then((res) => setCollections(res.collections));
+    api
+      .getImportableCollections()
+      .then((res) => setCollections(res.collections))
+      .catch(() => {});
   }, [api]);
 
   const ready = !!state.collection && !!state.upload;
+
+  // ReactNode label 下 optionFilterProp="label" 无法匹配，改用纯文本 title/name 过滤
+  const filterCollection = (input: string, option?: { title?: string; name?: string }) => {
+    const text = `${option?.title ?? ''}${option?.name ?? ''}`.toLowerCase();
+    return text.includes(input.toLowerCase());
+  };
 
   return (
     <div>
       <Row gutter={16}>
         <Col span={12}>
-          <Card size="small" title={`📋 ${t('选择目标数据表')}`}>
+          <Card
+            size="small"
+            title={
+              <span>
+                <FileTextOutlined /> {t('选择目标数据表')}
+              </span>
+            }
+          >
             <div style={{ marginBottom: 8, color: '#666', fontSize: 12 }}>{t('数据表')}</div>
             <Select
               style={{ width: '100%' }}
               placeholder={t('- 请选择数据表 -')}
               value={state.collection?.name}
               showSearch
-              optionFilterProp="label"
+              filterOption={filterCollection}
               onChange={(name) => {
                 const collection = collections.find((c) => c.name === name);
                 patch({ collection });
               }}
-              options={collections.map((c) => ({ value: c.name, label: `📁 ${c.title}(${c.name})` }))}
+              options={collections.map((c) => ({
+                value: c.name,
+                title: c.title,
+                name: c.name,
+                label: (
+                  <span>
+                    <FolderOutlined /> {c.title}({c.name})
+                  </span>
+                ),
+              }))}
             />
-            <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>💡 {t('仅显示您有权限导入的数据表')}</div>
-            <div style={{ fontSize: 12, color: '#999' }}>📊 {t('共 {{count}} 张数据表可供选择', { count: collections.length })}</div>
+            <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
+              <BulbOutlined /> {t('仅显示您有权限导入的数据表')}
+            </div>
+            <div style={{ fontSize: 12, color: '#999' }}>
+              <BarChartOutlined /> {t('共 {{count}} 张数据表可供选择', { count: collections.length })}
+            </div>
           </Card>
         </Col>
         <Col span={12}>
-          <Card size="small" title={`📤 ${t('上传文件')}`}>
+          <Card
+            size="small"
+            title={
+              <span>
+                <UploadOutlined /> {t('上传文件')}
+              </span>
+            }
+          >
             <Upload.Dragger
               accept=".xlsx,.xls,.csv"
               showUploadList={false}
@@ -71,7 +115,7 @@ export default function ImportStep1({
             >
               {state.upload ? (
                 <div style={{ color: '#52c41a' }}>
-                  ✅ {t('上传成功！')}
+                  <CheckCircleFilled /> {t('上传成功！')}
                   <br />
                   <span style={{ fontSize: 12 }}>
                     {state.upload.fileName}（{(state.upload.size / 1024).toFixed(1)} KB）
@@ -79,9 +123,13 @@ export default function ImportStep1({
                 </div>
               ) : (
                 <>
-                  <p><InboxOutlined style={{ fontSize: 40, color: '#bbb' }} /></p>
+                  <p>
+                    <InboxOutlined style={{ fontSize: 40, color: '#bbb' }} />
+                  </p>
                   <p>{uploading ? t('上传中...') : t('点击或拖拽上传文件')}</p>
-                  <p style={{ fontSize: 12, color: '#999' }}>{t('支持 .xlsx(上限 50 万行) / .xls(≤20万) / .csv 格式')}</p>
+                  <p style={{ fontSize: 12, color: '#999' }}>
+                    {t('支持 .xlsx(上限 50 万行) / .xls(≤20万) / .csv 格式')}
+                  </p>
                 </>
               )}
             </Upload.Dragger>
