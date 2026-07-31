@@ -1,5 +1,36 @@
 # 更新日志
 
+## 2.2.6（2026-07-31）
+
+- **优化（写入性能 50 倍提升）**：快速路径的 `model.update` WHERE 条件从复合唯一值（`订单号+商品编码`，无索引时全表扫描 16 万行，155ms/行）改用主键 ID（`WHERE id = ?`，走主键索引，3ms/行）。1.9 万行 upsert 预计从 54 分钟降至约 1 分钟。使用 `collection.model.primaryKeyAttribute` 动态获取主键字段名，不依赖硬编码 `id`。
+
+## 2.2.5（2026-07-30）
+
+- **修复（权限管理页面报错 activeKeys is not defined）**：2.2.4 清理冗余三元时误删了 `activeKeys` 变量定义但未更新引用处，导致页面崩溃。已改为直接硬编码 `defaultActiveKey={['users', 'roles']}`。
+- **修复（导出步骤2拖拽/序号/上下移全部失效）**：`Collapse` 的 `items` API 对 `children` 做了内部 memoization，导致 `onDragEnd`/`onMove`/`onRemove` 回调闭包过期，引用旧的 `state.selectedFields`，操作无效。改为 `Collapse.Panel` 子组件方式，确保每次渲染重建闭包。
+- **修复（导出步骤2序号跳转索引错位）**：删除 `window.dispatchEvent` + `useEffect` 机制，改为 `onJumpTo` 回调直接传组内目标索引，调用处做全局索引转换（与 `onDragEnd`/`onMove` 统一逻辑）。
+
+## 2.2.4（2026-07-30）
+
+- **修复（导出步骤2序号跳转失效）**：`SortableExportRow` 序号编辑后 dispatch 事件但父组件无监听，导致输入序号回车后行不跳转。已添加 `useEffect` 监听 `sjgl02-export-row-move` 事件。
+- **修复（权限管理排序双重触发）**：`SortableRow.commitMove` 既调用 `onMove`（移一格）又 dispatch 事件（跳到目标），双重触发导致移动错乱。已删除 `onMove` 调用，只保留事件跳转。
+- **修复（复制方向错误）**：权限配置弹窗中导出区域的「从其他配置复制」按钮错误地复制到导入字段。`toolbarButtons` 的 `copyFromConfig` 参数改为 `'import'`/`'export'` 字符串，正确区分目标区域。
+- **修复（retry 补全）**：重试任务补充 `permissionLabel`；增加原任务状态校验（仅失败/已取消可重试）。
+- **修复（emoji 不一致）**：导入任务 permissionLabel 角色图标从 `👥` 统一为 `🔐`，与导出一致。
+- **修复（worker RUNNING 重复写入）**：worker 子进程路径跳过 RUNNING 状态写入（主进程 `executeViaWorker` 已写过），避免 `startedAt` 被覆盖。
+- **优化（循环依赖消除）**：`fieldLabel` 函数抽到独立文件 `field-utils.ts`，消除 `ImportStep2` 与 `MappingTable` 的循环依赖。
+- **优化（冗余代码清理）**：`TargetSidebar` 删除无意义的三元表达式（两分支结果相同）。
+
+## 2.2.3（2026-07-29）
+
+- **修复（唯一值字段为忽略能点下一步）**：upsert/update 模式下，如果唯一值字段在映射表中设为"忽略"，前端"下一步"按钮禁用并提示"唯一值字段不能设为忽略"。
+- **修复（必填字段为忽略能点下一步）**：权限配置的必填字段如果设为"忽略"，前端"下一步"按钮禁用并提示"必填字段不能设为忽略"。
+- **修复（快速路径丢弃 createdAt/createdById）**：2.2.2 的快速写入路径排除了 createdById/createdAt，导致用户映射了这些字段时 Excel 的值被丢弃。改为检查映射表，如果用户映射了这些字段（非忽略）则保留。
+
+## 2.2.2（2026-07-29）
+
+- **优化（写入性能 20 倍提升）**：upsert/update 模式的 update 路径从 `repo.update()`（经 NocoBase 中间件链，68ms/行）改为 `model.update(..., { hooks: false })`（直接 Sequelize，3ms/行）。通过 `rawAttributes` 过滤非数据库列（关联数组），排除 `createdById`/`createdAt`。有 appendFields 时自动降级为原路径。create 路径不变（需要 hooks 生成 ID/加密密码）。1.9 万行 upsert 预计从 22 分钟降至约 1 分钟。性能日志中标注"快速"/"慢速"路径。
+
 ## 2.2.1（2026-07-29）
 
 - **新功能（性能日志）**：upsert/update 模式导入时记录每批的预加载耗时、写入耗时（更新/新增数量），在任务详情的"⏱ 性能日志"面板中展示，方便定位瓶颈。

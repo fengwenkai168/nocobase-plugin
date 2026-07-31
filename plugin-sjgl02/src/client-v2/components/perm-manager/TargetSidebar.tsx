@@ -56,8 +56,6 @@ export default function TargetSidebar({
 
   const filteredUsers = users.filter((u) => match(u.name) || match(u.roles.map((r) => r.name).join(',')));
   const filteredRoles = roles.filter((r) => match(cleanTitle(r.title)) || match(r.name));
-  const hasMatch = !!keyword;
-  const activeKeys = hasMatch ? ['users', 'roles'] : ['users', 'roles'];
 
   return (
     <div style={{ width: 240, flexShrink: 0, border: '1px solid #e8e8e8', borderRadius: 8, padding: 8, maxHeight: 640, overflowY: 'auto' }}>
@@ -65,7 +63,7 @@ export default function TargetSidebar({
       <Input.Search size="small" placeholder={t('搜索...')} style={{ marginBottom: 8 }} onSearch={setKeyword} onChange={(e) => setKeyword(e.target.value)} allowClear />
       <Collapse
         ghost
-        defaultActiveKey={activeKeys}
+        defaultActiveKey={['users', 'roles']}
         items={[
           {
             key: 'users',

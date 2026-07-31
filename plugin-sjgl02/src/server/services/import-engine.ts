@@ -477,6 +477,16 @@ export class ImportEngine {
     const { repo, pk, appendFields, metas, transaction, writeContext, pendingAttachments, params, performanceLog, batchIdx } = opts;
     const appendFieldNames = appendFields.length ? appendFields.map((f) => f.field) : undefined;
     const batchStart = Date.now();
+    // 获取 collection 和 rawAttributes 用于快速写入路径
+    const collection = this.db.getCollection(params.collectionName);
+    const attrKeys = new Set(Object.keys(collection.model.rawAttributes));
+    // 默认排除 createdById/createdAt（createOnly 字段），但如果用户映射了这些字段则保留
+    const skipFields = new Set(['createdById', 'createdAt']);
+    for (const m of params.mapping) {
+      if (m.source !== 'ignore' && skipFields.has(m.field)) {
+        skipFields.delete(m.field);
+      }
+    }
 
     // 1. 批量预加载：用第一个唯一值字段做 WHERE IN，一次查询拉取已存在的记录
     const uniqueField = params.uniqueFields[0];
@@ -504,6 +514,7 @@ export class ImportEngine {
     const writeStart = Date.now();
     let updateCount = 0;
     let createCount = 0;
+    const hasAppendFields = appendFields.length > 0;
     for (const prepared of chunk) {
       opts.ctx.throwIfAborted();
       const key = prepared.uniqueFilter
@@ -512,18 +523,36 @@ export class ImportEngine {
       const existing = existMap.get(key) ?? null;
 
       if (existing) {
-        if (appendFields.length) {
+        if (hasAppendFields) {
+          // 有追加更新关联字段时，走原路径（需要 NocoBase 中间件处理关联数组）
           await this.mergeAppendRelations(existing, prepared.values, appendFields, metas);
+          await repo.update({
+            filter: prepared.uniqueFilter!,
+            values: prepared.values,
+            transaction,
+            context: writeContext,
+          } as never);
+        } else {
+          // 快速路径：绕过 NocoBase 中间件，直接用 Sequelize model.update
+          // 只保留实际数据库列，排除未映射的 createdById/createdAt
+          const updateValues: Record<string, unknown> = {};
+          for (const k of Object.keys(prepared.values)) {
+            if (attrKeys.has(k) && !skipFields.has(k)) {
+              updateValues[k] = prepared.values[k];
+            }
+          }
+          // 用主键 ID 做 WHERE（走主键索引），而非复合唯一值（可能无索引导致全表扫描）
+          const pkField = collection.model.primaryKeyAttribute || 'id';
+          await collection.model.update(updateValues, {
+            where: { [pkField]: existing.get(pkField) },
+            transaction,
+            hooks: false,
+          } as never);
         }
-        await repo.update({
-          filter: prepared.uniqueFilter!,
-          values: prepared.values,
-          transaction,
-          context: writeContext,
-        } as never);
         for (const att of prepared.attachments) pendingAttachments.push({ rowPk: existing.get(pk.name), ...att });
         updateCount++;
       } else if (params.mode === 'upsert') {
+        // create 路径保持原样：需要 NanoId/Password 等 hooks
         const created = await repo.create({ values: prepared.values, transaction, context: writeContext } as never);
         for (const att of prepared.attachments) pendingAttachments.push({ rowPk: created.get(pk.name), ...att });
         createCount++;
@@ -532,7 +561,7 @@ export class ImportEngine {
     const writeMs = Date.now() - writeStart;
     const batchMs = Date.now() - batchStart;
     performanceLog.push(
-      `批次 ${batchIdx}: ${chunk.length}行 | 预加载 ${preloadMs}ms (命中${existMap.size}/${dedupedValues.length}) | 写入 ${writeMs}ms (更新${updateCount}/新增${createCount}) | 总计 ${batchMs}ms`,
+      `批次 ${batchIdx}: ${chunk.length}行 | 预加载 ${preloadMs}ms (命中${existMap.size}/${dedupedValues.length}) | 写入 ${writeMs}ms (更新${updateCount}/新增${createCount}${hasAppendFields ? ',慢速' : ',快速'}) | 总计 ${batchMs}ms`,
     );
   }
 

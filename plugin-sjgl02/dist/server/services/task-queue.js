@@ -128,7 +128,9 @@ class TaskQueueService {
     this.controllers.set(taskId, controller);
     this.processing.add(taskId);
     const startedAt = /* @__PURE__ */ new Date();
-    await this.repo.update({ filter: { id: taskId }, values: { status: TASK_STATUS.RUNNING, startedAt } });
+    if (!options.externalSignal) {
+      await this.repo.update({ filter: { id: taskId }, values: { status: TASK_STATUS.RUNNING, startedAt } });
+    }
     let lastProgressWrite = 0;
     const ctx = {
       taskId,

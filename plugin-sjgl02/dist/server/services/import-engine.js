@@ -399,6 +399,14 @@ class ImportEngine {
     const { repo, pk, appendFields, metas, transaction, writeContext, pendingAttachments, params, performanceLog, batchIdx } = opts;
     const appendFieldNames = appendFields.length ? appendFields.map((f) => f.field) : void 0;
     const batchStart = Date.now();
+    const collection = this.db.getCollection(params.collectionName);
+    const attrKeys = new Set(Object.keys(collection.model.rawAttributes));
+    const skipFields = /* @__PURE__ */ new Set(["createdById", "createdAt"]);
+    for (const m of params.mapping) {
+      if (m.source !== "ignore" && skipFields.has(m.field)) {
+        skipFields.delete(m.field);
+      }
+    }
     const uniqueField = params.uniqueFields[0];
     const uniqueValues = chunk.filter((r) => r.uniqueFilter && !(0, import_value_converter.isBlank)(r.uniqueFilter[uniqueField])).map((r) => r.uniqueFilter[uniqueField]);
     const dedupedValues = [...new Set(uniqueValues.map((v) => String(v)))];
@@ -419,20 +427,34 @@ class ImportEngine {
     const writeStart = Date.now();
     let updateCount = 0;
     let createCount = 0;
+    const hasAppendFields = appendFields.length > 0;
     for (const prepared of chunk) {
       opts.ctx.throwIfAborted();
       const key = prepared.uniqueFilter ? params.uniqueFields.map((f) => String(prepared.uniqueFilter[f])).join("\0") : "";
       const existing = existMap.get(key) ?? null;
       if (existing) {
-        if (appendFields.length) {
+        if (hasAppendFields) {
           await this.mergeAppendRelations(existing, prepared.values, appendFields, metas);
+          await repo.update({
+            filter: prepared.uniqueFilter,
+            values: prepared.values,
+            transaction,
+            context: writeContext
+          });
+        } else {
+          const updateValues = {};
+          for (const k of Object.keys(prepared.values)) {
+            if (attrKeys.has(k) && !skipFields.has(k)) {
+              updateValues[k] = prepared.values[k];
+            }
+          }
+          const pkField = collection.model.primaryKeyAttribute || "id";
+          await collection.model.update(updateValues, {
+            where: { [pkField]: existing.get(pkField) },
+            transaction,
+            hooks: false
+          });
         }
-        await repo.update({
-          filter: prepared.uniqueFilter,
-          values: prepared.values,
-          transaction,
-          context: writeContext
-        });
         for (const att of prepared.attachments) pendingAttachments.push({ rowPk: existing.get(pk.name), ...att });
         updateCount++;
       } else if (params.mode === "upsert") {
@@ -444,7 +466,7 @@ class ImportEngine {
     const writeMs = Date.now() - writeStart;
     const batchMs = Date.now() - batchStart;
     performanceLog.push(
-      `\u6279\u6B21 ${batchIdx}: ${chunk.length}\u884C | \u9884\u52A0\u8F7D ${preloadMs}ms (\u547D\u4E2D${existMap.size}/${dedupedValues.length}) | \u5199\u5165 ${writeMs}ms (\u66F4\u65B0${updateCount}/\u65B0\u589E${createCount}) | \u603B\u8BA1 ${batchMs}ms`
+      `\u6279\u6B21 ${batchIdx}: ${chunk.length}\u884C | \u9884\u52A0\u8F7D ${preloadMs}ms (\u547D\u4E2D${existMap.size}/${dedupedValues.length}) | \u5199\u5165 ${writeMs}ms (\u66F4\u65B0${updateCount}/\u65B0\u589E${createCount}${hasAppendFields ? ",\u6162\u901F" : ",\u5FEB\u901F"}) | \u603B\u8BA1 ${batchMs}ms`
     );
   }
   async mergeAppendRelations(existing, values, appendFields, metas) {

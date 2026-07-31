@@ -247,7 +247,7 @@ export function registerImportActions(plugin: Plugin) {
         filePath: String(values.filePath),
         permissionConfigId: config.id ?? undefined,
         permissionType: config.targetType,
-        permissionLabel: config.targetName ? `${config.targetType === 'user' ? '👤' : '👥'} ${config.targetName}` : undefined,
+        permissionLabel: config.targetName ? `${config.targetType === 'user' ? '👤' : '🔐'} ${config.targetName}` : undefined,
       });
       ctx.body = { taskId: task.get('id'), rowCount };
       await next();

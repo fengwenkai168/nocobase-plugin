@@ -67,12 +67,8 @@ function SortableRow({
   };
   const commitMove = (target: number) => {
     const clamped = Math.max(1, Math.min(target, total));
-    if (clamped !== index + 1) onMove(clamped > index + 1 ? 'down' : 'up');
-    const diff = clamped - (index + 1);
-    if (diff !== 0) {
+    if (clamped !== index + 1) {
       const newIndex = clamped - 1;
-      // 直接调用 onMove 不够精确，需要通过外部 arrayMove
-      // 这里用自定义事件通知父组件
       const event = new CustomEvent('sjgl02-row-move', { detail: { from: index, to: newIndex } });
       window.dispatchEvent(event);
     }
@@ -333,7 +329,7 @@ export default function PermEditModal({
     }
   };
 
-  const toolbarButtons = (opts: typeof fieldOptions, val: string[], setter: (v: string[]) => void, copyFrom?: { label: string; source: string[] }, copyFromConfig?: boolean) => (
+  const toolbarButtons = (opts: typeof fieldOptions, val: string[], setter: (v: string[]) => void, copyFrom?: { label: string; source: string[] }, copyFromConfig?: 'import' | 'export') => (
     <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
       {opts.length > 0 && (
         <>
@@ -353,7 +349,7 @@ export default function PermEditModal({
       )}
       {copyFromConfig && (
         <Button type="link" size="small" style={{ padding: 0, fontSize: 12 }}
-          onClick={() => setCopyModalTarget(copyFromConfig === true ? 'import' : 'export')}>
+          onClick={() => setCopyModalTarget(copyFromConfig)}>
           📋 {t('从其他配置复制')}
         </Button>
       )}
@@ -425,7 +421,7 @@ export default function PermEditModal({
           </FieldBlock>
           <FieldBlock title={`${t('可导入字段')}（${t('空=全部允许')}）`}
             extra={toolbarButtons(fieldOptions, importFields, setImportFields,
-              canExport ? { label: `📋 ${t('复制导出字段')}`, source: exportFields } : undefined, true)}
+              canExport ? { label: `📋 ${t('复制导出字段')}`, source: exportFields } : undefined, 'import')}
           >
             <SortableFieldList options={fieldOptions} value={importFields} onChange={setImportFields} placeholder={t('+ 添加字段')} />
           </FieldBlock>
@@ -437,7 +433,7 @@ export default function PermEditModal({
           <div style={{ fontWeight: 600, color: '#52c41a', fontSize: 13, marginBottom: 8 }}>⬆ {t('导出配置')}</div>
           <FieldBlock title={`${t('可导出字段')}（${t('空=全部允许')}）`}
             extra={toolbarButtons(fieldOptions, exportFields, setExportFields,
-              canImport ? { label: `📋 ${t('复制导入字段')}`, source: importFields } : undefined, true)}
+              canImport ? { label: `📋 ${t('复制导入字段')}`, source: importFields } : undefined, 'export')}
           >
             <SortableFieldList options={fieldOptions} value={exportFields} onChange={setExportFields} placeholder={t('+ 添加字段')} />
           </FieldBlock>

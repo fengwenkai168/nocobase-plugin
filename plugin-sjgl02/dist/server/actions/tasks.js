@@ -152,6 +152,10 @@ function registerTaskActions(plugin) {
       if (!["import", "export"].includes(type)) {
         ctx.throw(400, "\u4EC5\u5BFC\u5165/\u5BFC\u51FA\u4EFB\u52A1\u53EF\u91CD\u65B0\u6267\u884C");
       }
+      const status = task.get("status");
+      if (!["failed", "canceled"].includes(status)) {
+        ctx.throw(400, "\u4EC5\u5931\u8D25\u6216\u5DF2\u53D6\u6D88\u7684\u4EFB\u52A1\u53EF\u91CD\u65B0\u6267\u884C");
+      }
       const params = task.get("params") || {};
       params.operatorUserId = (0, import_utils.currentUserId)(ctx);
       const newTask = await plugin.taskQueue.submit(type, params, (0, import_utils.currentUserId)(ctx), {
@@ -159,7 +163,8 @@ function registerTaskActions(plugin) {
         collectionName: task.get("collectionName"),
         collectionTitle: task.get("collectionTitle"),
         permissionConfigId: task.get("permissionConfigId"),
-        permissionType: task.get("permissionType")
+        permissionType: task.get("permissionType"),
+        permissionLabel: task.get("permissionLabel")
       });
       ctx.body = { taskId: newTask.get("id") };
       await next();

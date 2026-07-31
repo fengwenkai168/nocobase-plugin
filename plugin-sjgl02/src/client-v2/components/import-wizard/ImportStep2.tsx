@@ -6,10 +6,7 @@ import { ImportMappingItem, UploadResult, useApi } from '../../services/api';
 import { ImportWizardState } from './ImportWizard';
 import MappingTable, { buildInitMapping, useImportableFields } from './MappingTable';
 
-export function fieldLabel(name: string, fieldList: Array<{ name: string; title: string }>): string {
-  const f = fieldList.find((x) => x.name === name);
-  return f ? `${f.title}(${f.name})` : name;
-}
+import { fieldLabel } from './field-utils';
 
 export default function ImportStep2({
   state,
@@ -68,15 +65,37 @@ export default function ImportStep2({
     const attachItems = state.mapping.filter(
       (m) => m.source !== 'ignore' && fields.find((f) => f.name === m.field)?.attachment,
     );
-    if (!attachItems.length) return true;
-    if (!attachmentUploaded) {
-      message.error(t('请先上传压缩包'));
-      return false;
+    if (attachItems.length) {
+      if (!attachmentUploaded) {
+        message.error(t('请先上传压缩包'));
+        return false;
+      }
+      const missing = attachItems.filter((m) => !m.config?.folder);
+      if (missing.length) {
+        message.error(`${t('请先在「配置」列为附件字段选择文件夹')}：${missing.map((m) => fieldLabel(m.field, fields)).join('、')}`);
+        return false;
+      }
     }
-    const missing = attachItems.filter((m) => !m.config?.folder);
-    if (missing.length) {
-      message.error(`${t('请先在「配置」列为附件字段选择文件夹')}：${missing.map((m) => fieldLabel(m.field, fields)).join('、')}`);
-      return false;
+    // 唯一值字段不能为忽略（update/upsert 模式）
+    if (isUpMode) {
+      const ignoredUnique = state.uniqueFields.filter(
+        (f) => state.mapping.find((m) => m.field === f)?.source === 'ignore',
+      );
+      if (ignoredUnique.length) {
+        message.error(`${t('唯一值字段不能设为忽略')}: ${ignoredUnique.map((f) => fieldLabel(f, fields)).join(', ')}`);
+        return false;
+      }
+    }
+    // 必填字段不能为忽略
+    const requiredFields = state.permission?.requiredFields || [];
+    if (requiredFields.length) {
+      const ignoredRequired = requiredFields.filter(
+        (f) => state.mapping.find((m) => m.field === f)?.source === 'ignore',
+      );
+      if (ignoredRequired.length) {
+        message.error(`${t('必填字段不能设为忽略')}: ${ignoredRequired.map((f) => fieldLabel(f, fields)).join(', ')}`);
+        return false;
+      }
     }
     return true;
   };
@@ -508,7 +527,11 @@ export default function ImportStep2({
         <Button onClick={onPrev}>← {t('上一步')}</Button>{' '}
         <Button
           type="primary"
-          disabled={isUpMode && state.uniqueFields.length === 0}
+          disabled={
+            (isUpMode && state.uniqueFields.length === 0) ||
+            (isUpMode && state.uniqueFields.every((f) => state.mapping.find((m) => m.field === f)?.source === 'ignore')) ||
+            (state.permission?.requiredFields || []).some((f) => state.mapping.find((m) => m.field === f)?.source === 'ignore')
+          }
           onClick={() => {
             if (validateBeforeNext()) onNext();
           }}

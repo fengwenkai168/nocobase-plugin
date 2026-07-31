@@ -121,7 +121,10 @@ export class TaskQueueService {
     this.controllers.set(taskId, controller);
     this.processing.add(taskId);
     const startedAt = new Date();
-    await this.repo.update({ filter: { id: taskId }, values: { status: TASK_STATUS.RUNNING, startedAt } });
+    // worker 子进程路径（externalSignal 存在）跳过 RUNNING 写入：主进程 executeViaWorker 已写过
+    if (!options.externalSignal) {
+      await this.repo.update({ filter: { id: taskId }, values: { status: TASK_STATUS.RUNNING, startedAt } });
+    }
 
     let lastProgressWrite = 0;
     const ctx: TaskHandlerContext = {

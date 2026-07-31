@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, Button, Card, Checkbox, Collapse, Input, InputNumber, Radio, Select, Space, Switch, Tag } from 'antd';
 import {
   DndContext,
@@ -53,10 +53,11 @@ function opOptions(t: (s: string) => string) {
 }
 
 function SortableExportRow({
-  id, index, label, total, extra, onRemove, onMove,
+  id, index, label, total, extra, onRemove, onMove, onJumpTo,
 }: {
   id: string; index: number; label: string; total: number;
   extra?: React.ReactNode; onRemove: () => void; onMove: (dir: 'up' | 'down') => void;
+  onJumpTo?: (targetIndex: number) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const [editIndex, setEditIndex] = useState<number | null>(null);
@@ -68,12 +69,8 @@ function SortableExportRow({
   };
   const commitMove = (target: number) => {
     const clamped = Math.max(1, Math.min(target, total));
-    if (clamped !== index + 1) {
-      const diff = clamped - (index + 1);
-      if (diff !== 0) {
-        const event = new CustomEvent('sjgl02-export-row-move', { detail: { from: index, to: clamped - 1 } });
-        window.dispatchEvent(event);
-      }
+    if (clamped !== index + 1 && onJumpTo) {
+      onJumpTo(clamped - 1);
     }
   };
   return (
@@ -296,68 +293,76 @@ export default function ExportStep2({
               defaultActiveKey={selected.length > 0 ? ['1'] : []}
               size="small"
               style={{ marginBottom: 4 }}
-              items={[{
-                key: '1',
-                label: <span style={{ fontSize: 12, color: groupColor, fontWeight: 600 }}>{groupLabel} ({selected.length}/{groupFields.length})</span>,
-                children: (
-                  <div>
-                    {selected.length > 0 && (
-                      <DndContext sensors={sensors} collisionDetection={closestCenter}
-                        onDragEnd={(e) => {
-                          if (e.over && e.active.id !== e.over.id) {
-                            const oldIdx = selected.findIndex((f) => f.name === e.active.id);
-                            const newIdx = selected.findIndex((f) => f.name === e.over.id);
-                            const allSelected = [...state.selectedFields];
-                            const oldAllIdx = allSelected.indexOf(selected[oldIdx].name);
-                            const newAllIdx = allSelected.indexOf(selected[newIdx].name);
-                            patchDirty({ selectedFields: arrayMove(allSelected, oldAllIdx, newAllIdx) });
-                          }
-                        }}>
-                        <SortableContext items={selected.map((f) => f.name)} strategy={verticalListSortingStrategy}>
-                          {selected.map((f, i) => (
-                            <SortableExportRow
-                              key={f.name} id={f.name} index={i} label={`${f.title}(${f.name})`} total={selected.length}
-                              extra={
-                                groupKey === 'dates' ? (
-                                  <Select size="small" style={{ minWidth: 200 }}
-                                    value={state.dateFormats[f.name] || state.globalDateFormat}
-                                    onChange={(v) => patchDirty({ dateFormats: { ...state.dateFormats, [f.name]: v } })}
-                                    options={DATE_OPTS} showSearch optionFilterProp="label" />
-                                ) : groupKey === 'relations' ? (
-                                  <>
-                                    <span style={{ color: '#999', fontSize: 11 }}>{'->'} {f.target}{f.multiple ? `（${t('多值')}）` : ''}</span>
-                                    <Select size="small" style={{ minWidth: 160 }}
-                                      value={state.relationFormats[f.name] || state.globalRelationFormat}
-                                      onChange={(v) => patchDirty({ relationFormats: { ...state.relationFormats, [f.name]: v } })}
-                                      options={REL_OPTS} showSearch optionFilterProp="label" />
-                                  </>
-                                ) : null
+            >
+              <Collapse.Panel
+                key="1"
+                header={<span style={{ fontSize: 12, color: groupColor, fontWeight: 600 }}>{groupLabel} ({selected.length}/{groupFields.length})</span>}
+              >
+                <div>
+                  {selected.length > 0 && (
+                    <DndContext sensors={sensors} collisionDetection={closestCenter}
+                      onDragEnd={(e) => {
+                        if (e.over && e.active.id !== e.over.id) {
+                          const oldIdx = selected.findIndex((f) => f.name === e.active.id);
+                          const newIdx = selected.findIndex((f) => f.name === e.over.id);
+                          const allSelected = [...state.selectedFields];
+                          const oldAllIdx = allSelected.indexOf(selected[oldIdx].name);
+                          const newAllIdx = allSelected.indexOf(selected[newIdx].name);
+                          patchDirty({ selectedFields: arrayMove(allSelected, oldAllIdx, newAllIdx) });
+                        }
+                      }}>
+                      <SortableContext items={selected.map((f) => f.name)} strategy={verticalListSortingStrategy}>
+                        {selected.map((f, i) => (
+                          <SortableExportRow
+                            key={f.name} id={f.name} index={i} label={`${f.title}(${f.name})`} total={selected.length}
+                            extra={
+                              groupKey === 'dates' ? (
+                                <Select size="small" style={{ minWidth: 200 }}
+                                  value={state.dateFormats[f.name] || state.globalDateFormat}
+                                  onChange={(v) => patchDirty({ dateFormats: { ...state.dateFormats, [f.name]: v } })}
+                                  options={DATE_OPTS} showSearch optionFilterProp="label" />
+                              ) : groupKey === 'relations' ? (
+                                <>
+                                  <span style={{ color: '#999', fontSize: 11 }}>{'->'} {f.target}{f.multiple ? `（${t('多值')}）` : ''}</span>
+                                  <Select size="small" style={{ minWidth: 160 }}
+                                    value={state.relationFormats[f.name] || state.globalRelationFormat}
+                                    onChange={(v) => patchDirty({ relationFormats: { ...state.relationFormats, [f.name]: v } })}
+                                    options={REL_OPTS} showSearch optionFilterProp="label" />
+                                </>
+                              ) : null
+                            }
+                            onRemove={() => patchDirty({ selectedFields: state.selectedFields.filter((x) => x !== f.name) })}
+                            onMove={(dir) => {
+                              const target = dir === 'up' ? i - 1 : i + 1;
+                              if (target >= 0 && target < selected.length) {
+                                const allSelected = [...state.selectedFields];
+                                const oldAllIdx = allSelected.indexOf(f.name);
+                                const newAllIdx = allSelected.indexOf(selected[target].name);
+                                patchDirty({ selectedFields: arrayMove(allSelected, oldAllIdx, newAllIdx) });
                               }
-                              onRemove={() => patchDirty({ selectedFields: state.selectedFields.filter((x) => x !== f.name) })}
-                              onMove={(dir) => {
-                                const target = dir === 'up' ? i - 1 : i + 1;
-                                if (target >= 0 && target < selected.length) {
-                                  const allSelected = [...state.selectedFields];
-                                  const oldAllIdx = allSelected.indexOf(f.name);
-                                  const newAllIdx = allSelected.indexOf(selected[target].name);
-                                  patchDirty({ selectedFields: arrayMove(allSelected, oldAllIdx, newAllIdx) });
-                                }
-                              }}
-                            />
-                          ))}
-                        </SortableContext>
-                      </DndContext>
-                    )}
-                    {unselected.length > 0 && (
-                      <Select size="small" style={{ minWidth: 200, marginTop: 4 }} placeholder={t('+ 添加字段')} value={null}
-                        onChange={(v) => patchDirty({ selectedFields: [...state.selectedFields, v] })}
-                        options={unselected.map((f) => ({ value: f.name, label: `${f.title}(${f.name})` }))}
-                        showSearch optionFilterProp="label" />
-                    )}
-                  </div>
-                ),
-              }]}
-            />
+                            }}
+                            onJumpTo={(targetIdx) => {
+                              const allSelected = [...state.selectedFields];
+                              const oldAllIdx = allSelected.indexOf(f.name);
+                              const newAllIdx = allSelected.indexOf(selected[targetIdx].name);
+                              if (oldAllIdx >= 0 && newAllIdx >= 0) {
+                                patchDirty({ selectedFields: arrayMove(allSelected, oldAllIdx, newAllIdx) });
+                              }
+                            }}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  )}
+                  {unselected.length > 0 && (
+                    <Select size="small" style={{ minWidth: 200, marginTop: 4 }} placeholder={t('+ 添加字段')} value={null}
+                      onChange={(v) => patchDirty({ selectedFields: [...state.selectedFields, v] })}
+                      options={unselected.map((f) => ({ value: f.name, label: `${f.title}(${f.name})` }))}
+                      showSearch optionFilterProp="label" />
+                  )}
+                </div>
+              </Collapse.Panel>
+            </Collapse>
           );
         })}
       </Card>

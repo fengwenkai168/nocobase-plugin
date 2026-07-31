@@ -3,7 +3,7 @@ import { App, Button, Input, Select, Table, Tag } from 'antd';
 import { useT } from '../../locale';
 import { CollectionMeta, FieldMetaInfo, ImportMappingItem, PermConfigInfo } from '../../services/api';
 import FieldConfigPanel, { defaultFieldConfig, isRelationField } from './FieldConfigPanel';
-import { fieldLabel } from './ImportStep2';
+import { fieldLabel } from './field-utils';
 
 const SYSTEM_FIELDS = ['createdAt', 'updatedAt', 'createdById', 'updatedById'];
 

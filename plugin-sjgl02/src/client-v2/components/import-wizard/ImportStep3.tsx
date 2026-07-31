@@ -4,7 +4,7 @@ import { useT } from '../../locale';
 import { useApi } from '../../services/api';
 import { ImportWizardState } from './ImportWizard';
 import { modeLabel } from './modeLabels';
-import { fieldLabel } from './ImportStep2';
+import { fieldLabel } from './field-utils';
 
 export default function ImportStep3({
   state,

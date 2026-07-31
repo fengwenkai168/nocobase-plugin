@@ -121,6 +121,10 @@ export function registerTaskActions(plugin: Plugin) {
       if (!['import', 'export'].includes(type)) {
         ctx.throw(400, '仅导入/导出任务可重新执行');
       }
+      const status = task.get('status') as string;
+      if (!['failed', 'canceled'].includes(status)) {
+        ctx.throw(400, '仅失败或已取消的任务可重新执行');
+      }
       const params = (task.get('params') || {}) as Record<string, unknown>;
       params.operatorUserId = currentUserId(ctx);
       const newTask = await plugin.taskQueue.submit(type, params, currentUserId(ctx), {
@@ -129,6 +133,7 @@ export function registerTaskActions(plugin: Plugin) {
         collectionTitle: task.get('collectionTitle') as string,
         permissionConfigId: task.get('permissionConfigId') as number,
         permissionType: task.get('permissionType') as string,
+        permissionLabel: task.get('permissionLabel') as string | undefined,
       });
       ctx.body = { taskId: newTask.get('id') };
       await next();

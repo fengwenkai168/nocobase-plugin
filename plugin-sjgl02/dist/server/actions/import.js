@@ -263,7 +263,7 @@ function registerImportActions(plugin) {
         filePath: String(values.filePath),
         permissionConfigId: config.id ?? void 0,
         permissionType: config.targetType,
-        permissionLabel: config.targetName ? `${config.targetType === "user" ? "\u{1F464}" : "\u{1F465}"} ${config.targetName}` : void 0
+        permissionLabel: config.targetName ? `${config.targetType === "user" ? "\u{1F464}" : "\u{1F510}"} ${config.targetName}` : void 0
       });
       ctx.body = { taskId: task.get("id"), rowCount };
       await next();
