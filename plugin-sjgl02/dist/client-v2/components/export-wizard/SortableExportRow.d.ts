@@ -2,7 +2,7 @@ import React from 'react';
 export default function SortableExportRow({ id, index, label, total, extra, onRemove, onMove, onJumpTo, }: {
     id: string;
     index: number;
-    label: string;
+    label: React.ReactNode;
     total: number;
     extra?: React.ReactNode;
     onRemove: () => void;

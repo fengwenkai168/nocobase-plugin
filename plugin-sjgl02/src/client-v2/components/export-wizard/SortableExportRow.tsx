@@ -16,7 +16,7 @@ export default function SortableExportRow({
 }: {
   id: string;
   index: number;
-  label: string;
+  label: React.ReactNode;
   total: number;
   extra?: React.ReactNode;
   onRemove: () => void;

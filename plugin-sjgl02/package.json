@@ -1,6 +1,6 @@
 {
   "name": "@my-project/plugin-sjgl02",
-  "version": "2.2.10",
+  "version": "2.2.11",
   "displayName": "数据管理 sjgl02",
   "displayName.zh-CN": "数据管理 sjgl02",
   "description": "企业级数据导入导出插件，支持大规模数据处理、任务管理、表级权限控制",

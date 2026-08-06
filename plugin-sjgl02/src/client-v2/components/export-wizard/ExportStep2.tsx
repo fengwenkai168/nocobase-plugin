@@ -1,19 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, App, Button, Card, Checkbox, Collapse, InputNumber, Radio, Select, Space, Switch, Tag } from 'antd';
+import { Alert, App, Button, Card, Checkbox, Radio, Select, Space, Switch, Tag } from 'antd';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 
 import {
   BarChartOutlined,
   BulbOutlined,
-  CalendarOutlined,
   CheckSquareOutlined,
   CopyOutlined,
-  FileOutlined,
   FileTextOutlined,
   KeyOutlined,
-  LinkOutlined,
-  PaperClipOutlined,
   SettingOutlined,
   TagsOutlined,
 } from '@ant-design/icons';
@@ -25,7 +21,13 @@ import ExportAllTablesSection from './ExportAllTablesSection';
 import SortableExportRow from './SortableExportRow';
 import ExportFilterSection from './ExportFilterSection';
 import ExportRelationSection from './ExportRelationSection';
-import { dateFormatOptions, groupExportFields, relationFormatOptions, RELATION_TYPES } from './export-options';
+import {
+  dateFormatOptions,
+  groupExportFields,
+  relationFormatOptions,
+  DATE_TYPES,
+  RELATION_TYPES,
+} from './export-options';
 
 export default function ExportStep2({
   state,
@@ -187,154 +189,138 @@ export default function ExportStep2({
           </Space>
         </div>
 
-        {(['regular', 'dates', 'relations', 'attachments'] as const).map((groupKey) => {
-          const groupFields = groups[groupKey];
-          if (!groupFields.length) return null;
-          // 已选字段按 selectedFields 顺序渲染（与导出列顺序一致），拖拽/上下移/序号修改即时生效
-          const selected = state.selectedFields
-            .map((name) => groupFields.find((f) => f.name === name))
-            .filter(Boolean) as typeof groupFields;
-          const unselected = groupFields.filter((f) => !state.selectedFields.includes(f.name));
-          const groupLabel =
-            groupKey === 'regular' ? (
-              <span>
-                <FileOutlined /> {t('常规字段')}
-              </span>
-            ) : groupKey === 'dates' ? (
-              <span>
-                <CalendarOutlined /> {t('日期时间字段')}
-              </span>
-            ) : groupKey === 'relations' ? (
-              <span>
-                <LinkOutlined /> {t('关联字段')}
-              </span>
-            ) : (
-              <span>
-                <PaperClipOutlined /> {t('附件字段')}
-              </span>
+        {(() => {
+          // 合并为一组：按 selectedFields 全局顺序渲染所有已选字段，序号=最终导出列顺序
+          const allFields = [...groups.regular, ...groups.dates, ...groups.relations, ...groups.attachments];
+          const fieldMap = new Map(allFields.map((f) => [f.name, f]));
+          const selected = state.selectedFields.map((name) => fieldMap.get(name)).filter(Boolean) as typeof allFields;
+          const unselected = allFields.filter((f) => !state.selectedFields.includes(f.name));
+
+          const groupKeyOf = (f: (typeof allFields)[number]): 'regular' | 'dates' | 'relations' | 'attachments' => {
+            if (f.attachment) return 'attachments';
+            if (DATE_TYPES.includes(f.type)) return 'dates';
+            if (RELATION_TYPES.includes(f.type)) return 'relations';
+            return 'regular';
+          };
+          const groupTag = (f: (typeof allFields)[number]) => {
+            const key = groupKeyOf(f);
+            const meta = {
+              regular: { color: 'default', label: t('常规') },
+              dates: { color: 'orange', label: t('日期') },
+              relations: { color: 'purple', label: t('关联') },
+              attachments: { color: 'cyan', label: t('附件') },
+            }[key];
+            return (
+              <Tag color={meta.color} style={{ marginLeft: 6 }}>
+                {meta.label}
+              </Tag>
             );
-          const groupColor =
-            groupKey === 'dates'
-              ? '#fa8c16'
-              : groupKey === 'relations'
-                ? '#7c3aed'
-                : groupKey === 'attachments'
-                  ? '#0891b2'
-                  : undefined;
+          };
 
           return (
-            <Collapse
-              key={groupKey}
-              ghost
-              defaultActiveKey={selected.length > 0 ? ['1'] : []}
-              size="small"
-              style={{ marginBottom: 4 }}
-            >
-              <Collapse.Panel
-                key="1"
-                header={
-                  <span style={{ fontSize: 12, color: groupColor, fontWeight: 600 }}>
-                    {groupLabel} ({selected.length}/{groupFields.length})
-                  </span>
-                }
-              >
-                <div>
-                  {selected.length > 0 && (
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={(e) => {
-                        if (e.over && e.active.id !== e.over.id) {
-                          const oldIdx = selected.findIndex((f) => f.name === e.active.id);
-                          const newIdx = selected.findIndex((f) => f.name === e.over.id);
-                          const allSelected = [...state.selectedFields];
-                          const oldAllIdx = allSelected.indexOf(selected[oldIdx].name);
-                          const newAllIdx = allSelected.indexOf(selected[newIdx].name);
-                          patchDirty({ selectedFields: arrayMove(allSelected, oldAllIdx, newAllIdx) });
+            <div>
+              {selected.length > 0 ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(e) => {
+                    if (e.over && e.active.id !== e.over.id) {
+                      const oldIdx = state.selectedFields.indexOf(String(e.active.id));
+                      const newIdx = state.selectedFields.indexOf(String(e.over.id));
+                      if (oldIdx >= 0 && newIdx >= 0) {
+                        patchDirty({ selectedFields: arrayMove([...state.selectedFields], oldIdx, newIdx) });
+                      }
+                    }
+                  }}
+                >
+                  <SortableContext items={state.selectedFields} strategy={verticalListSortingStrategy}>
+                    {selected.map((f, i) => (
+                      <SortableExportRow
+                        key={f.name}
+                        id={f.name}
+                        index={i}
+                        label={
+                          <span>
+                            {f.title}({f.name}){groupTag(f)}
+                          </span>
                         }
-                      }}
-                    >
-                      <SortableContext items={selected.map((f) => f.name)} strategy={verticalListSortingStrategy}>
-                        {selected.map((f, i) => (
-                          <SortableExportRow
-                            key={f.name}
-                            id={f.name}
-                            index={i}
-                            label={`${f.title}(${f.name})`}
-                            total={selected.length}
-                            extra={
-                              groupKey === 'dates' ? (
-                                <Select
-                                  size="small"
-                                  style={{ minWidth: 200 }}
-                                  value={state.dateFormats[f.name] || state.globalDateFormat}
-                                  onChange={(v) => patchDirty({ dateFormats: { ...state.dateFormats, [f.name]: v } })}
-                                  options={DATE_OPTS}
-                                  showSearch
-                                  optionFilterProp="label"
-                                />
-                              ) : groupKey === 'relations' ? (
-                                <>
-                                  <span style={{ color: '#999', fontSize: 11 }}>
-                                    {'->'} {f.target}
-                                    {f.multiple ? `（${t('多值')}）` : ''}
-                                  </span>
-                                  <Select
-                                    size="small"
-                                    style={{ minWidth: 160 }}
-                                    value={state.relationFormats[f.name] || state.globalRelationFormat}
-                                    onChange={(v) =>
-                                      patchDirty({ relationFormats: { ...state.relationFormats, [f.name]: v } })
-                                    }
-                                    options={REL_OPTS}
-                                    showSearch
-                                    optionFilterProp="label"
-                                  />
-                                </>
-                              ) : null
-                            }
-                            onRemove={() =>
-                              patchDirty({ selectedFields: state.selectedFields.filter((x) => x !== f.name) })
-                            }
-                            onMove={(dir) => {
-                              const target = dir === 'up' ? i - 1 : i + 1;
-                              if (target >= 0 && target < selected.length) {
-                                const allSelected = [...state.selectedFields];
-                                const oldAllIdx = allSelected.indexOf(f.name);
-                                const newAllIdx = allSelected.indexOf(selected[target].name);
-                                patchDirty({ selectedFields: arrayMove(allSelected, oldAllIdx, newAllIdx) });
-                              }
-                            }}
-                            onJumpTo={(targetIdx) => {
-                              const allSelected = [...state.selectedFields];
-                              const oldAllIdx = allSelected.indexOf(f.name);
-                              const newAllIdx = allSelected.indexOf(selected[targetIdx].name);
-                              if (oldAllIdx >= 0 && newAllIdx >= 0) {
-                                patchDirty({ selectedFields: arrayMove(allSelected, oldAllIdx, newAllIdx) });
-                              }
-                            }}
-                          />
-                        ))}
-                      </SortableContext>
-                    </DndContext>
-                  )}
-                  {unselected.length > 0 && (
-                    <Select
-                      size="small"
-                      style={{ minWidth: 200, marginTop: 4 }}
-                      placeholder={t('+ 添加字段')}
-                      value={null}
-                      onChange={(v) => patchDirty({ selectedFields: [...state.selectedFields, v] })}
-                      options={unselected.map((f) => ({ value: f.name, label: `${f.title}(${f.name})` }))}
-                      showSearch
-                      optionFilterProp="label"
-                    />
-                  )}
+                        total={selected.length}
+                        extra={
+                          groupKeyOf(f) === 'dates' ? (
+                            <Select
+                              size="small"
+                              style={{ minWidth: 200 }}
+                              value={state.dateFormats[f.name] || state.globalDateFormat}
+                              onChange={(v) => patchDirty({ dateFormats: { ...state.dateFormats, [f.name]: v } })}
+                              options={DATE_OPTS}
+                              showSearch
+                              optionFilterProp="label"
+                            />
+                          ) : groupKeyOf(f) === 'relations' ? (
+                            <>
+                              <span style={{ color: '#999', fontSize: 11 }}>
+                                {'->'} {f.target}
+                                {f.multiple ? `（${t('多值')}）` : ''}
+                              </span>
+                              <Select
+                                size="small"
+                                style={{ minWidth: 160 }}
+                                value={state.relationFormats[f.name] || state.globalRelationFormat}
+                                onChange={(v) =>
+                                  patchDirty({ relationFormats: { ...state.relationFormats, [f.name]: v } })
+                                }
+                                options={REL_OPTS}
+                                showSearch
+                                optionFilterProp="label"
+                              />
+                            </>
+                          ) : null
+                        }
+                        onRemove={() =>
+                          patchDirty({ selectedFields: state.selectedFields.filter((x) => x !== f.name) })
+                        }
+                        onMove={(dir) => {
+                          const target = dir === 'up' ? i - 1 : i + 1;
+                          if (target >= 0 && target < selected.length) {
+                            patchDirty({ selectedFields: arrayMove([...state.selectedFields], i, target) });
+                          }
+                        }}
+                        onJumpTo={(targetIdx) => {
+                          if (targetIdx >= 0 && targetIdx < selected.length && targetIdx !== i) {
+                            patchDirty({ selectedFields: arrayMove([...state.selectedFields], i, targetIdx) });
+                          }
+                        }}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+              ) : (
+                <div style={{ padding: '12px 0', textAlign: 'center', color: '#999', fontSize: 12 }}>
+                  {t('尚未选择字段')}
                 </div>
-              </Collapse.Panel>
-            </Collapse>
+              )}
+              {unselected.length > 0 && (
+                <Select
+                  size="small"
+                  style={{ minWidth: 260, marginTop: 8 }}
+                  placeholder={t('+ 添加字段')}
+                  value={null}
+                  onChange={(v) => patchDirty({ selectedFields: [...state.selectedFields, v] })}
+                  options={unselected.map((f) => ({
+                    value: f.name,
+                    label: (
+                      <span>
+                        {f.title}({f.name}){groupTag(f)}
+                      </span>
+                    ),
+                  }))}
+                  showSearch
+                  optionFilterProp="label"
+                />
+              )}
+            </div>
           );
-        })}
+        })()}
       </Card>
 
       <Card
