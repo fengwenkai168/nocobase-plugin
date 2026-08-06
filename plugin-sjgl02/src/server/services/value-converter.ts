@@ -164,6 +164,22 @@ function fieldCfg(ctx: ConvertContext, name: string): FieldConfig {
   return ctx.fieldConfigs?.[name] || {};
 }
 
+// 宽松数字解析：先按标准 Number 转换，失败时剥离货币符号（¥￥$€£）、千分位逗号、空白后重试。
+// 如 "¥39.9" → 39.9、"1,234.56" → 1234.56；纯数字行为不变。
+function parseNumericValue(raw: unknown): number | null {
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  const text = String(raw).trim();
+  if (!text) return null;
+  let num = Number(text);
+  if (Number.isFinite(num)) return num;
+  const cleaned = text.replace(/[¥￥$€£,\s]/g, '');
+  if (!cleaned) return null;
+  num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
 export async function convertFieldValue(meta: FieldMeta, raw: unknown, ctx: ConvertContext): Promise<ConvertResult> {
   if (meta.ignored) return skip;
   const required = ctx.requiredFields.includes(meta.name);
@@ -201,8 +217,8 @@ export async function convertFieldValue(meta: FieldMeta, raw: unknown, ctx: Conv
     case 'integer':
     case 'bigInt':
     case 'sort': {
-      const num = typeof raw === 'number' ? raw : Number(String(raw).trim());
-      if (!Number.isFinite(num) || !Number.isInteger(num)) return fail(`整数转换失败: "${raw}"`);
+      const num = parseNumericValue(raw);
+      if (num === null || !Number.isInteger(num)) return fail(`整数转换失败: "${raw}"`);
       return ok(num);
     }
     case 'float':
@@ -210,8 +226,8 @@ export async function convertFieldValue(meta: FieldMeta, raw: unknown, ctx: Conv
     case 'real':
     case 'decimal':
     case 'percent': {
-      const num = typeof raw === 'number' ? raw : Number(String(raw).trim());
-      if (!Number.isFinite(num)) return fail(`数字转换失败: "${raw}"`);
+      const num = parseNumericValue(raw);
+      if (num === null) return fail(`数字转换失败: "${raw}"`);
       return ok(num);
     }
     case 'boolean':

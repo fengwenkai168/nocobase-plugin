@@ -401,29 +401,45 @@ export default function TaskDrawer({
             ]}
           />
 
-          {task.status === 'succeeded' && (task.fileName || (task.type === 'import' && params.fileName)) && (
-            <Card size="small" style={{ marginBottom: 16, background: '#f0fdf4', borderColor: '#bbf7d0' }}>
-              <div style={{ fontWeight: 600 }}>
-                <FolderOutlined /> {task.fileName || (params.fileName as string)}
-              </div>
-              <div style={{ fontSize: 12, color: '#8c8c8c', margin: '4px 0 8px' }}>
-                {task.fileSize ? `${(task.fileSize / 1024).toFixed(1)} KB | ` : ''}
-                {task.doneAt ? new Date(task.doneAt).toLocaleString() : ''}
-              </div>
-              <Space>
-                {task.fileName && (
-                  <Button type="primary" size="small" onClick={() => api.openDownload(api.downloadUrl(task.id))}>
-                    {t('Download Export File')}
-                  </Button>
-                )}
-                {task.type === 'import' && (
-                  <Button size="small" onClick={() => api.openDownload(api.downloadUrl(task.id, 'source'))}>
-                    {t('Download Import Source File')}
-                  </Button>
-                )}
-              </Space>
-            </Card>
-          )}
+          {(['succeeded', 'failed', 'canceled'].includes(task.status) ||
+            (task.type === 'import' && ['failed', 'canceled'].includes(task.status))) &&
+            (task.fileName || (task.type === 'import' && params.fileName)) && (
+              <Card
+                size="small"
+                style={{
+                  marginBottom: 16,
+                  background: task.status === 'failed' ? '#fff7f0' : task.status === 'canceled' ? '#fafafa' : '#f0fdf4',
+                  borderColor:
+                    task.status === 'failed' ? '#ffd8bf' : task.status === 'canceled' ? '#e8e8e8' : '#bbf7d0',
+                }}
+              >
+                <div style={{ fontWeight: 600 }}>
+                  <FolderOutlined /> {task.fileName || (params.fileName as string)}
+                  {task.status === 'failed' && (
+                    <Tag color="red" style={{ marginLeft: 8 }}>
+                      {t('Failed')}
+                    </Tag>
+                  )}
+                  {task.status === 'canceled' && <Tag style={{ marginLeft: 8 }}>{t('Canceled')}</Tag>}
+                </div>
+                <div style={{ fontSize: 12, color: '#8c8c8c', margin: '4px 0 8px' }}>
+                  {task.fileSize ? `${(task.fileSize / 1024).toFixed(1)} KB | ` : ''}
+                  {task.doneAt ? new Date(task.doneAt).toLocaleString() : ''}
+                </div>
+                <Space>
+                  {task.status === 'succeeded' && task.fileName && (
+                    <Button type="primary" size="small" onClick={() => api.openDownload(api.downloadUrl(task.id))}>
+                      {t('Download Export File')}
+                    </Button>
+                  )}
+                  {task.type === 'import' && (
+                    <Button size="small" onClick={() => api.openDownload(api.downloadUrl(task.id, 'source'))}>
+                      {t('Download Import Source File')}
+                    </Button>
+                  )}
+                </Space>
+              </Card>
+            )}
 
           <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
             {['pending', 'running'].includes(task.status) && (

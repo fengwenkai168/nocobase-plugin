@@ -139,6 +139,19 @@ function fieldCfg(ctx, name) {
   var _a;
   return ((_a = ctx.fieldConfigs) == null ? void 0 : _a[name]) || {};
 }
+function parseNumericValue(raw) {
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  const text = String(raw).trim();
+  if (!text) return null;
+  let num = Number(text);
+  if (Number.isFinite(num)) return num;
+  const cleaned = text.replace(/[¥￥$€£,\s]/g, "");
+  if (!cleaned) return null;
+  num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
 async function convertFieldValue(meta, raw, ctx) {
   var _a;
   if (meta.ignored) return skip;
@@ -169,8 +182,8 @@ async function convertFieldValue(meta, raw, ctx) {
     case "integer":
     case "bigInt":
     case "sort": {
-      const num = typeof raw === "number" ? raw : Number(String(raw).trim());
-      if (!Number.isFinite(num) || !Number.isInteger(num)) return fail(`\u6574\u6570\u8F6C\u6362\u5931\u8D25: "${raw}"`);
+      const num = parseNumericValue(raw);
+      if (num === null || !Number.isInteger(num)) return fail(`\u6574\u6570\u8F6C\u6362\u5931\u8D25: "${raw}"`);
       return ok(num);
     }
     case "float":
@@ -178,8 +191,8 @@ async function convertFieldValue(meta, raw, ctx) {
     case "real":
     case "decimal":
     case "percent": {
-      const num = typeof raw === "number" ? raw : Number(String(raw).trim());
-      if (!Number.isFinite(num)) return fail(`\u6570\u5B57\u8F6C\u6362\u5931\u8D25: "${raw}"`);
+      const num = parseNumericValue(raw);
+      if (num === null) return fail(`\u6570\u5B57\u8F6C\u6362\u5931\u8D25: "${raw}"`);
       return ok(num);
     }
     case "boolean":

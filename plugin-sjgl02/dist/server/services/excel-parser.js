@@ -115,12 +115,40 @@ async function listXlsxSheets(filePath) {
     return sheets;
   });
 }
+function normalizeCsvCells(workbook) {
+  for (const sheetName of workbook.SheetNames) {
+    const ws = workbook.Sheets[sheetName];
+    if (!ws) continue;
+    for (const key of Object.keys(ws)) {
+      const m = key.match(/^([A-Z]+)(\d+)$/);
+      if (!m) continue;
+      const cell = ws[key];
+      if (!cell) continue;
+      if (cell.t === "n" && typeof cell.v === "number" && Number.isInteger(cell.v) && !Number.isSafeInteger(cell.v)) {
+        const text = String(cell.w ?? cell.v).trim();
+        ws[key] = { t: "s", v: text, w: text };
+      } else if (typeof cell.v === "string") {
+        const cleaned = cell.v.replace(/^\t+|\t+$/g, "");
+        if (cleaned !== cell.v) {
+          ws[key] = { ...cell, v: cleaned };
+        }
+      }
+    }
+  }
+}
 function readBook(filePath, kind) {
   if (kind === "csv") {
-    const content = import_node_fs.default.readFileSync(filePath, "utf8");
-    return XLSX.read(content, { type: "string", cellDates: true });
+    let content = import_node_fs.default.readFileSync(filePath, "utf8");
+    if (content.charCodeAt(0) === 65279) {
+      content = content.slice(1);
+    }
+    const workbook2 = XLSX.read(content, { type: "string", cellDates: true });
+    normalizeCsvCells(workbook2);
+    return workbook2;
   }
-  return XLSX.readFile(filePath, { cellDates: true });
+  const workbook = XLSX.readFile(filePath, { cellDates: true });
+  normalizeCsvCells(workbook);
+  return workbook;
 }
 function sheetRows(workbook, sheetName) {
   const ws = workbook.Sheets[sheetName];

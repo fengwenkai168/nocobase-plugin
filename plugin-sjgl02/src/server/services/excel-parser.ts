@@ -91,12 +91,51 @@ async function listXlsxSheets(filePath: string): Promise<SheetMeta[]> {
   });
 }
 
+interface CsvCellLike {
+  t?: string;
+  v?: unknown;
+  w?: string;
+}
+
+// CSV/xls 单元格规范化：
+// 1. 超安全整数（如 19 位订单号）转为文本，用格式化文本保留原文，避免 JS Number 精度丢失；
+// 2. 字符串值清理首尾 Tab（抖音等平台导出格式会带前导 Tab）。
+function normalizeCsvCells(workbook: XLSX.WorkBook): void {
+  for (const sheetName of workbook.SheetNames) {
+    const ws = workbook.Sheets[sheetName];
+    if (!ws) continue;
+    for (const key of Object.keys(ws)) {
+      const m = key.match(/^([A-Z]+)(\d+)$/);
+      if (!m) continue;
+      const cell = ws[key] as CsvCellLike | undefined;
+      if (!cell) continue;
+      if (cell.t === 'n' && typeof cell.v === 'number' && Number.isInteger(cell.v) && !Number.isSafeInteger(cell.v)) {
+        const text = String(cell.w ?? cell.v).trim();
+        ws[key] = { t: 's', v: text, w: text };
+      } else if (typeof cell.v === 'string') {
+        const cleaned = cell.v.replace(/^\t+|\t+$/g, '');
+        if (cleaned !== cell.v) {
+          ws[key] = { ...cell, v: cleaned };
+        }
+      }
+    }
+  }
+}
+
 function readBook(filePath: string, kind: FileKind): XLSX.WorkBook {
   if (kind === 'csv') {
-    const content = fs.readFileSync(filePath, 'utf8');
-    return XLSX.read(content, { type: 'string', cellDates: true });
+    let content = fs.readFileSync(filePath, 'utf8');
+    // 剥离 UTF-8 BOM，避免污染首列表头导致自动匹配失败
+    if (content.charCodeAt(0) === 0xfeff) {
+      content = content.slice(1);
+    }
+    const workbook = XLSX.read(content, { type: 'string', cellDates: true });
+    normalizeCsvCells(workbook);
+    return workbook;
   }
-  return XLSX.readFile(filePath, { cellDates: true });
+  const workbook = XLSX.readFile(filePath, { cellDates: true });
+  normalizeCsvCells(workbook);
+  return workbook;
 }
 
 function sheetRows(workbook: XLSX.WorkBook, sheetName: string): unknown[][] {
