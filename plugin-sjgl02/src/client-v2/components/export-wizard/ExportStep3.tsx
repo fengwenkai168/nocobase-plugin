@@ -38,14 +38,6 @@ export default function ExportStep3({
     setConfirmOpen(false);
     setSubmitting(true);
     try {
-      const filter =
-        state.dataRange === 'filtered' && state.filters.length
-          ? {
-              $and: state.filters
-                .filter((f) => f.field && f.value !== '')
-                .map((f) => ({ [f.field]: { [f.op]: f.value } })),
-            }
-          : undefined;
       await api.submitExport({
         collectionName: state.allTables ? undefined : state.collection?.name,
         allTables: state.allTables || undefined,
@@ -57,7 +49,10 @@ export default function ExportStep3({
               relationFormat: state.relationFormats[field],
             })),
         headerType: state.headerType,
-        filter,
+        filter: state.dataRange === 'filtered' ? state.filter : undefined,
+        sort: state.allTables
+          ? undefined
+          : state.sorts.filter((s) => s.field).map((s) => (s.order === 'desc' ? `-${s.field}` : s.field)),
         relationFields: state.relationExportEnabled ? state.relationFields : [],
         relationExportMode: state.relationExportMode,
         exportAttachment: state.exportAttachment,
@@ -82,7 +77,19 @@ export default function ExportStep3({
       </strong>,
     ],
     [t('导出数据表'), `${state.collection?.title}(${state.collection?.name})`],
-    [t('数据范围'), state.dataRange === 'all' ? t('全部数据') : `${t('自定义条件')}（${state.filters.length}）`],
+    [t('数据范围'), state.dataRange === 'all' ? t('全部数据') : t('自定义条件')],
+    [
+      t('排序'),
+      state.sorts.filter((s) => s.field).length
+        ? state.sorts
+            .filter((s) => s.field)
+            .map((s) => {
+              const f = state.meta?.fields.find((x) => x.name === s.field);
+              return `${f?.title || s.field}${s.order === 'desc' ? '↓' : '↑'}`;
+            })
+            .join(' → ')
+        : t('默认（ID升序）'),
+    ],
     [
       t('表头格式'),
       state.headerType === 'titleName'

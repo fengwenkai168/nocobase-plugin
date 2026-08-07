@@ -33,6 +33,7 @@ export interface ExportTaskParams {
   headerType: 'titleName' | 'title' | 'name';
   filter?: Record<string, unknown> | null;
   exportFilter?: Record<string, unknown> | null;
+  sort?: string[];
   relationFields?: string[];
   relationExportMode?: 'sheet' | 'file';
   exportAttachment?: boolean;
@@ -335,7 +336,6 @@ export class ExportEngine {
     const warnings: string[] = [];
     const recordCache = new Map<string, Map<unknown, Record<string, unknown>>>();
     let processed = 0;
-    let lastPk: unknown = null;
     let part = 1;
     let rowsInPart = 0;
 
@@ -353,10 +353,16 @@ export class ExportEngine {
       (c) => ['belongsTo', 'hasOne', 'hasMany', 'belongsToMany'].includes(c.meta.type) && c.meta.target,
     );
 
+    // 自定义排序（NocoBase sort 语法），未配置时保持按主键升序
+    const sorts = this.parseSort(params.sort);
+    const sortKeys = sorts.map((s) => (s.dir === 'DESC' ? `-${s.field}` : s.field));
+    const orderKeys = [...sortKeys, pkName];
+    let cursor: Record<string, unknown> | null = null;
+
     for (;;) {
       ctx.throwIfAborted();
-      const filter = lastPk === null ? baseFilter : this.mergeFilter(baseFilter, { [pkName]: { $gt: lastPk } });
-      const models = await repo.find({ filter, sort: [pkName], limit: QUERY_BATCH });
+      const filter = cursor === null ? baseFilter : this.buildCursorFilter(baseFilter, sorts, pkName, cursor);
+      const models = await repo.find({ filter, sort: orderKeys, limit: QUERY_BATCH });
       if (!models.length) break;
       const batch = models.map((m) => m.toJSON() as Record<string, unknown>);
       const resolved = relationColumns.length
@@ -391,8 +397,8 @@ export class ExportEngine {
           rowsInPart = 0;
           current = await openWriter();
         }
-        lastPk = row[pkName];
       }
+      cursor = batch[batch.length - 1];
       await ctx.updateProgress(processed, total);
       await ctx.updateStats({ totalRows: total, successRows: processed });
       if (models.length < QUERY_BATCH) break;
@@ -530,6 +536,47 @@ export class ExportEngine {
     if (!parts.length) return {};
     if (parts.length === 1) return parts[0] as Record<string, unknown>;
     return { $and: parts };
+  }
+
+  // 解析 NocoBase sort 语法（如 ['-下单时间', '金额']）为 [{field, dir}]，dir: 'ASC' | 'DESC'
+  private parseSort(sort: string[] | undefined): Array<{ field: string; dir: 'ASC' | 'DESC' }> {
+    return (sort || [])
+      .filter(Boolean)
+      .map((key) => {
+        const desc = key.startsWith('-');
+        return { field: desc ? key.slice(1) : key, dir: desc ? 'DESC' : ('ASC' as 'ASC' | 'DESC') };
+      })
+      .filter((s) => s.field);
+  }
+
+  // 构造复合游标 WHERE：排序字段 + 主键兜底。
+  // 语义对齐 NocoBase 的 NULLS LAST：排序字段为 NULL 的行排最后（无论升降序），
+  // 游标比较时 NULL 分支按主键推进。
+  private buildCursorFilter(
+    baseFilter: Record<string, unknown>,
+    sorts: Array<{ field: string; dir: 'ASC' | 'DESC' }>,
+    pkName: string,
+    cursor: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (!sorts.length) {
+      return this.mergeFilter(baseFilter, { [pkName]: { $gt: cursor[pkName] } });
+    }
+    const or: unknown[] = [];
+    for (let i = 0; i < sorts.length; i++) {
+      const { field, dir } = sorts[i];
+      const gt = dir === 'ASC' ? '$gt' : '$lt';
+      const eq: Record<string, unknown> = {};
+      for (let j = 0; j < i; j++) {
+        eq[sorts[j].field] = cursor[sorts[j].field];
+      }
+      // 该排序字段值更大（升序）或更小（降序）——推进
+      or.push({ ...eq, [field]: { [gt]: cursor[field] } });
+    }
+    // 所有排序字段相等时，按主键推进
+    const eqAll: Record<string, unknown> = {};
+    for (const s of sorts) eqAll[s.field] = cursor[s.field];
+    or.push({ ...eqAll, [pkName]: { $gt: cursor[pkName] } });
+    return this.mergeFilter(baseFilter, { $or: or });
   }
 
   private async collectAttachmentFiles(

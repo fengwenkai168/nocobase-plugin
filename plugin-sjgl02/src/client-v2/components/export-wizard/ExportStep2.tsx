@@ -20,6 +20,7 @@ import ExportSchemeModal from './ExportSchemeModal';
 import ExportAllTablesSection from './ExportAllTablesSection';
 import SortableExportRow from './SortableExportRow';
 import ExportFilterSection from './ExportFilterSection';
+import ExportSortSection from './ExportSortSection';
 import ExportRelationSection from './ExportRelationSection';
 import {
   dateFormatOptions,
@@ -68,6 +69,7 @@ export default function ExportStep2({
   const whitelist = state.permission?.exportFields || [];
   const isAllowed = (name: string) => !whitelist.length || whitelist.includes(name);
   const totalFields = groups.regular.length + groups.dates.length + groups.relations.length + groups.attachments.length;
+  // 可排序字段：普通/日期字段（排除关联与附件）
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   if (state.allTables) {
@@ -381,9 +383,11 @@ export default function ExportStep2({
           </Button>
         </Space>
         {state.dataRange === 'filtered' && (
-          <ExportFilterSection state={state} onChange={(filters) => patchDirty({ filters })} />
+          <ExportFilterSection state={state} onChange={(filter) => patchDirty({ filter })} />
         )}
       </Card>
+
+      <ExportSortSection state={state} onChange={(sorts) => patchDirty({ sorts })} />
 
       <Card
         size="small"

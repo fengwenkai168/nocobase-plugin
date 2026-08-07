@@ -8,11 +8,8 @@ import ExportStep3 from './ExportStep3';
 
 export const ALL_TABLES = '__all__';
 
-export interface FilterCondition {
-  field: string;
-  op: '$eq' | '$gt' | '$gte' | '$lt' | '$lte' | '$includes';
-  value: string;
-}
+/** 编译后的 NocoBase filter（系统筛选面板输出），undefined 表示未设置 */
+export type CompiledExportFilter = Record<string, unknown> | undefined;
 
 export interface ExportWizardState {
   collection?: CollectionOption;
@@ -29,7 +26,8 @@ export interface ExportWizardState {
   relationExportMode: 'sheet' | 'file';
   headerType: 'titleName' | 'title' | 'name';
   dataRange: 'all' | 'filtered';
-  filters: FilterCondition[];
+  filter: CompiledExportFilter;
+  sorts: Array<{ field: string; order: 'asc' | 'desc' }>;
   exportAttachment: boolean;
   globalDateFormat: string;
   globalRelationFormat: string;
@@ -48,7 +46,8 @@ export const initialExportState: ExportWizardState = {
   relationExportMode: 'sheet',
   headerType: 'titleName',
   dataRange: 'all',
-  filters: [],
+  filter: undefined,
+  sorts: [],
   exportAttachment: false,
   globalDateFormat: 'YYYY-MM-DD HH:mm:ss',
   globalRelationFormat: 'display',

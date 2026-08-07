@@ -1,11 +1,8 @@
 import React from 'react';
 import { CollectionMeta, CollectionOption, PermConfigInfo } from '../../services/api';
 export declare const ALL_TABLES = "__all__";
-export interface FilterCondition {
-    field: string;
-    op: '$eq' | '$gt' | '$gte' | '$lt' | '$lte' | '$includes';
-    value: string;
-}
+/** 编译后的 NocoBase filter（系统筛选面板输出），undefined 表示未设置 */
+export type CompiledExportFilter = Record<string, unknown> | undefined;
 export interface ExportWizardState {
     collection?: CollectionOption;
     allTables: boolean;
@@ -21,7 +18,11 @@ export interface ExportWizardState {
     relationExportMode: 'sheet' | 'file';
     headerType: 'titleName' | 'title' | 'name';
     dataRange: 'all' | 'filtered';
-    filters: FilterCondition[];
+    filter: CompiledExportFilter;
+    sorts: Array<{
+        field: string;
+        order: 'asc' | 'desc';
+    }>;
     exportAttachment: boolean;
     globalDateFormat: string;
     globalRelationFormat: string;

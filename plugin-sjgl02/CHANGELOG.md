@@ -1,5 +1,25 @@
 # 更新日志
 
+## 2.2.14（2026-08-07）
+
+- **优化（导出自定义筛选改用系统筛选组件）**：导出步骤2「数据范围-自定义条件」从自研三列 UI（字段下拉+固定操作符+文本框）替换为 **NocoBase 系统筛选组件 `CollectionFilterPanel`**：
+  - 字段**树选（Cascader）**、操作符**按字段类型动态生成**（日期/数字/文本/枚举各自专属）、值输入**按类型渲染专属控件**（日期选择器、枚举多选等）；
+  - 支持 **AND/OR 切换 + 嵌套分组**，复杂条件更直观；
+  - 旧格式筛选条件（`{field,op,value}`）由系统 `decompileFilterGroup` **自动兼容**；
+  - 可筛选字段沿用"可导出普通字段"白名单（排除关联/附件）；
+  - 前端 `filter` 改为编译后 NocoBase filter 结构，提交直接透传（后端零改动）。
+- **代码结构（500 行规范）**：排序配置区块抽为独立组件 `ExportSortSection.tsx`（ExportStep2 514→444 行）。
+- **实测验证（副本库 5433）**：`t_j34ilbd9frw` 按 `订单状态='已完成'` 系统 filter 格式导出成功（89,375 行，与库内统计完全一致）。
+
+## 2.2.13（2026-08-07）
+
+- **新功能（导出数据自定义排序）**：导出步骤2 新增「导出排序」配置（最多 3 级，每级选字段 + 升/降序），可按业务字段（订单时间、金额等）控制导出数据顺序；未配置时保持默认（主键升序）。
+  - 排序字段仅限普通/日期字段（排除关联与附件），不必是已勾选导出列；
+  - 后端 `ExportTaskParams` 新增 `sort`（NocoBase sort 语法，如 `['-f_f8iqa5erpb4', 'createdAt']`）；
+  - 大数据量分页改用**复合游标**（排序字段 + 主键兜底，`$or` 推进，语义对齐 `NULLS LAST`），保证任意数据量下排序正确且跨页不漏行不重复；
+  - allTables（全部数据表导出）模式不支持排序，隐藏配置。
+- **实测验证（副本库 5433）**：`t_j34ilbd9frw`（146,829 行）按「订单状态降序 + createdAt 升序」导出成功（113 秒），导出文件顺序与数据库 SQL 排序完全一致，无漏行。
+
 ## 2.2.12（2026-08-07）
 
 - **修复（权限编辑保存后再次编辑崩溃）**：`Cannot use 'in' operator to search for 'id' in null`——`@dnd-kit/sortable` 的 `SortableContext` 对含 `null` 元素的 `items` 数组执行 `'id' in item` 时抛错。权限编辑弹窗中「可导入字段/可导出字段」的 `SortableFieldList` 将 `importFields/exportFields` 直接传给 `SortableContext`，若数组含 null（历史脏数据）则崩溃。修复：`PermEditModal` 初始化与保存时 `filter(Boolean)`；`SortableFieldList`/`ChipsSelect` 渲染前统一 `filter(Boolean)`，即使库中存在脏数据也不再崩溃，后续保存自动清洗。

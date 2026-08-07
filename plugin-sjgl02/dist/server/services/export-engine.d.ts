@@ -13,6 +13,7 @@ export interface ExportTaskParams {
     headerType: 'titleName' | 'title' | 'name';
     filter?: Record<string, unknown> | null;
     exportFilter?: Record<string, unknown> | null;
+    sort?: string[];
     relationFields?: string[];
     relationExportMode?: 'sheet' | 'file';
     exportAttachment?: boolean;
@@ -34,6 +35,8 @@ export declare class ExportEngine {
     private writeRelationSheets;
     private writeRelationFiles;
     private mergeFilter;
+    private parseSort;
+    private buildCursorFilter;
     private collectAttachmentFiles;
     run(ctx: TaskHandlerContext, params: ExportTaskParams): Promise<Record<string, unknown>>;
     private runAllTables;

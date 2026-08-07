@@ -276,7 +276,6 @@ class ExportEngine {
     const warnings = [];
     const recordCache = /* @__PURE__ */ new Map();
     let processed = 0;
-    let lastPk = null;
     let part = 1;
     let rowsInPart = 0;
     const openWriter = async () => {
@@ -291,10 +290,14 @@ class ExportEngine {
     const relationColumns = columns.filter(
       (c) => ["belongsTo", "hasOne", "hasMany", "belongsToMany"].includes(c.meta.type) && c.meta.target
     );
+    const sorts = this.parseSort(params.sort);
+    const sortKeys = sorts.map((s) => s.dir === "DESC" ? `-${s.field}` : s.field);
+    const orderKeys = [...sortKeys, pkName];
+    let cursor = null;
     for (; ; ) {
       ctx.throwIfAborted();
-      const filter = lastPk === null ? baseFilter : this.mergeFilter(baseFilter, { [pkName]: { $gt: lastPk } });
-      const models = await repo.find({ filter, sort: [pkName], limit: QUERY_BATCH });
+      const filter = cursor === null ? baseFilter : this.buildCursorFilter(baseFilter, sorts, pkName, cursor);
+      const models = await repo.find({ filter, sort: orderKeys, limit: QUERY_BATCH });
       if (!models.length) break;
       const batch = models.map((m) => m.toJSON());
       const resolved = relationColumns.length ? await this.resolveRelations(
@@ -326,8 +329,8 @@ class ExportEngine {
           rowsInPart = 0;
           current = await openWriter();
         }
-        lastPk = row[pkName];
       }
+      cursor = batch[batch.length - 1];
       await ctx.updateProgress(processed, total);
       await ctx.updateStats({ totalRows: total, successRows: processed });
       if (models.length < QUERY_BATCH) break;
@@ -435,6 +438,35 @@ class ExportEngine {
     if (!parts.length) return {};
     if (parts.length === 1) return parts[0];
     return { $and: parts };
+  }
+  // 解析 NocoBase sort 语法（如 ['-下单时间', '金额']）为 [{field, dir}]，dir: 'ASC' | 'DESC'
+  parseSort(sort) {
+    return (sort || []).filter(Boolean).map((key) => {
+      const desc = key.startsWith("-");
+      return { field: desc ? key.slice(1) : key, dir: desc ? "DESC" : "ASC" };
+    }).filter((s) => s.field);
+  }
+  // 构造复合游标 WHERE：排序字段 + 主键兜底。
+  // 语义对齐 NocoBase 的 NULLS LAST：排序字段为 NULL 的行排最后（无论升降序），
+  // 游标比较时 NULL 分支按主键推进。
+  buildCursorFilter(baseFilter, sorts, pkName, cursor) {
+    if (!sorts.length) {
+      return this.mergeFilter(baseFilter, { [pkName]: { $gt: cursor[pkName] } });
+    }
+    const or = [];
+    for (let i = 0; i < sorts.length; i++) {
+      const { field, dir } = sorts[i];
+      const gt = dir === "ASC" ? "$gt" : "$lt";
+      const eq = {};
+      for (let j = 0; j < i; j++) {
+        eq[sorts[j].field] = cursor[sorts[j].field];
+      }
+      or.push({ ...eq, [field]: { [gt]: cursor[field] } });
+    }
+    const eqAll = {};
+    for (const s of sorts) eqAll[s.field] = cursor[s.field];
+    or.push({ ...eqAll, [pkName]: { $gt: cursor[pkName] } });
+    return this.mergeFilter(baseFilter, { $or: or });
   }
   async collectAttachmentFiles(collected) {
     const entries = [];
