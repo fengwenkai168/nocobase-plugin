@@ -1,5 +1,11 @@
 # 更新日志
 
+## 2.2.12（2026-08-07）
+
+- **修复（权限编辑保存后再次编辑崩溃）**：`Cannot use 'in' operator to search for 'id' in null`——`@dnd-kit/sortable` 的 `SortableContext` 对含 `null` 元素的 `items` 数组执行 `'id' in item` 时抛错。权限编辑弹窗中「可导入字段/可导出字段」的 `SortableFieldList` 将 `importFields/exportFields` 直接传给 `SortableContext`，若数组含 null（历史脏数据）则崩溃。修复：`PermEditModal` 初始化与保存时 `filter(Boolean)`；`SortableFieldList`/`ChipsSelect` 渲染前统一 `filter(Boolean)`，即使库中存在脏数据也不再崩溃，后续保存自动清洗。
+- **修复（日期写入文本字段格式脏）**：`cellDates: true` 把日期单元格解析为 JS `Date` 对象，string 分支 `String(Date)` 输出 `Wed Jul 15 2026 11:44:52 GMT+0800 (China Standard Time)` 这类脏格式。修复：`value-converter.ts` string/text/uid 分支对 `Date` 输入格式化为 `YYYY-MM-DD HH:mm:ss`（本地时区）；日期字段转换不受影响。
+- **实测验证（副本库 5433）**：权限编辑→保存→再读取流程正常（数组无 null，65 字段完整）；Date → 标准文本格式化验证通过。
+
 ## 2.2.11（2026-08-05）
 
 - **优化（导出步骤2 字段排序合并为一组 + 全局连续序号）**：原按 4 个分组（常规/日期/关联/附件）分别渲染、每组各自从 1 编号，字段多时"到处都是 123"且无法看出全局列顺序。现合并为**单一排序列表**：

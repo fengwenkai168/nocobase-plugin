@@ -152,6 +152,12 @@ function parseNumericValue(raw) {
   num = Number(cleaned);
   return Number.isFinite(num) ? num : null;
 }
+function formatDateToText(date) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(
+    date.getMinutes()
+  )}:${p(date.getSeconds())}`;
+}
 async function convertFieldValue(meta, raw, ctx) {
   var _a;
   if (meta.ignored) return skip;
@@ -178,6 +184,7 @@ async function convertFieldValue(meta, raw, ctx) {
     case "string":
     case "text":
     case "uid":
+      if (raw instanceof Date && !isNaN(raw.getTime())) return ok(formatDateToText(raw));
       return ok(String(raw));
     case "integer":
     case "bigInt":

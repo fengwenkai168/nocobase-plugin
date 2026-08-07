@@ -180,6 +180,14 @@ function parseNumericValue(raw: unknown): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
+// 日期对象转为标准文本（本地时区）：Wed Jul 15 2026 11:44:52 GMT+0800 → 2026-07-15 11:44:52
+function formatDateToText(date: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(
+    date.getMinutes(),
+  )}:${p(date.getSeconds())}`;
+}
+
 export async function convertFieldValue(meta: FieldMeta, raw: unknown, ctx: ConvertContext): Promise<ConvertResult> {
   if (meta.ignored) return skip;
   const required = ctx.requiredFields.includes(meta.name);
@@ -213,6 +221,9 @@ export async function convertFieldValue(meta: FieldMeta, raw: unknown, ctx: Conv
     case 'string':
     case 'text':
     case 'uid':
+      // 日期单元格（cellDates 解析为 Date）写入文本字段时格式化为标准文本，避免输出
+      // "Wed Jul 15 2026 11:44:52 GMT+0800 (China Standard Time)" 这类脏格式
+      if (raw instanceof Date && !isNaN(raw.getTime())) return ok(formatDateToText(raw));
       return ok(String(raw));
     case 'integer':
     case 'bigInt':

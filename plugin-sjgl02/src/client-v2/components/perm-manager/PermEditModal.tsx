@@ -37,8 +37,8 @@ export default function PermEditModal({
   const [importModes, setImportModes] = useState<string[]>(record?.importModes || ['insert']);
   const [uniqueFields, setUniqueFields] = useState<string[]>(record?.uniqueFields || []);
   const [requiredFields, setRequiredFields] = useState<string[]>(record?.requiredFields || []);
-  const [importFields, setImportFields] = useState<string[]>(record?.importFields || []);
-  const [exportFields, setExportFields] = useState<string[]>(record?.exportFields || []);
+  const [importFields, setImportFields] = useState<string[]>((record?.importFields || []).filter(Boolean));
+  const [exportFields, setExportFields] = useState<string[]>((record?.exportFields || []).filter(Boolean));
   const [meta, setMeta] = useState<CollectionMeta | null>(null);
   const [saving, setSaving] = useState(false);
   const [copyModalTarget, setCopyModalTarget] = useState<'import' | 'export' | null>(null);
@@ -168,8 +168,8 @@ export default function PermEditModal({
         importModes: canImport ? importModes : [],
         uniqueFields: canImport ? uniqueFields : [],
         requiredFields: canImport ? requiredFields : [],
-        importFields: canImport ? importFields : [],
-        exportFields: canExport ? exportFields : [],
+        importFields: canImport ? importFields.filter(Boolean) : [],
+        exportFields: canExport ? exportFields.filter(Boolean) : [],
       };
       if (record?.id) {
         await api.updatePermission(record.id, values);

@@ -19,7 +19,8 @@ export function ChipsSelect({
   color: string;
   placeholder: string;
 }) {
-  const remaining = options.filter((o) => !value.includes(o.value));
+  const safeValue = value.filter(Boolean);
+  const remaining = options.filter((o) => !safeValue.includes(o.value));
   return (
     <div
       style={{
@@ -33,8 +34,8 @@ export function ChipsSelect({
         alignItems: 'center',
       }}
     >
-      {value.map((v) => (
-        <Tag key={v} color={color} closable onClose={() => onChange(value.filter((x) => x !== v))}>
+      {safeValue.map((v) => (
+        <Tag key={v} color={color} closable onClose={() => onChange(safeValue.filter((x) => x !== v))}>
           {options.find((o) => o.value === v)?.label || v}
         </Tag>
       ))}
@@ -43,7 +44,7 @@ export function ChipsSelect({
         style={{ minWidth: 120 }}
         placeholder={placeholder}
         value={null}
-        onChange={(v) => onChange([...value, v])}
+        onChange={(v) => onChange([...safeValue, v])}
         options={remaining}
         showSearch
         optionFilterProp="label"
@@ -163,46 +164,48 @@ export function SortableFieldList({
 }) {
   const t = useT();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  const remaining = options.filter((o) => !value.includes(o.value));
+  // 过滤空值：dnd-kit SortableContext 对 null 元素执行 'id' in null 会崩溃
+  const safeValue = value.filter(Boolean);
+  const remaining = options.filter((o) => !safeValue.includes(o.value));
   const labelOf = (v: string) => options.find((o) => o.value === v)?.label || v;
 
   const handleDragEnd = (e: { active: { id: string | number }; over: { id: string | number } | null }) => {
     if (e.over && e.active.id !== e.over.id) {
-      const oldIndex = value.indexOf(String(e.active.id));
-      const newIndex = value.indexOf(String(e.over.id));
-      onChange(arrayMove(value, oldIndex, newIndex));
+      const oldIndex = safeValue.indexOf(String(e.active.id));
+      const newIndex = safeValue.indexOf(String(e.over.id));
+      onChange(arrayMove(safeValue, oldIndex, newIndex));
     }
   };
   const move = (index: number, dir: 'up' | 'down') => {
     const target = dir === 'up' ? index - 1 : index + 1;
-    if (target >= 0 && target < value.length) onChange(arrayMove(value, index, target));
+    if (target >= 0 && target < safeValue.length) onChange(arrayMove(safeValue, index, target));
   };
 
   useEffect(() => {
     const handler = (e: Event) => {
       const { from, to } = (e as CustomEvent).detail;
-      if (from !== to) onChange(arrayMove(value, from, to));
+      if (from !== to) onChange(arrayMove(safeValue, from, to));
     };
     window.addEventListener('sjgl02-row-move', handler);
     return () => window.removeEventListener('sjgl02-row-move', handler);
-  }, [value, onChange]);
+  }, [safeValue, onChange]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ border: '1px solid #d9d9d9', borderRadius: 6, padding: 8, minHeight: 36 }}>
-        {value.length === 0 && (
+        {safeValue.length === 0 && (
           <div style={{ color: '#999', fontSize: 12, textAlign: 'center', padding: '8px 0' }}>{t('未选择字段')}</div>
         )}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={value} strategy={verticalListSortingStrategy}>
-            {value.map((v, i) => (
+          <SortableContext items={safeValue} strategy={verticalListSortingStrategy}>
+            {safeValue.map((v, i) => (
               <SortableRow
                 key={v}
                 id={v}
                 index={i}
                 label={labelOf(v)}
-                total={value.length}
-                onRemove={() => onChange(value.filter((x) => x !== v))}
+                total={safeValue.length}
+                onRemove={() => onChange(safeValue.filter((x) => x !== v))}
                 onMove={(dir) => move(i, dir)}
               />
             ))}
@@ -214,7 +217,7 @@ export function SortableFieldList({
             style={{ minWidth: 160, marginTop: 4 }}
             placeholder={placeholder}
             value={null}
-            onChange={(v) => onChange([...value, v])}
+            onChange={(v) => onChange([...safeValue, v])}
             options={remaining}
             showSearch
             optionFilterProp="label"
